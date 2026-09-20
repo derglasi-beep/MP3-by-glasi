@@ -56,7 +56,9 @@ class MiniPlayer extends StatelessWidget {
                     Expanded(
                       child: StreamBuilder<PlayerState>(
                         stream: player.playerStateStream,
-                        builder: (_, state) => Column(
+                        builder: (_, state) => StreamBuilder<Duration>(
+                          stream: player.positionStream,
+                          builder: (_, _) => Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -78,6 +80,7 @@ class MiniPlayer extends StatelessWidget {
                               minHeight: 2,
                             ),
                           ],
+                        ),
                         ),
                       ),
                     ),
