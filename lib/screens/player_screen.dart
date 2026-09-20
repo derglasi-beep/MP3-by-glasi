@@ -8,6 +8,7 @@ import '../services/audio_player_service.dart';
 import '../services/bpm_service.dart';
 import '../services/bpm_cache.dart';
 import '../services/online_bpm_service.dart';
+import '../services/bpm_fusion_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
@@ -29,6 +30,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bpm = BpmService();
   final bpmCache = BpmCache();
   final onlineBpm = OnlineBpmService();
+  final bpmFusion = BpmFusionService();
   final library = LibraryService();
   List<Track> tracks = [];
 
@@ -41,6 +43,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool sortAscending = true;
   String? onlineBpmTrackId;
   OnlineBpmResult? onlineBpmResult;
+  BpmFusionResult? bpmFusionResult;
 
   @override
   void initState() {
@@ -120,8 +123,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     for (final t in found) map[t.id] = t;
     final hydrated = <Track>[];
     for (final t in map.values) {
-      final cached = t.bpm ?? await bpmCache.get(t.path);
-      hydrated.add(cached == null ? t : t.copyWith(bpm: cached.toDouble()));
+      final cached = await bpmCache.get(t.path);
+      hydrated.add(cached == null ? t : t.copyWith(bpm: cached.bpm, bpmConfidence: cached.confidence));
     }
     setState(() => tracks = hydrated);
     await library.saveTracks(tracks);
@@ -135,6 +138,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         analyzing = true;
         onlineBpmTrackId = t.id;
         onlineBpmResult = null;
+        bpmFusionResult = null;
       });
     }
 
@@ -152,8 +156,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         artist: t.artist,
         duration: t.duration,
       );
+      final fusion = bpmFusion.fuse(
+        localBpm: localValue,
+        localConfidence: localResult?.confidence ?? cached?.confidence,
+        online: online,
+      );
+      if (fusion.bpm > 0 && localValue != null) {
+        _setBpm(t.id, fusion.bpm, fusion.confidence);
+      }
       if (mounted && onlineBpmTrackId == t.id) {
-        setState(() => onlineBpmResult = online);
+        setState(() {
+          onlineBpmResult = online;
+          bpmFusionResult = fusion;
+        });
       }
     } finally {
       if (mounted) setState(() => analyzing = false);
@@ -219,6 +234,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         sortAscending = true;
       }
     });
+  }
+
+  String _fusionLabel(BpmFusionResult result) {
+    final confidence = (result.confidence * 100).round();
+    if (result.possibleRemix) return '⚠ Mögliches Remix/Alternate-Take · gemeinsame Sicherheit $confidence%';
+    switch (result.relation) {
+      case BpmRelation.exact: return '✓ Lokal + Online bestätigt · Sicherheit $confidence%';
+      case BpmRelation.halfTempo: return '↕ Halbtempo erkannt · Sicherheit $confidence%';
+      case BpmRelation.doubleTempo: return '↕ Doppeltempo erkannt · Sicherheit $confidence%';
+      case BpmRelation.close: return '≈ Nahe beieinander · Sicherheit $confidence%';
+      case BpmRelation.mismatch: return '⚠ Unterschiedliche BPM · Sicherheit $confidence%';
+      case BpmRelation.localOnly: return 'Lokal erkannt · Sicherheit $confidence%';
+      case BpmRelation.onlineOnly: return 'Online erkannt · Sicherheit $confidence%';
+    }
   }
 
   String time(Duration d) => '\${d.inMinutes}:\${(d.inSeconds % 60).toString().padLeft(2, '0')}';
@@ -394,6 +423,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
+                  if (bpmFusionResult != null)
+                    Text(
+                      _fusionLabel(bpmFusionResult!),
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
                 ],
                 Slider(value: value, max: max,
                   onChanged: (v) => widget.player.seek(Duration(milliseconds: v.toInt()))),
