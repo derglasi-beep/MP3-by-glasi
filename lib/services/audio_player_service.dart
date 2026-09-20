@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 
@@ -12,13 +13,15 @@ class AudioPlayerService {
   int currentIndex = -1;
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
+  final Random _random = Random();
 
   AudioPlayerService() {
     audio = AudioPlayer(
       audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
     );
     _stateSub = audio.playerStateStream.listen((state) async {
-      if (state.processingState == ProcessingState.completed && loopMode == LoopMode.off) {
+      if (state.processingState == ProcessingState.completed &&
+          loopMode == LoopMode.off) {
         await next();
       }
     });
@@ -66,7 +69,29 @@ class AudioPlayerService {
 
   Future<void> next() async {
     if (queue.isEmpty) return;
-    currentIndex = (currentIndex + 1) % queue.length;
+
+    if (loopMode == LoopMode.one) {
+      await audio.seek(Duration.zero);
+      await play();
+      return;
+    }
+
+    if (shuffle && queue.length > 1) {
+      var nextIndex = currentIndex;
+      while (nextIndex == currentIndex) {
+        nextIndex = _random.nextInt(queue.length);
+      }
+      currentIndex = nextIndex;
+    } else if (currentIndex < queue.length - 1) {
+      currentIndex++;
+    } else if (loopMode == LoopMode.all) {
+      currentIndex = 0;
+    } else {
+      await audio.pause();
+      await audio.seek(Duration.zero);
+      return;
+    }
+
     await _load();
     await play();
   }
@@ -77,14 +102,29 @@ class AudioPlayerService {
       await seek(Duration.zero);
       return;
     }
-    currentIndex = (currentIndex - 1 + queue.length) % queue.length;
+
+    if (shuffle && queue.length > 1) {
+      var previousIndex = currentIndex;
+      while (previousIndex == currentIndex) {
+        previousIndex = _random.nextInt(queue.length);
+      }
+      currentIndex = previousIndex;
+    } else if (currentIndex > 0) {
+      currentIndex--;
+    } else if (loopMode == LoopMode.all) {
+      currentIndex = queue.length - 1;
+    } else {
+      await seek(Duration.zero);
+      return;
+    }
+
     await _load();
     await play();
   }
 
   Future<void> toggleShuffle() async {
     shuffle = !shuffle;
-    await audio.setShuffleModeEnabled(shuffle);
+    await audio.setShuffleModeEnabled(false);
   }
 
   Future<void> toggleRepeat() async {
