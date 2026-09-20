@@ -194,12 +194,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
 
         final cached = await bpmCache.get(track.path);
-        final value = cached?.toDouble() ?? await bpm.analyzeFile(track.path);
+        final localResult = cached == null ? await bpm.analyzeFileResult(track.path) : null;
+        final value = cached?.bpm ?? localResult?.bpm;
         if (value != null) {
-          if (cached == null) await bpmCache.put(track.path, value.round());
+          if (cached == null) {
+            await bpmCache.put(
+              track.path,
+              value,
+              confidence: localResult?.confidence,
+            );
+          }
+          final online = await onlineBpm.lookup(
+            title: track.title,
+            artist: track.artist,
+            duration: track.duration,
+          );
+          final fusion = bpmFusion.fuse(
+            localBpm: value,
+            localConfidence: localResult?.confidence ?? cached?.confidence,
+            online: online,
+          );
           final index = tracks.indexWhere((x) => x.id == track.id);
           if (index >= 0) {
-            tracks[index] = tracks[index].copyWith(bpm: value);
+            tracks[index] = tracks[index].copyWith(
+              bpm: fusion.bpm,
+              bpmConfidence: fusion.confidence,
+            );
             changed = true;
           }
         }
