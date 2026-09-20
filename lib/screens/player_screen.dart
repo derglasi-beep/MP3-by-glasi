@@ -7,6 +7,7 @@ import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/bpm_service.dart';
 import '../services/bpm_cache.dart';
+import '../services/online_bpm_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
@@ -27,6 +28,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final scanner = MusicScanner();
   final bpm = BpmService();
   final bpmCache = BpmCache();
+  final onlineBpm = OnlineBpmService();
   final library = LibraryService();
   List<Track> tracks = [];
 
@@ -37,6 +39,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double volume = .8;
   _SortMode sortMode = _SortMode.title;
   bool sortAscending = true;
+  String? onlineBpmTrackId;
+  OnlineBpmResult? onlineBpmResult;
 
   @override
   void initState() {
@@ -126,18 +130,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _analyzeTrack(Track t) async {
     if (analyzing) return;
-    final cached = await bpmCache.get(t.path);
-    if (cached != null) {
-      _setBpm(t.id, cached.toDouble());
-      return;
+    if (mounted) {
+      setState(() {
+        analyzing = true;
+        onlineBpmTrackId = t.id;
+        onlineBpmResult = null;
+      });
     }
-    setState(() => analyzing = true);
-    final value = await bpm.analyzeFile(t.path);
-    if (value != null) {
-      await bpmCache.put(t.path, value.round());
-      _setBpm(t.id, value);
+
+    try {
+      final cached = await bpmCache.get(t.path);
+      final localValue = cached?.toDouble() ?? await bpm.analyzeFile(t.path);
+      if (localValue != null) {
+        if (cached == null) await bpmCache.put(t.path, localValue.round());
+        _setBpm(t.id, localValue);
+      }
+
+      final online = await onlineBpm.lookup(
+        title: t.title,
+        artist: t.artist,
+        duration: t.duration,
+      );
+      if (mounted && onlineBpmTrackId == t.id) {
+        setState(() => onlineBpmResult = online);
+      }
+    } finally {
+      if (mounted) setState(() => analyzing = false);
     }
-    if (mounted) setState(() => analyzing = false);
   }
 
   Future<void> _analyzeLibrary() async {
@@ -367,6 +386,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onPressed: t == null ? null : () => _analyzeTrack(t),
                     icon: const Icon(Icons.speed), label: const Text('BPM')),
                 ]),
+                if (t != null && onlineBpmTrackId == t.id && onlineBpmResult != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Online: ${onlineBpmResult!.bpm.round()} BPM · ${onlineBpmResult!.source} · Treffer ${(onlineBpmResult!.matchScore * 100).round()}%',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 Slider(value: value, max: max,
                   onChanged: (v) => widget.player.seek(Duration(milliseconds: v.toInt()))),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
