@@ -127,8 +127,7 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     );
   }
 
-  @override
-  Future<void> dispose() async {
+  Future<void> disposeHandler() async {
     await _stateSub.cancel();
     await _positionSub.cancel();
     await _durationSub.cancel();
