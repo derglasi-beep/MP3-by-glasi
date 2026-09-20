@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'services/audio_player_service.dart';
 import 'screens/player_screen.dart';
 import 'screens/settings_screen.dart';
+import 'theme/glasi_theme.dart';
 
 class Mp3ByGlasiApp extends StatefulWidget { const Mp3ByGlasiApp({super.key}); @override State<Mp3ByGlasiApp> createState()=>_AppState(); }
 class _AppState extends State<Mp3ByGlasiApp> {
@@ -10,7 +11,7 @@ class _AppState extends State<Mp3ByGlasiApp> {
   @override void dispose(){player.dispose();super.dispose();}
   @override Widget build(BuildContext context)=>MaterialApp(
     title:'MP3 by Glasi',debugShowCheckedModeBanner:false,
-    theme:ThemeData.dark(useMaterial3:true).copyWith(scaffoldBackgroundColor:const Color(0xFF101114),cardColor:const Color(0xFF181A1F)),
+    theme:GlasiTheme.dark(),
     home: _Shell(player:player),
   );
 }
