@@ -72,49 +72,62 @@ class MiniPlayer extends StatelessWidget {
                         stream: player.playerStateStream,
                         builder: (_, state) => StreamBuilder<Duration>(
                           stream: player.positionStream,
-                          builder: (_, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                track.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              Text(
-                                track.artist,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 4),
-                              LinearProgressIndicator(
-                                value: _progress(player),
-                                minHeight: 2,
-                              ),
-                            ],
-                          ),
+                          builder: (_, position) {
+                            final playing = state.data?.playing ?? false;
+                            final duration = player.audio.duration;
+                            final currentPosition =
+                                position.data ?? player.audio.position;
+                            final progress = _progress(
+                              currentPosition,
+                              duration,
+                            );
+
+                            return Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 4),
+                                LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 2,
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
                       tooltip: 'Zurück',
-                      onPressed: player.previous,
+                      onPressed: player.canGoPrevious ? player.previous : null,
                       icon: const Icon(Icons.skip_previous),
                     ),
                     IconButton(
-                      tooltip: statePlaying(player) ? 'Pause' : 'Wiedergabe',
-                      onPressed: statePlaying(player) ? player.pause : player.play,
+                      tooltip: player.audio.playing ? 'Pause' : 'Wiedergabe',
+                      onPressed: player.audio.playing ? player.pause : player.play,
                       icon: Icon(
-                        statePlaying(player) ? Icons.pause_circle : Icons.play_circle,
+                        player.audio.playing
+                            ? Icons.pause_circle
+                            : Icons.play_circle,
                         size: 34,
                       ),
                     ),
                     IconButton(
                       tooltip: 'Weiter',
-                      onPressed: player.next,
+                      onPressed: player.canGoNext ? player.next : null,
                       icon: const Icon(Icons.skip_next),
                     ),
                   ],
@@ -127,12 +140,8 @@ class MiniPlayer extends StatelessWidget {
     );
   }
 
-  bool statePlaying(AudioPlayerService player) => player.audio.playing;
-
-  double _progress(AudioPlayerService player) {
-    final duration = player.audio.duration;
+  double _progress(Duration position, Duration? duration) {
     if (duration == null || duration.inMilliseconds <= 0) return 0;
-    return (player.audio.position.inMilliseconds / duration.inMilliseconds)
-        .clamp(0.0, 1.0);
+    return (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
   }
 }
