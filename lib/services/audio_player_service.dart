@@ -20,8 +20,7 @@ class AudioPlayerService {
       audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
     );
     _stateSub = audio.playerStateStream.listen((state) async {
-      if (state.processingState == ProcessingState.completed &&
-          loopMode == LoopMode.off) {
+      if (state.processingState == ProcessingState.completed) {
         await next();
       }
     });
@@ -133,7 +132,8 @@ class AudioPlayerService {
       LoopMode.all => LoopMode.one,
       LoopMode.one => LoopMode.off,
     };
-    await audio.setLoopMode(loopMode);
+    // Queue navigation is handled manually because tracks are loaded one-by-one.
+    await audio.setLoopMode(LoopMode.off);
   }
 
   Future<void> dispose() async {
