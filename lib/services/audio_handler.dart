@@ -42,7 +42,6 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   Future<void> skipToPrevious() => player.previous();
 
   @override
-  @override
   Future<void> fastForward() => player.seek(
         player.audio.position + const Duration(seconds: 10),
       );
