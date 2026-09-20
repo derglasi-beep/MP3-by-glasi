@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
+import '../services/equalizer_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AudioPlayerService player; const SettingsScreen({super.key,required this.player});
@@ -30,6 +31,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
     const Divider(height:32), Text('Wiedergabe',style:Theme.of(context).textTheme.headlineSmall),
     slider('Geschwindigkeit  '+speed.toStringAsFixed(2)+'×',speed,.5,2,(v){setState(()=>speed=v);widget.player.setSpeed(v);s.setSpeed(v);}),
     slider('Crossfade  '+crossfade.toStringAsFixed(0)+' s',crossfade,0,12,(v){setState(()=>crossfade=v);s.setCrossfade(v);}),
-    const SizedBox(height:12), const Text('Der EQ wird als nächstes an die Audio-Pipeline gekoppelt. Die Regler sind bereits persistent vorbereitet.'),
   ]));
 }
