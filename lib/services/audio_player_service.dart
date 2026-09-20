@@ -3,7 +3,13 @@ import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 
 class AudioPlayerService {
-  final AudioPlayer audio = AudioPlayer();
+  final AndroidEqualizer equalizer = AndroidEqualizer();
+  late final AudioPlayer audio;
+
+  AudioPlayerService() {
+    audio = AudioPlayer(
+      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
+    );
   final List<Track> queue = [];
   final StreamController<Track?> _trackController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
