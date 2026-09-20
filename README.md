@@ -41,6 +41,12 @@ Nach dem Klonen:
     flutter pub get
     flutter run
 
+Für die Android-Plattform kann gezielt nur der fehlende Android-Unterbau erzeugt werden:
+
+    bash tool/setup_android.sh
+
+Das Script erzeugt ausschließlich die Flutter-Android-Plattformdateien; der bestehende Dart-Code und die `pubspec.yaml` bleiben unangetastet.
+
 Für Windows:
 
     flutter run -d windows
@@ -76,7 +82,7 @@ lib/
 
 ### Android Media Service
 
-`audio_service` benötigt zusätzlich die Android-Service-Konfiguration in `android/app/src/main/AndroidManifest.xml`. Nach `flutter create .` müssen Wake-Lock, Foreground-Media-Playback sowie AudioService und MediaButtonReceiver eingetragen werden.
+`audio_service` benötigt zusätzlich die Android-Service-Konfiguration in `android/app/src/main/AndroidManifest.xml`. Das Repository enthält aktuell bewusst nur den Flutter/Dart-Kern; der native Android-Unterbau wird mit `tool/setup_android.sh` bzw. `flutter create --platforms=android .` erzeugt. Danach müssen Wake-Lock, Foreground-Media-Playback sowie AudioService und MediaButtonReceiver eingetragen werden.
 
 ```xml
 <uses-permission android:name="android.permission.WAKE_LOCK"/>
