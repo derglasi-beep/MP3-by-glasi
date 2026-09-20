@@ -7,8 +7,10 @@ import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/bpm_service.dart';
 import '../services/bpm_cache.dart';
+import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
+import 'playlists_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
   final AudioPlayerService player;
@@ -20,7 +22,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final scanner = MusicScanner();
   final bpm = BpmService();
   final bpmCache = BpmCache();
+  final library = LibraryService();
   List<Track> tracks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLibrary();
+  }
+
+  Future<void> _restoreLibrary() async {
+    final saved = await library.loadTracks();
+    if (!mounted || saved.isEmpty) return;
+    final valid = <Track>[];
+    for (final t in saved) {
+      if (await File(t.path).exists()) valid.add(t);
+    }
+    if (!mounted) return;
+    setState(() => tracks = valid);
+    await widget.player.setQueue(tracks);
+  }
   String search = '';
   bool analyzing = false;
   double volume = .8;
@@ -56,6 +77,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       hydrated.add(cached == null ? t : t.copyWith(bpm: cached.toDouble()));
     }
     setState(() => tracks = hydrated);
+    await library.saveTracks(tracks);
     await widget.player.setQueue(tracks);
   }
 
@@ -82,6 +104,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final i = tracks.indexWhere((x) => x.id == id);
       if (i >= 0) tracks[i] = tracks[i].copyWith(bpm: value);
     });
+    unawaited(library.saveTracks(tracks));
   }
 
   String time(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
@@ -94,9 +117,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openPlaylists() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistsScreen(player: widget.player, tracks: tracks)));
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
+      IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.queue_music), tooltip: 'Playlists'),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: 'Ordner scannen'),
     ]),
