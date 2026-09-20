@@ -8,6 +8,7 @@ class AudioPlayerService {
   final List<Track> queue = [];
   final List<int> _history = [];
   final StreamController<Track?> _trackController = StreamController.broadcast();
+  final StreamController<List<Track>> _queueController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
 
   int currentIndex = -1;
@@ -29,12 +30,15 @@ class AudioPlayerService {
   Stream<Duration?> get durationStream => audio.durationStream;
   Stream<PlayerState> get playerStateStream => audio.playerStateStream;
   Stream<Track?> get currentTrackStream => _trackController.stream;
+  Stream<List<Track>> get queueStream => _queueController.stream;
 
   Track? get currentTrack =>
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
   bool get canGoPrevious =>
       audio.position > const Duration(seconds: 3) || _history.isNotEmpty || currentIndex > 0;
+
+  void _publishQueue() => _queueController.add(List.unmodifiable(queue));
 
   Future<void> setQueue(List<Track> tracks, {int startIndex = 0}) async {
     queue
@@ -45,12 +49,117 @@ class AudioPlayerService {
     if (queue.isEmpty) {
       currentIndex = -1;
       _trackController.add(null);
+      _publishQueue();
       await audio.stop();
       return;
     }
 
     currentIndex = startIndex.clamp(0, queue.length - 1);
     await _load();
+    _publishQueue();
+  }
+
+  Future<void> addToQueue(Track track) async {
+    queue.add(track);
+    if (currentIndex == -1) {
+      currentIndex = 0;
+      await _load();
+    }
+    _publishQueue();
+  }
+
+  Future<void> addTracksToQueue(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    final wasEmpty = queue.isEmpty;
+    queue.addAll(tracks);
+    if (wasEmpty) {
+      currentIndex = 0;
+      await _load();
+    }
+    _publishQueue();
+  }
+
+  Future<void> playNext(Track track) async {
+    if (queue.isEmpty || currentIndex < 0) {
+      await addToQueue(track);
+      return;
+    }
+    final insertAt = (currentIndex + 1).clamp(0, queue.length);
+    queue.insert(insertAt, track);
+    _shiftHistoryAfterInsert(insertAt);
+    _publishQueue();
+  }
+
+  Future<void> removeAt(int index) async {
+    if (index < 0 || index >= queue.length) return;
+    final wasCurrent = index == currentIndex;
+    final wasPlaying = audio.playing;
+
+    queue.removeAt(index);
+    _shiftHistoryAfterRemove(index);
+
+    if (queue.isEmpty) {
+      currentIndex = -1;
+      _trackController.add(null);
+      _publishQueue();
+      await audio.stop();
+      return;
+    }
+
+    if (index < currentIndex) {
+      currentIndex--;
+    } else if (wasCurrent) {
+      if (currentIndex >= queue.length) currentIndex = queue.length - 1;
+      await _load();
+      if (wasPlaying) await play();
+    }
+
+    _publishQueue();
+  }
+
+  Future<void> move(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= queue.length) return;
+    if (newIndex > oldIndex) newIndex--;
+    if (newIndex < 0 || newIndex >= queue.length || newIndex == oldIndex) return;
+
+    final item = queue.removeAt(oldIndex);
+    queue.insert(newIndex, item);
+
+    currentIndex = _movedIndex(currentIndex, oldIndex, newIndex);
+    _history
+      ..clear()
+      ..addAll(_history.map((i) => _movedIndex(i, oldIndex, newIndex)));
+    _publishQueue();
+    _trackController.add(currentTrack);
+  }
+
+  Future<void> clearQueue() async {
+    queue.clear();
+    _history.clear();
+    currentIndex = -1;
+    _trackController.add(null);
+    _publishQueue();
+    await audio.stop();
+  }
+
+  int _movedIndex(int index, int oldIndex, int newIndex) {
+    if (index == oldIndex) return newIndex;
+    if (oldIndex < newIndex && index > oldIndex && index <= newIndex) return index - 1;
+    if (newIndex < oldIndex && index >= newIndex && index < oldIndex) return index + 1;
+    return index;
+  }
+
+  void _shiftHistoryAfterInsert(int index) {
+    for (var i = 0; i < _history.length; i++) {
+      if (_history[i] >= index) _history[i]++;
+    }
+  }
+
+  void _shiftHistoryAfterRemove(int index) {
+    _history.removeWhere((i) => i == index);
+    for (var i = 0; i < _history.length; i++) {
+      if (_history[i] > index) _history[i]--;
+    }
   }
 
   Future<void> _load() async {
@@ -75,7 +184,6 @@ class AudioPlayerService {
     for (var i = 0; i < queue.length; i++) {
       if (i != currentIndex && !_history.contains(i)) remaining.add(i);
     }
-    // Start a fresh shuffle cycle after every track has been visited.
     final candidates = remaining.isNotEmpty
         ? remaining
         : [for (var i = 0; i < queue.length; i++) if (i != currentIndex) i];
@@ -151,6 +259,7 @@ class AudioPlayerService {
   Future<void> dispose() async {
     await _stateSub.cancel();
     await _trackController.close();
+    await _queueController.close();
     await audio.dispose();
   }
 }
