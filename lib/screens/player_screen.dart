@@ -47,28 +47,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? onlineBpmTrackId;
   OnlineBpmResult? onlineBpmResult;
   BpmFusionResult? bpmFusionResult;
+  late final StreamSubscription<String> _playerErrorSub;
 
   @override
   void initState() {
     super.initState();
-    widget.player.errorStream.listen(_showPlayerError);
+    _playerErrorSub = widget.player.errorStream.listen(_showPlayerError);
     _restoreLibrary();
   }
 
   void _showPlayerError(String message) {
     if (!mounted) return;
+    final text = message.trim().isEmpty
+        ? 'Wiedergabe konnte nicht gestartet werden.'
+        : message.trim();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+          ),
         ),
       );
   }
 
   @override
   void dispose() {
+    _playerErrorSub.cancel();
     onlineBpm.dispose();
     super.dispose();
   }
