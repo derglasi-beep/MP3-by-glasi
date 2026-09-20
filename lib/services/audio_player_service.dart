@@ -36,7 +36,9 @@ class AudioPlayerService {
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
   bool get canGoPrevious =>
-      audio.position > const Duration(seconds: 3) || _history.isNotEmpty || currentIndex > 0;
+      audio.position > const Duration(seconds: 3) ||
+      _history.isNotEmpty ||
+      currentIndex > 0;
 
   void _publishQueue() => _queueController.add(List.unmodifiable(queue));
 
@@ -122,13 +124,14 @@ class AudioPlayerService {
     if (newIndex > oldIndex) newIndex--;
     if (newIndex < 0 || newIndex >= queue.length || newIndex == oldIndex) return;
 
+    final history = List<int>.from(_history);
     final item = queue.removeAt(oldIndex);
     queue.insert(newIndex, item);
 
     currentIndex = _movedIndex(currentIndex, oldIndex, newIndex);
     _history
       ..clear()
-      ..addAll(_history.map((i) => _movedIndex(i, oldIndex, newIndex)));
+      ..addAll(history.map((i) => _movedIndex(i, oldIndex, newIndex)));
     _publishQueue();
     _trackController.add(currentTrack);
   }
