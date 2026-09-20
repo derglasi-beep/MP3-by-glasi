@@ -10,6 +10,7 @@ import '../services/bpm_cache.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
+import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -42,6 +43,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => tracks = valid);
     await widget.player.setQueue(tracks);
   }
+
   String search = '';
   bool analyzing = false;
   double volume = .8;
@@ -189,7 +191,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 Text(t?.title ?? 'Keine Wiedergabe',
                   style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                 Text(t?.artist ?? 'Lokale Bibliothek'),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+                GlasiVisualizer(
+                  playing: ps.data?.playing ?? false,
+                  bpm: t?.bpm,
+                ),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   BpmBadge(bpm: t?.bpm, loading: analyzing && t != null && t.bpm == null),
                   const SizedBox(width: 8),
