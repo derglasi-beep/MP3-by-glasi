@@ -35,6 +35,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<Track> tracks = [];
 
   String search = '';
+  int? bpmMin;
+  int? bpmMax;
   bool analyzing = false;
   int analyzedCount = 0;
   int analysisTotal = 0;
@@ -77,7 +79,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       t.title.toLowerCase().contains(q) ||
       t.artist.toLowerCase().contains(q) ||
       t.album.toLowerCase().contains(q),
-    ).toList();
+    ).where((t) {
+      final tempo = t.bpm;
+      if (tempo == null) return bpmMin == null && bpmMax == null;
+      return (bpmMin == null || tempo >= bpmMin!) &&
+          (bpmMax == null || tempo <= bpmMax!);
+    }).toList();
 
     int compare(Track a, Track b) {
       switch (sortMode) {
@@ -99,6 +106,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   String _text(String value) => value.trim().toLowerCase();
+
+  String _bpmLabel(double? value) => value == null ? '—' : '${value.round()} BPM';
+
+  String _tempoDelta(Track? current, Track next) {
+    if (current?.bpm == null || next.bpm == null || current!.bpm! <= 0) return 'BPM n/a';
+    final delta = ((next.bpm! - current.bpm!) / current.bpm!) * 100;
+    final sign = delta > 0 ? '+' : '';
+    return '$sign${delta.toStringAsFixed(1)}% Tempo';
+  }
 
   String _sortLabel() => switch (sortMode) {
     _SortMode.title => 'Titel',
@@ -321,6 +337,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
+      SizedBox(
+        height: 44,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          children: [
+            for (final zone in const <({String label, int? min, int? max})>[
+              (label: 'Alle', min: null, max: null),
+              (label: '120–130', min: 120, max: 130),
+              (label: '130–140', min: 130, max: 140),
+              (label: '140–150', min: 140, max: 150),
+              (label: '150+', min: 150, max: null),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text(zone.label),
+                  selected: bpmMin == zone.min && bpmMax == zone.max,
+                  onSelected: (_) => setState(() { bpmMin = zone.min; bpmMax = zone.max; }),
+                ),
+              ),
+          ],
+        ),
+      ),
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         child: Row(children: [
@@ -376,7 +416,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
                   title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text('\${t.artist} • \${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: PopupMenuButton<String>(
                     tooltip: 'Queue-Aktion',
                     onSelected: (action) async {
                       if (action == 'next') await widget.player.playNext(t);
@@ -386,7 +425,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       PopupMenuItem(value: 'next', child: Text('Als Nächstes abspielen')),
                       PopupMenuItem(value: 'queue', child: Text('An Queue anhängen')),
                     ],
-                    icon: const Icon(Icons.more_vert),
+                      icon: const Icon(Icons.more_vert),
+                    ),
                   ),
                   onTap: () => _playTrack(t),
                 );
@@ -438,6 +478,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 Text(t?.title ?? 'Keine Wiedergabe',
                   style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                 Text(t?.artist ?? 'Lokale Bibliothek'),
+                if (t?.bpm != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Spinning: ${_bpmLabel(t!.bpm)}${t.bpmConfidence != null ? ' · Sicherheit ${(t.bpmConfidence! * 100).round()}%' : ''}',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 GlasiVisualizer(playing: ps.data?.playing ?? false, bpm: t?.bpm),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -465,6 +513,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onChanged: (v) => widget.player.seek(Duration(milliseconds: v.toInt()))),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [Text(time(p)), Text(time(d))]),
+                if (t != null && widget.player.queue.length > 1) ...[
+                  const SizedBox(height: 4),
+                  Builder(builder: (_) {
+                    final index = widget.player.queue.indexWhere((x) => x.id == t.id);
+                    final next = index >= 0 && index + 1 < widget.player.queue.length
+                        ? widget.player.queue[index + 1]
+                        : null;
+                    return Text(
+                      next == null ? 'Nächster Titel: Ende der Queue' : 'Nächster: ${next.title} · ${_tempoDelta(t, next)}',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    );
+                  }),
+                ],
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   IconButton(onPressed: widget.player.toggleShuffle,
                     color: widget.player.shuffle ? Theme.of(context).colorScheme.primary : null,
