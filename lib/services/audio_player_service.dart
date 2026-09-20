@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 
@@ -7,13 +6,13 @@ class AudioPlayerService {
   final AndroidEqualizer equalizer = AndroidEqualizer();
   late final AudioPlayer audio;
   final List<Track> queue = [];
+  final List<int> _history = [];
   final StreamController<Track?> _trackController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
 
   int currentIndex = -1;
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
-  final Random _random = Random();
 
   AudioPlayerService() {
     audio = AudioPlayer(
@@ -34,10 +33,14 @@ class AudioPlayerService {
   Track? get currentTrack =>
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
+  bool get canGoPrevious =>
+      audio.position > const Duration(seconds: 3) || _history.isNotEmpty || currentIndex > 0;
+
   Future<void> setQueue(List<Track> tracks, {int startIndex = 0}) async {
     queue
       ..clear()
       ..addAll(tracks);
+    _history.clear();
 
     if (queue.isEmpty) {
       currentIndex = -1;
@@ -66,6 +69,20 @@ class AudioPlayerService {
   Future<void> setVolume(double v) => audio.setVolume(v.clamp(0, 1));
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
 
+  int _nextShuffleIndex() {
+    if (queue.length <= 1) return currentIndex;
+    final remaining = <int>[];
+    for (var i = 0; i < queue.length; i++) {
+      if (i != currentIndex && !_history.contains(i)) remaining.add(i);
+    }
+    // Start a fresh shuffle cycle after every track has been visited.
+    final candidates = remaining.isNotEmpty
+        ? remaining
+        : [for (var i = 0; i < queue.length; i++) if (i != currentIndex) i];
+    candidates.shuffle();
+    return candidates.first;
+  }
+
   Future<void> next() async {
     if (queue.isEmpty) return;
 
@@ -75,17 +92,16 @@ class AudioPlayerService {
       return;
     }
 
+    if (currentIndex >= 0) _history.add(currentIndex);
+
     if (shuffle && queue.length > 1) {
-      var nextIndex = currentIndex;
-      while (nextIndex == currentIndex) {
-        nextIndex = _random.nextInt(queue.length);
-      }
-      currentIndex = nextIndex;
+      currentIndex = _nextShuffleIndex();
     } else if (currentIndex < queue.length - 1) {
       currentIndex++;
     } else if (loopMode == LoopMode.all) {
       currentIndex = 0;
     } else {
+      _history.clear();
       await audio.pause();
       await audio.seek(Duration.zero);
       return;
@@ -102,12 +118,8 @@ class AudioPlayerService {
       return;
     }
 
-    if (shuffle && queue.length > 1) {
-      var previousIndex = currentIndex;
-      while (previousIndex == currentIndex) {
-        previousIndex = _random.nextInt(queue.length);
-      }
-      currentIndex = previousIndex;
+    if (shuffle && _history.isNotEmpty) {
+      currentIndex = _history.removeLast();
     } else if (currentIndex > 0) {
       currentIndex--;
     } else if (loopMode == LoopMode.all) {
@@ -123,6 +135,7 @@ class AudioPlayerService {
 
   Future<void> toggleShuffle() async {
     shuffle = !shuffle;
+    if (!shuffle) _history.clear();
     await audio.setShuffleModeEnabled(false);
   }
 
@@ -132,7 +145,6 @@ class AudioPlayerService {
       LoopMode.all => LoopMode.one,
       LoopMode.one => LoopMode.off,
     };
-    // Queue navigation is handled manually because tracks are loaded one-by-one.
     await audio.setLoopMode(LoopMode.off);
   }
 
