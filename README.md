@@ -6,11 +6,14 @@ PowerAmp-inspirierter, plattformübergreifender Musikplayer für Android, Window
 
 - lokale MP3/FLAC/M4A/WAV/OGG/OPUS/APE/AIFF/AIF-Wiedergabe
 - Dateiauswahl und rekursiver Musikordner-Scan
+- persistente lokale Musikbibliothek
+- Bibliothek wird beim nächsten Start automatisch wiederhergestellt; nicht mehr vorhandene Dateien werden ausgefiltert
 - Titel-/Interpret-/Album-Suche
 - Cover und ID3/Metadaten-Anzeige
 - Play/Pause, Vor/Zurück, Seek und Lautstärke
-- Repeat Off / All / One
+- Repeat Off / All / One mit manueller Queue-Navigation
 - plattformübergreifende Shuffle-Navigation
+- Playlists erstellen, löschen, Titel hinzufügen/entfernen und direkt abspielen
 - automatische BPM-Analyse beim Start eines Titels
 - BPM-Cache, damit bereits analysierte Titel nicht erneut berechnet werden
 - 10-Band-EQ-Oberfläche mit nativer Android-Effektpipeline
@@ -59,10 +62,12 @@ lib/
 - services/bpm_cache.dart
 - services/bpm_service.dart
 - services/equalizer_service.dart
+- services/library_service.dart
 - services/music_provider.dart
 - services/music_scanner.dart
 - services/settings_service.dart
 - screens/player_screen.dart
+- screens/playlists_screen.dart
 - screens/settings_screen.dart
 - theme/glasi_theme.dart
 - widgets/bpm_badge.dart
