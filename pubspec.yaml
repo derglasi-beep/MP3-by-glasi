@@ -1,10 +1,10 @@
 name: mp3_by_glasi
 description: Cross-platform PowerAmp-inspired music player for Android, Windows and Linux.
 publish_to: "none"
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -17,6 +17,9 @@ dependencies:
   audio_metadata_reader: ^1.8.0
   ffmpeg_kit_flutter_new_audio: ^2.5.2
   path_provider: ^2.1.5
+  shared_preferences: ^2.5.3
+  audio_service: ^0.18.19
+  audio_session: ^0.2.4
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
