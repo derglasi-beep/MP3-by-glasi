@@ -54,10 +54,10 @@ class AudioPlayerService {
 
   void _publishQueue() => _queueController.add(List.unmodifiable(queue));
 
-  void _publishError(Object error) {
+  void _publishError(Object error, {String? fallback}) {
     final message = error is PlayerException && error.message.isNotEmpty
         ? error.message
-        : 'Titel konnte nicht wiedergegeben werden.';
+        : fallback ?? 'Wiedergabe konnte nicht gestartet werden.';
     if (!_errorController.isClosed) _errorController.add(message);
   }
 
@@ -219,7 +219,7 @@ class AudioPlayerService {
     } on PlayerException catch (e) {
       await audio.stop();
       _trackController.add(null);
-      _publishError(e);
+      _publishError(e, fallback: 'Titel konnte nicht geladen werden.');
       rethrow;
     }
   }
@@ -230,7 +230,7 @@ class AudioPlayerService {
       await audio.play();
     } on PlayerException catch (e) {
       await audio.stop();
-      _publishError(e);
+      _publishError(e, fallback: 'Wiedergabe konnte nicht gestartet werden.');
       rethrow;
     }
   }
