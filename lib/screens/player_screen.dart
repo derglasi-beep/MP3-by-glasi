@@ -13,6 +13,7 @@ import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
 import 'queue_screen.dart';
+import 'now_playing_screen.dart';
 
 enum _SortMode { title, artist, album, bpm, year }
 
@@ -320,10 +321,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
             return SingleChildScrollView(
               padding: const EdgeInsets.all(18),
               child: Column(children: [
-                SizedBox(width: 170, height: 170,
-                  child: t?.artwork == null
-                      ? const Card(child: Icon(Icons.album, size: 90))
-                      : Image.memory(t!.artwork!, fit: BoxFit.cover)),
+                GestureDetector(
+                  onTap: t == null
+                      ? null
+                      : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => NowPlayingScreen(player: widget.player),
+                            ),
+                          ),
+                  child: Hero(
+                    tag: 'now-playing-cover',
+                    child: SizedBox(
+                      width: 170,
+                      height: 170,
+                      child: t?.artwork == null
+                          ? const Card(child: Icon(Icons.album, size: 90))
+                          : Image.memory(t!.artwork!, fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(t?.title ?? 'Keine Wiedergabe',
                   style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
