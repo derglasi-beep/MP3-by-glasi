@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/bpm_service.dart';
+import '../services/bpm_cache.dart';
 import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
 
@@ -17,6 +18,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   final scanner = MusicScanner();
   final bpm = BpmService();
+  final bpmCache = BpmCache();
   List<Track> tracks = [];
   String search = '';
   bool analyzing = false;
@@ -41,7 +43,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _add(List<Track> found) async {
     final map = {for (final t in tracks) t.id: t};
     for (final t in found) map[t.id] = t;
-    setState(() => tracks = map.values.toList());
+    final merged = map.values.toList();
+    final hydrated = <Track>[];
+    for (final t in merged) {
+      final cachedBpm = t.bpm ?? await bpmCache.get(t.path);
+      hydrated.add(cachedBpm == null ? t : t.copyWith(bpm: cachedBpm));
+    }
+    setState(() => tracks = hydrated);
     await widget.player.setQueue(tracks);
   }
 
@@ -49,7 +57,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final t = widget.player.currentTrack;
     if (t == null || analyzing) return;
     setState(() => analyzing = true);
-    final value = await bpm.analyzeFile(t.path);
+    final cached = await bpmCache.get(t.path);
+    final value = cached ?? await bpm.analyzeFile(t.path);
+    if (cached == null && value != null) await bpmCache.put(t.path, value);
     if (!mounted) return;
     setState(() {
       analyzing = false;
