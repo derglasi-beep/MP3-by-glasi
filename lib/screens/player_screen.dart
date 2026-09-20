@@ -140,10 +140,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final cached = await bpmCache.get(t.path);
-      final localValue = cached?.toDouble() ?? await bpm.analyzeFile(t.path);
+      final localResult = cached == null ? await bpm.analyzeFileResult(t.path) : null;
+      final localValue = cached?.bpm ?? localResult?.bpm;
       if (localValue != null) {
-        if (cached == null) await bpmCache.put(t.path, localValue.round());
-        _setBpm(t.id, localValue);
+        if (cached == null) await bpmCache.put(t.path, localValue, confidence: localResult?.confidence);
+        _setBpm(t.id, localValue, localResult?.confidence ?? cached?.confidence);
       }
 
       final online = await onlineBpm.lookup(
@@ -200,11 +201,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _setBpm(String id, double value) {
+  void _setBpm(String id, double value, double? confidence) {
     if (!mounted) return;
     setState(() {
       final i = tracks.indexWhere((x) => x.id == id);
-      if (i >= 0) tracks[i] = tracks[i].copyWith(bpm: value);
+      if (i >= 0) tracks[i] = tracks[i].copyWith(bpm: value, bpmConfidence: confidence);
     });
     unawaited(library.saveTracks(tracks));
   }
