@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BpmCache {
-  static const _key = 'bpm_cache_v1';
+  static const _key = 'bpm_cache_v2';
   Future<Map<String, int>> _read() async {
     final p = await SharedPreferences.getInstance();
     final raw = p.getString(_key);
@@ -21,6 +21,11 @@ class BpmCache {
     final data = await _read();
     data[path] = bpm;
     await p.setString(_key, jsonEncode(data));
+  }
+
+  Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_key);
   }
 
   Future<void> remove(String path) async {
