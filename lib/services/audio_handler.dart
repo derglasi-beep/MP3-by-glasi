@@ -42,6 +42,17 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   Future<void> skipToPrevious() => player.previous();
 
   @override
+  @override
+  Future<void> fastForward() => player.seek(
+        player.audio.position + const Duration(seconds: 10),
+      );
+
+  @override
+  Future<void> rewind() => player.seek(
+        player.audio.position - const Duration(seconds: 10),
+      );
+
+  @override
   Future<void> stop() async {
     await player.audio.stop();
     await super.stop();
@@ -107,6 +118,7 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         playing: state.playing,
         updatePosition: player.audio.position,
         bufferedPosition: player.audio.bufferedPosition,
+        androidCompactActionIndices: const [0, 1, 2],
         speed: player.audio.speed,
         queueIndex:
             player.currentIndex >= 0 ? player.currentIndex : null,
@@ -138,6 +150,7 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     await _stateSub.cancel();
     await _positionSub.cancel();
     await _durationSub.cancel();
+    await _trackSub.cancel();
     await _queueSub.cancel();
   }
 }
