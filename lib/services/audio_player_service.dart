@@ -201,12 +201,24 @@ class AudioPlayerService {
   Future<void> _load() async {
     final t = currentTrack;
     if (t == null) return;
-    await audio.setFilePath(t.path);
-    _trackController.add(t);
-  }
+
+    try {
+      await audio.setFilePath(t.path);
+      _trackController.add(t);
+    } on PlayerException {
+      await audio.stop();
+      _trackController.add(null);
+      rethrow;
+    }
 
   Future<void> play() async {
-    if (currentTrack != null) await audio.play();
+    if (currentTrack == null) return;
+    try {
+      await audio.play();
+    } on PlayerException {
+      await audio.stop();
+      rethrow;
+    }
   }
 
   Future<void> pause() => audio.pause();
@@ -302,6 +314,7 @@ class AudioPlayerService {
   }
 
   Future<void> dispose() async {
+    _completionInProgress = true;
     await _stateSub.cancel();
     await _trackController.close();
     await _queueController.close();
