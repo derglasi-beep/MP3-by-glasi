@@ -51,6 +51,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _restoreLibrary();
   }
 
+  @override
+  void dispose() {
+    onlineBpm.dispose();
+    super.dispose();
+  }
+
   Future<void> _restoreLibrary() async {
     final saved = await library.loadTracks();
     if (!mounted || saved.isEmpty) return;
@@ -188,14 +194,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
 
-        if (track.bpm != null) {
+        // High-confidence results are already stable. Lower-confidence or
+        // legacy results get a fresh online verification pass.
+        if (track.bpm != null && (track.bpmConfidence ?? 0) >= 0.75) {
           setState(() => analyzedCount++);
           continue;
         }
 
         final cached = await bpmCache.get(track.path);
-        final localResult = cached == null ? await bpm.analyzeFileResult(track.path) : null;
-        final value = cached?.bpm ?? localResult?.bpm;
+        final localResult = track.bpm == null && cached == null
+            ? await bpm.analyzeFileResult(track.path)
+            : null;
+        final value = track.bpm ?? cached?.bpm ?? localResult?.bpm;
+        final localConfidence = track.bpmConfidence ?? cached?.confidence ?? localResult?.confidence;
         if (value != null) {
           if (cached == null) {
             await bpmCache.put(
@@ -211,7 +222,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           );
           final fusion = bpmFusion.fuse(
             localBpm: value,
-            localConfidence: localResult?.confidence ?? cached?.confidence,
+            localConfidence: localConfidence,
             online: online,
           );
           final index = tracks.indexWhere((x) => x.id == track.id);
