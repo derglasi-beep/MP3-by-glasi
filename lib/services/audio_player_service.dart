@@ -9,6 +9,7 @@ class AudioPlayerService {
   final List<int> _history = [];
   final StreamController<Track?> _trackController = StreamController.broadcast();
   final StreamController<List<Track>> _queueController = StreamController.broadcast();
+  final StreamController<String> _errorController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
 
   int currentIndex = -1;
@@ -32,6 +33,7 @@ class AudioPlayerService {
   Stream<PlayerState> get playerStateStream => audio.playerStateStream;
   Stream<Track?> get currentTrackStream => _trackController.stream;
   Stream<List<Track>> get queueStream => _queueController.stream;
+  Stream<String> get errorStream => _errorController.stream;
 
   Track? get currentTrack =>
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
@@ -52,11 +54,20 @@ class AudioPlayerService {
 
   void _publishQueue() => _queueController.add(List.unmodifiable(queue));
 
+  void _publishError(Object error) {
+    final message = error is PlayerException && error.message.isNotEmpty
+        ? error.message
+        : 'Titel konnte nicht wiedergegeben werden.';
+    if (!_errorController.isClosed) _errorController.add(message);
+  }
+
   Future<void> _handleCompletion() async {
     if (_completionInProgress) return;
     _completionInProgress = true;
     try {
       await next();
+    } catch (e) {
+      _publishError(e);
     } finally {
       _completionInProgress = false;
     }
@@ -205,9 +216,10 @@ class AudioPlayerService {
     try {
       await audio.setFilePath(t.path);
       _trackController.add(t);
-    } on PlayerException {
+    } on PlayerException catch (e) {
       await audio.stop();
       _trackController.add(null);
+      _publishError(e);
       rethrow;
     }
   }
@@ -216,8 +228,9 @@ class AudioPlayerService {
     if (currentTrack == null) return;
     try {
       await audio.play();
-    } on PlayerException {
+    } on PlayerException catch (e) {
       await audio.stop();
+      _publishError(e);
       rethrow;
     }
   }
@@ -319,6 +332,7 @@ class AudioPlayerService {
     await _stateSub.cancel();
     await _trackController.close();
     await _queueController.close();
+    await _errorController.close();
     await audio.dispose();
   }
 }
