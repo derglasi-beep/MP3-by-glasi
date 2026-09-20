@@ -12,15 +12,18 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   late final StreamSubscription<Duration> _positionSub;
   late final StreamSubscription<Duration?> _durationSub;
   late final StreamSubscription<Track?> _trackSub;
+  late final StreamSubscription<List<Track>> _queueSub;
 
   GlasiAudioHandler(this.player) {
     _stateSub = player.playerStateStream.listen(_publishState);
     _positionSub = player.positionStream.listen((_) => _publishProgress());
     _durationSub = player.durationStream.listen((_) => _publishProgress());
     _trackSub = player.currentTrackStream.listen(_publishTrack);
+    _queueSub = player.queueStream.listen((_) => _publishQueue());
 
     _publishState(player.audio.playerState);
     _publishTrack(player.currentTrack);
+    _publishQueue();
   }
 
   @override
@@ -61,6 +64,10 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       ),
     );
 
+
+  }
+
+  void _publishQueue() {
     queue.add(player.queue.map((item) {
       return MediaItem(
         id: item.id,
@@ -131,5 +138,6 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     await _stateSub.cancel();
     await _positionSub.cancel();
     await _durationSub.cancel();
+    await _queueSub.cancel();
   }
 }
