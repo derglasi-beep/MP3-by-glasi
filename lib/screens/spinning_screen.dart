@@ -119,6 +119,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
         const SizedBox(height: 14),
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 3),
+          Text(
+            'Die Kurve ist das Ziel – einzelne Tracks dürfen leicht davon abweichen.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 8),
           for (final phase in p.phases) Padding(
             padding: const EdgeInsets.symmetric(vertical: 5),
@@ -132,8 +137,19 @@ class _SpinningScreenState extends State<SpinningScreen> {
         for (var i = 0; i < p.tracks.length; i++) ListTile(
           leading: CircleAvatar(child: Text('${i + 1}')),
           title: Text(p.tracks[i].title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(p.tracks[i].artist),
-          trailing: Text(_bpmText(p.tracks[i].bpm!)),
+          subtitle: Text('${p.tracks[i].artist} · Ziel ${_displayBpm(p.selections[i].targetBpm).round()} BPM'),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_bpmText(p.tracks[i].bpm!)),
+              if ((p.selections[i].targetBpm - p.tracks[i].bpm!).abs() >= 4)
+                Text(
+                  'Zielabweichung ${_displayBpm((p.selections[i].targetBpm - p.tracks[i].bpm!).abs()).round()} BPM',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ),
         ),
         FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
       ],
