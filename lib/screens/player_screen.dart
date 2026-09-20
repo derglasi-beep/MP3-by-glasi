@@ -98,8 +98,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       stream: widget.player.positionStream,
       builder: (_, pos) => StreamBuilder<Duration?>(
         stream: widget.player.durationStream,
-        builder: (_, dur) {
-          final t=widget.player.currentTrack; final d=dur.data ?? t?.duration ?? Duration.zero; final p=pos.data ?? Duration.zero;
+        builder: (_, dur) => StreamBuilder<Track?>(
+          stream: widget.player.currentTrackStream,
+          initialData: widget.player.currentTrack,
+          builder: (_, current) {
+          final t=current.data; final d=dur.data ?? t?.duration ?? Duration.zero; final p=pos.data ?? Duration.zero;
           final max=d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1; final value=p.inMilliseconds.clamp(0,max.toInt()).toDouble();
           return SingleChildScrollView(padding: const EdgeInsets.all(18), child: Column(children: [
             SizedBox(width: 170,height:170,child:t?.artwork==null ? const Card(child: Icon(Icons.album,size:90)) : Image.memory(t!.artwork!,fit:BoxFit.cover)),
@@ -108,9 +111,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             const SizedBox(height:8), Row(mainAxisAlignment:MainAxisAlignment.center,children:[BpmBadge(bpm:t?.bpm,loading:analyzing),const SizedBox(width:8),FilledButton.tonalIcon(onPressed:t==null?null:analyze,icon:const Icon(Icons.speed),label:const Text('BPM'))]),
             Slider(value:value,max:max,onChanged:(v)=>widget.player.seek(Duration(milliseconds:v.toInt()))),
             Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[Text(time(p)),Text(time(d))]),
-            Row(mainAxisAlignment:MainAxisAlignment.center,children:[IconButton(onPressed:widget.player.previous,icon:const Icon(Icons.skip_previous),iconSize:38),IconButton(onPressed:(ps.data?.playing??false)?widget.player.pause:widget.player.play,icon:Icon((ps.data?.playing??false)?Icons.pause_circle:Icons.play_circle),iconSize:66),IconButton(onPressed:widget.player.next,icon:const Icon(Icons.skip_next),iconSize:38)]),
+            Row(mainAxisAlignment:MainAxisAlignment.center,children:[
+              IconButton(onPressed:widget.player.toggleShuffle,color:widget.player.shuffle?Theme.of(context).colorScheme.primary:null,icon:const Icon(Icons.shuffle),tooltip:'Zufallswiedergabe'),
+              IconButton(onPressed:widget.player.previous,icon:const Icon(Icons.skip_previous),iconSize:38),
+              IconButton(onPressed:t==null?null:((ps.data?.playing??false)?widget.player.pause:widget.player.play),icon:Icon((ps.data?.playing??false)?Icons.pause_circle:Icons.play_circle),iconSize:66),
+              IconButton(onPressed:widget.player.next,icon:const Icon(Icons.skip_next),iconSize:38),
+              IconButton(onPressed:widget.player.toggleRepeat,color:widget.player.loopMode!=LoopMode.off?Theme.of(context).colorScheme.primary:null,icon:Icon(widget.player.loopMode==LoopMode.one?Icons.repeat_one:Icons.repeat),tooltip:'Wiederholung'),
+            ]),
             Row(children:[const Icon(Icons.volume_down),Expanded(child:Slider(value:volume,onChanged:(v){setState(()=>volume=v);widget.player.setVolume(v);})),const Icon(Icons.volume_up)])
           ]));
+          },
+        ),
         },
       ),
     ),
