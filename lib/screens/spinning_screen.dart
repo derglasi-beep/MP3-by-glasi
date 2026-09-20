@@ -13,7 +13,11 @@ class SpinningScreen extends StatefulWidget {
 class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
   Duration duration = const Duration(minutes: 45);
+  bool sprintMode = false;
   SpinningPlan? plan;
+
+  double _displayBpm(double bpm) => sprintMode ? bpm : bpm / 2;
+  String _bpmText(double bpm) => '${_displayBpm(bpm).round()} BPM${sprintMode ? ' · Sprint' : ''}';
   void _buildPlan() => setState(() => plan = planner.build(library: widget.tracks, duration: duration));
   Future<void> _start() async {
     final p = plan; if (p == null || p.tracks.isEmpty) return;
@@ -33,6 +37,17 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ButtonSegment(value: 60, label: Text('60 min')), ButtonSegment(value: 90, label: Text('90 min'))],
           selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); plan = null; })),
         const SizedBox(height: 14),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: sprintMode,
+          onChanged: (value) => setState(() => sprintMode = value),
+          title: const Text('Sprint-Modus'),
+          subtitle: Text(sprintMode
+              ? 'Volle BPM-Anzeige für Sprint-/Hochfrequenz-Intervalle.'
+              : 'Spinning-Anzeige halbiert die Musik-BPM auf die übliche Trittfrequenz.'),
+          secondary: const Icon(Icons.speed),
+        ),
+        const SizedBox(height: 4),
         FilledButton.icon(onPressed: _buildPlan, icon: const Icon(Icons.auto_awesome), label: const Text('Session automatisch planen')),
       ]))),
       if (p != null) ...[
@@ -40,10 +55,21 @@ class _SpinningScreenState extends State<SpinningScreen> {
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          for (final phase in p.phases) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text(phase.label)), Text('${phase.minBpm}–${phase.maxBpm} BPM')])),
+          for (final phase in p.phases) Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(children: [
+              Expanded(child: Text(phase.label)),
+              Text('${_displayBpm(phase.minBpm).round()}–${_displayBpm(phase.maxBpm).round()} BPM'),
+            ]),
+          ),
         ]))),
         const SizedBox(height: 14),
-        for (var i = 0; i < p.tracks.length; i++) ListTile(leading: CircleAvatar(child: Text('${i + 1}')), title: Text(p.tracks[i].title, maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Text(p.tracks[i].artist), trailing: Text('${p.tracks[i].bpm!.round()} BPM')),
+        for (var i = 0; i < p.tracks.length; i++) ListTile(
+          leading: CircleAvatar(child: Text('${i + 1}')),
+          title: Text(p.tracks[i].title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(p.tracks[i].artist),
+          trailing: Text(_bpmText(p.tracks[i].bpm!)),
+        ),
         FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
       ],
       if (widget.tracks.every((t) => t.bpm == null)) const Padding(padding: EdgeInsets.only(top: 20), child: Text('Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.', textAlign: TextAlign.center)),
