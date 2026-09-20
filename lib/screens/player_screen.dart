@@ -31,6 +31,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   String search = '';
   bool analyzing = false;
+  int analyzedCount = 0;
+  int analysisTotal = 0;
   double volume = .8;
   _SortMode sortMode = _SortMode.title;
   bool sortAscending = true;
@@ -137,6 +139,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() => analyzing = false);
   }
 
+  Future<void> _analyzeLibrary() async {
+    if (analyzing || tracks.isEmpty) return;
+    setState(() {
+      analyzing = true;
+      analyzedCount = 0;
+      analysisTotal = tracks.length;
+    });
+
+    try {
+      for (final track in List<Track>.from(tracks)) {
+        if (!mounted) return;
+        final cached = await bpmCache.get(track.path);
+        if (cached != null) {
+          _setBpm(track.id, cached.toDouble());
+        } else {
+          final value = await bpm.analyzeFile(track.path);
+          if (value != null) {
+            await bpmCache.put(track.path, value.round());
+            _setBpm(track.id, value);
+          }
+        }
+        if (mounted) setState(() => analyzedCount++);
+      }
+    } finally {
+      if (mounted) setState(() => analyzing = false);
+    }
+  }
+
   void _setBpm(String id, double value) {
     if (!mounted) return;
     setState(() {
@@ -203,11 +233,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const Icon(Icons.sort, size: 20),
           const SizedBox(width: 8),
           Text('Sortierung: \${_sortLabel()}'),
+          if (analyzing) ...[
+            const SizedBox(width: 12),
+            Text('\${analyzedCount}/\${analysisTotal}'),
+          ],
           const Spacer(),
           IconButton(
             onPressed: () => setState(() => sortAscending = !sortAscending),
             tooltip: sortAscending ? 'Absteigend' : 'Aufsteigend',
             icon: Icon(sortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+          ),
+          IconButton(
+            tooltip: 'BPM für Bibliothek analysieren',
+            onPressed: analyzing || tracks.isEmpty ? null : _analyzeLibrary,
+            icon: analyzing
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.speed),
           ),
           PopupMenuButton<_SortMode>(
             tooltip: 'Sortieren nach',
