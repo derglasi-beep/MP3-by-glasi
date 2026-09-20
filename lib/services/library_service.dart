@@ -44,6 +44,7 @@ class LibraryService {
     'id': t.id, 'path': t.path, 'title': t.title,
     'artist': t.artist, 'album': t.album, 'year': t.year,
     'durationMs': t.duration?.inMilliseconds, 'bpm': t.bpm,
+    'artwork': t.artwork == null ? null : base64Encode(t.artwork!),
   };
 
   Track _trackFromJson(Map<String, dynamic> j) => Track(
@@ -55,5 +56,8 @@ class LibraryService {
     year: (j['year'] as num?)?.toInt(),
     duration: (j['durationMs'] as num?) == null ? null : Duration(milliseconds: (j['durationMs'] as num).toInt()),
     bpm: (j['bpm'] as num?)?.toDouble(),
+    artwork: j['artwork'] is String && (j['artwork'] as String).isNotEmpty
+        ? base64Decode(j['artwork'] as String)
+        : null,
   );
 }
