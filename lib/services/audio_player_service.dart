@@ -52,7 +52,6 @@ class AudioPlayerService {
 
   Future<void> next() async {
     if (queue.isEmpty) return;
-    currentIndex = shuffle ? audio.shuffleIndices?.indexWhere((i) => i == currentIndex) ?? -1 : currentIndex;
     currentIndex = (currentIndex + 1) % queue.length;
     await _load();
     await play();
