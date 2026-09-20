@@ -5,7 +5,7 @@ class BpmCache {
   static const _key = 'bpm_cache_v2';
   Future<Map<String, int>> _read() async {
     final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_key);
+    final raw = p.getString(_key) ?? p.getString('bpm_cache_v1');
     if (raw == null) return {};
     try {
       return Map<String, dynamic>.from(jsonDecode(raw)).map((k, v) => MapEntry(k, (v as num).round()));
