@@ -13,6 +13,8 @@ import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
 
+enum _SortMode { title, artist, album, bpm, year }
+
 class PlayerScreen extends StatefulWidget {
   final AudioPlayerService player;
   const PlayerScreen({super.key, required this.player});
@@ -25,6 +27,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bpmCache = BpmCache();
   final library = LibraryService();
   List<Track> tracks = [];
+
+  String search = '';
+  bool analyzing = false;
+  double volume = .8;
+  _SortMode sortMode = _SortMode.title;
+  bool sortAscending = true;
 
   @override
   void initState() {
@@ -41,18 +49,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     if (!mounted) return;
     setState(() => tracks = valid);
+    if (valid.length != saved.length) await library.saveTracks(valid);
     await widget.player.setQueue(tracks);
   }
 
-  String search = '';
-  bool analyzing = false;
-  double volume = .8;
-
-  List<Track> get visible => tracks.where((t) {
+  List<Track> get visible {
     final q = search.toLowerCase().trim();
-    return q.isEmpty || t.title.toLowerCase().contains(q) ||
-        t.artist.toLowerCase().contains(q) || t.album.toLowerCase().contains(q);
-  }).toList();
+    final result = tracks.where((t) =>
+      q.isEmpty ||
+      t.title.toLowerCase().contains(q) ||
+      t.artist.toLowerCase().contains(q) ||
+      t.album.toLowerCase().contains(q),
+    ).toList();
+
+    int compare(Track a, Track b) {
+      switch (sortMode) {
+        case _SortMode.artist: return _text(a.artist).compareTo(_text(b.artist));
+        case _SortMode.album: return _text(a.album).compareTo(_text(b.album));
+        case _SortMode.bpm: return (a.bpm ?? 0).compareTo(b.bpm ?? 0);
+        case _SortMode.year: return (a.year ?? 0).compareTo(b.year ?? 0);
+        case _SortMode.title: return _text(a.title).compareTo(_text(b.title));
+      }
+    }
+
+    result.sort((a, b) {
+      final primary = compare(a, b);
+      if (primary != 0) return sortAscending ? primary : -primary;
+      final fallback = _text(a.title).compareTo(_text(b.title));
+      return sortAscending ? fallback : -fallback;
+    });
+    return result;
+  }
+
+  String _text(String value) => value.trim().toLowerCase();
+
+  String _sortLabel() => switch (sortMode) {
+    _SortMode.title => 'Titel',
+    _SortMode.artist => 'Interpret',
+    _SortMode.album => 'Album',
+    _SortMode.bpm => 'BPM',
+    _SortMode.year => 'Jahr',
+  };
 
   Future<void> addFiles() async {
     final r = await FilePicker.platform.pickFiles(
@@ -90,7 +127,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _setBpm(t.id, cached.toDouble());
       return;
     }
-
     setState(() => analyzing = true);
     final value = await bpm.analyzeFile(t.path);
     if (value != null) {
@@ -109,7 +145,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     unawaited(library.saveTracks(tracks));
   }
 
-  String time(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+  void _setSort(_SortMode mode) {
+    setState(() {
+      if (sortMode == mode) {
+        sortAscending = !sortAscending;
+      } else {
+        sortMode = mode;
+        sortAscending = true;
+      }
+    });
+  }
+
+  String time(Duration d) => '\${d.inMinutes}:\${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
   Future<void> _playTrack(Track t) async {
     final n = tracks.indexWhere((x) => x.id == t.id);
@@ -133,7 +180,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ]),
     body: Column(children: [
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         child: TextField(
           onChanged: (v) => setState(() => search = v),
           decoration: const InputDecoration(
@@ -143,24 +190,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        child: Row(children: [
+          const Icon(Icons.sort, size: 20),
+          const SizedBox(width: 8),
+          Text('Sortierung: \${_sortLabel()}'),
+          const Spacer(),
+          IconButton(
+            onPressed: () => setState(() => sortAscending = !sortAscending),
+            tooltip: sortAscending ? 'Absteigend' : 'Aufsteigend',
+            icon: Icon(sortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+          ),
+          PopupMenuButton<_SortMode>(
+            tooltip: 'Sortieren nach',
+            onSelected: _setSort,
+            itemBuilder: (_) => [
+              for (final mode in _SortMode.values)
+                PopupMenuItem(value: mode, child: Text(switch (mode) {
+                  _SortMode.title => 'Titel',
+                  _SortMode.artist => 'Interpret',
+                  _SortMode.album => 'Album',
+                  _SortMode.bpm => 'BPM',
+                  _SortMode.year => 'Jahr',
+                })),
+            ],
+            child: const Icon(Icons.filter_list),
+          ),
+        ]),
+      ),
       Expanded(flex: 5, child: _player()),
       const Divider(height: 1),
-      Expanded(flex: 5, child: ListView.builder(
-        itemCount: visible.length,
-        itemBuilder: (_, i) {
-          final t = visible[i];
-          return ListTile(
-            selected: widget.player.currentTrack?.id == t.id,
-            leading: t.artwork == null
-                ? const CircleAvatar(child: Icon(Icons.music_note))
-                : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
-            title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${t.artist} • ${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
-            trailing: BpmBadge(bpm: t.bpm),
-            onTap: () => _playTrack(t),
-          );
-        },
-      ))
+      Expanded(flex: 5, child: visible.isEmpty
+          ? const Center(child: Text('Keine Titel in der Bibliothek'))
+          : ListView.builder(
+              itemCount: visible.length,
+              itemBuilder: (_, i) {
+                final t = visible[i];
+                return ListTile(
+                  selected: widget.player.currentTrack?.id == t.id,
+                  leading: t.artwork == null
+                      ? const CircleAvatar(child: Icon(Icons.music_note))
+                      : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
+                  title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('\${t.artist} • \${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: BpmBadge(bpm: t.bpm),
+                  onTap: () => _playTrack(t),
+                );
+              },
+            ))
     ]),
   );
 
@@ -192,10 +270,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                 Text(t?.artist ?? 'Lokale Bibliothek'),
                 const SizedBox(height: 6),
-                GlasiVisualizer(
-                  playing: ps.data?.playing ?? false,
-                  bpm: t?.bpm,
-                ),
+                GlasiVisualizer(playing: ps.data?.playing ?? false, bpm: t?.bpm),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   BpmBadge(bpm: t?.bpm, loading: analyzing && t != null && t.bpm == null),
                   const SizedBox(width: 8),
@@ -208,8 +283,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [Text(time(p)), Text(time(d))]),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  IconButton(
-                    onPressed: widget.player.toggleShuffle,
+                  IconButton(onPressed: widget.player.toggleShuffle,
                     color: widget.player.shuffle ? Theme.of(context).colorScheme.primary : null,
                     icon: const Icon(Icons.shuffle), tooltip: 'Zufallswiedergabe'),
                   IconButton(onPressed: widget.player.previous, icon: const Icon(Icons.skip_previous), iconSize: 38),
@@ -219,10 +293,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     icon: Icon((ps.data?.playing ?? false) ? Icons.pause_circle : Icons.play_circle),
                     iconSize: 66),
                   IconButton(onPressed: widget.player.next, icon: const Icon(Icons.skip_next), iconSize: 38),
-                  IconButton(
-                    onPressed: widget.player.toggleRepeat,
-                    color: widget.player.loopMode != LoopMode.off
-                        ? Theme.of(context).colorScheme.primary : null,
+                  IconButton(onPressed: widget.player.toggleRepeat,
+                    color: widget.player.loopMode != LoopMode.off ? Theme.of(context).colorScheme.primary : null,
                     icon: Icon(widget.player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat),
                     tooltip: 'Wiederholung'),
                 ]),
