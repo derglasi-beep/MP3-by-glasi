@@ -4,6 +4,7 @@ import 'services/audio_player_service.dart';
 import 'screens/player_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme/glasi_theme.dart';
+import 'widgets/mini_player.dart';
 
 class Mp3ByGlasiApp extends StatefulWidget {
   final AudioPlayerService player;
@@ -45,7 +46,12 @@ class _ShellState extends State<_Shell> {
     ];
 
     return Scaffold(
-      body: pages[index],
+      body: Column(
+        children: [
+          Expanded(child: pages[index]),
+          MiniPlayer(player: widget.player),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (value) => setState(() => index = value),
