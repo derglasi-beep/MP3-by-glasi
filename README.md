@@ -20,6 +20,8 @@ PowerAmp-inspirierter, plattformübergreifender Musikplayer für Android, Window
 - Geschwindigkeit 0,5× bis 2×
 - Preamp, Bass, Treble und Crossfade-Einstellungen als persistente Audio-Optionen
 - Provider-Abstraktion für Local / Spotify / Amazon Music
+- Android-Hintergrundwiedergabe über audio_service
+- Sperrbildschirm-/Benachrichtigungssteuerung, Headset-Tasten sowie Next/Previous/Seek
 
 ## Spotify und Amazon Music
 
@@ -71,3 +73,28 @@ lib/
 - screens/settings_screen.dart
 - theme/glasi_theme.dart
 - widgets/bpm_badge.dart
+
+### Android Media Service
+
+`audio_service` benötigt zusätzlich die Android-Service-Konfiguration in `android/app/src/main/AndroidManifest.xml`. Nach `flutter create .` müssen Wake-Lock, Foreground-Media-Playback sowie AudioService und MediaButtonReceiver eingetragen werden.
+
+```xml
+<uses-permission android:name="android.permission.WAKE_LOCK"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+
+<service android:name="com.ryanheise.audioservice.AudioService"
+    android:foregroundServiceType="mediaPlayback"
+    android:exported="true">
+  <intent-filter>
+    <action android:name="android.media.browse.MediaBrowserService" />
+  </intent-filter>
+</service>
+
+<receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+    android:exported="true">
+  <intent-filter>
+    <action android:name="android.intent.action.MEDIA_BUTTON" />
+  </intent-filter>
+</receiver>
+```
