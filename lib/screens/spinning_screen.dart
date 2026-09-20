@@ -1,0 +1,52 @@
+import 'package:flutter/material.dart';
+import '../models/track.dart';
+import '../services/audio_player_service.dart';
+import '../services/spinning_playlist_service.dart';
+
+class SpinningScreen extends StatefulWidget {
+  final AudioPlayerService player;
+  final List<Track> tracks;
+  const SpinningScreen({super.key, required this.player, required this.tracks});
+  @override State<SpinningScreen> createState() => _SpinningScreenState();
+}
+
+class _SpinningScreenState extends State<SpinningScreen> {
+  final planner = SpinningPlaylistService();
+  Duration duration = const Duration(minutes: 45);
+  SpinningPlan? plan;
+  void _buildPlan() => setState(() => plan = planner.build(library: widget.tracks, duration: duration));
+  Future<void> _start() async {
+    final p = plan; if (p == null || p.tracks.isEmpty) return;
+    await widget.player.setQueue(p.tracks); await widget.player.play();
+    if (mounted) Navigator.pop(context);
+  }
+  @override Widget build(BuildContext context) {
+    final p = plan;
+    return Scaffold(appBar: AppBar(title: const Text('Spinning DJ')), body: ListView(padding: const EdgeInsets.all(18), children: [
+      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(children: [
+        const Icon(Icons.directions_bike, size: 54),
+        const SizedBox(height: 8),
+        Text('Trainings-Session', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 12),
+        SegmentedButton<int>(segments: const [
+          ButtonSegment(value: 30, label: Text('30 min')), ButtonSegment(value: 45, label: Text('45 min')),
+          ButtonSegment(value: 60, label: Text('60 min')), ButtonSegment(value: 90, label: Text('90 min'))],
+          selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); plan = null; })),
+        const SizedBox(height: 14),
+        FilledButton.icon(onPressed: _buildPlan, icon: const Icon(Icons.auto_awesome), label: const Text('Session automatisch planen')),
+      ]))),
+      if (p != null) ...[
+        const SizedBox(height: 14),
+        Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          for (final phase in p.phases) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text(phase.label)), Text('${phase.minBpm}–${phase.maxBpm} BPM')])),
+        ]))),
+        const SizedBox(height: 14),
+        for (var i = 0; i < p.tracks.length; i++) ListTile(leading: CircleAvatar(child: Text('${i + 1}')), title: Text(p.tracks[i].title, maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Text(p.tracks[i].artist), trailing: Text('${p.tracks[i].bpm!.round()} BPM')),
+        FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
+      ],
+      if (widget.tracks.every((t) => t.bpm == null)) const Padding(padding: EdgeInsets.only(top: 20), child: Text('Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.', textAlign: TextAlign.center)),
+    ]));
+  }
+}
