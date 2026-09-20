@@ -79,6 +79,7 @@ class _QueueScreenState extends State<QueueScreen> {
           return Column(
             children: [
               _NowPlaying(player: widget.player),
+              _QueueSummary(queue: queue, player: widget.player),
               const Divider(height: 1),
               Expanded(
                 child: ReorderableListView.builder(
@@ -167,6 +168,51 @@ class _QueueScreenState extends State<QueueScreen> {
     );
 
     if (shouldClear == true) await widget.player.clearQueue();
+  }
+}
+
+class _QueueSummary extends StatelessWidget {
+  final List<Track> queue;
+  final AudioPlayerService player;
+
+  const _QueueSummary({required this.queue, required this.player});
+
+  String _duration(Duration value) {
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (minutes >= 60) {
+      final hours = minutes ~/ 60;
+      final rest = (minutes % 60).toString().padLeft(2, '0');
+      return '\${hours}:\${rest}:\${seconds}';
+    }
+    return '\${minutes}:\${seconds}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = queue.fold<Duration>(Duration.zero, (sum, track) => sum + track.duration);
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      initialData: player.audio.position,
+      builder: (_, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+        final current = player.currentTrack;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            children: [
+              Icon(Icons.queue_music, size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text('\${queue.length} Titel'),
+              const Spacer(),
+              if (current != null) Text('\${_duration(position)} / \${_duration(current.duration)}', style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(width: 12),
+              Text(_duration(total), style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 
