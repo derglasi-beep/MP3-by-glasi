@@ -139,7 +139,9 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         playing: state.playing,
         updatePosition: player.audio.position,
         bufferedPosition: player.audio.bufferedPosition,
-        androidCompactActionIndices: const [0, 1, 2],
+        androidCompactActionIndices: [
+          for (var i = 0; i < controls.length && i < 3; i++) i,
+        ],
         speed: player.audio.speed,
         queueIndex:
             player.currentIndex >= 0 ? player.currentIndex : null,
