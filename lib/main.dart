@@ -13,9 +13,6 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   JustAudioMediaKit.ensureInitialized();
 
-  final session = await AudioSession.instance;
-  await session.configure(AudioSessionConfiguration.music());
-
   final player = AudioPlayerService();
 
   if (Platform.isAndroid) {
@@ -30,6 +27,10 @@ Future<void> main() async {
       ),
     );
   }
+
+  // Configure the shared audio session after all audio plugins are initialized.
+  final session = await AudioSession.instance;
+  await session.configure(AudioSessionConfiguration.music());
 
   runApp(Mp3ByGlasiApp(player: player));
 }
