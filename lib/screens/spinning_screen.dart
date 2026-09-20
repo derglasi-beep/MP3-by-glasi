@@ -10,6 +10,69 @@ class SpinningScreen extends StatefulWidget {
   @override State<SpinningScreen> createState() => _SpinningScreenState();
 }
 
+class _CurveCard extends StatelessWidget {
+  final SpinningPlan plan;
+  final double Function(double) displayBpm;
+  const _CurveCard({required this.plan, required this.displayBpm});
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('BPM-Kurve', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text('Zielkurve über die gesamte Trainingsdauer', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 12),
+        SizedBox(height: 150, child: CustomPaint(
+          painter: _CurvePainter(plan.curve, displayBpm),
+          child: const SizedBox.expand(),
+        )),
+      ]),
+    ),
+  );
+}
+
+class _CurvePainter extends CustomPainter {
+  final List<SpinningCurvePoint> curve;
+  final double Function(double) displayBpm;
+  _CurvePainter(this.curve, this.displayBpm);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (curve.isEmpty) return;
+    final values = curve.map((p) => displayBpm(p.targetBpm)).toList();
+    final min = values.reduce((a, b) => a < b ? a : b) - 4;
+    final max = values.reduce((a, b) => a > b ? a : b) + 4;
+    final span = max - min;
+    final paint = Paint()..strokeWidth = 3..style = PaintingStyle.stroke;
+    final path = Path();
+    for (var i = 0; i < curve.length; i++) {
+      final x = curve.length == 1 ? 0.0 : curve[i].position.inMilliseconds / curve.last.position.inMilliseconds * size.width;
+      final y = size.height - ((values[i] - min) / span) * size.height;
+      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+    }
+    canvas.drawPath(path, paint);
+    final dotPaint = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < curve.length; i++) {
+      final x = curve.length == 1 ? 0.0 : curve[i].position.inMilliseconds / curve.last.position.inMilliseconds * size.width;
+      final y = size.height - ((values[i] - min) / span) * size.height;
+      canvas.drawCircle(Offset(x, y), 3.5, dotPaint);
+    }
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    for (final label in [values.first, values.last]) {
+      textPainter.text = TextSpan(text: '${label.round()} BPM', style: const TextStyle(fontSize: 11));
+      textPainter.layout();
+      final x = label == values.first ? 0.0 : size.width - textPainter.width;
+      final y = label == values.first ? size.height - textPainter.height : 0.0;
+      textPainter.paint(canvas, Offset(x, y));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CurvePainter oldDelegate) => true;
+}
+
 class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
   Duration duration = const Duration(minutes: 45);
@@ -51,6 +114,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
         FilledButton.icon(onPressed: _buildPlan, icon: const Icon(Icons.auto_awesome), label: const Text('Session automatisch planen')),
       ]))),
       if (p != null) ...[
+        const SizedBox(height: 14),
+        _CurveCard(plan: p, displayBpm: _displayBpm),
         const SizedBox(height: 14),
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
