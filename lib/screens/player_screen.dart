@@ -208,7 +208,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final value = track.bpm ?? cached?.bpm ?? localResult?.bpm;
         final localConfidence = track.bpmConfidence ?? cached?.confidence ?? localResult?.confidence;
         if (value != null) {
-          if (cached == null) {
+          if (track.bpm == null && cached == null) {
             await bpmCache.put(
               track.path,
               value,
