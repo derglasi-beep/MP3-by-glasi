@@ -26,7 +26,6 @@ class BpmAnalyzer {
     if (envelope.length < 16) return null;
 
     // Remove slow volume changes, then keep only positive changes.
-    final mean = envelope.reduce((a, b) => a + b) / envelope.length;
     final onset = List<double>.filled(envelope.length, 0);
     for (var i = 1; i < envelope.length; i++) {
       final diff = envelope[i] - envelope[i - 1];
@@ -39,11 +38,11 @@ class BpmAnalyzer {
         .reduce((a, b) => a + b) /
         onset.length;
     final onsetStd = sqrt(onsetVariance);
-    if (onsetStd < 1e-7 || mean < 1e-7) return null;
+    if (onsetStd < 1e-7 || onsetMean < 1e-7) return null;
 
     // Search beat periods directly using normalized autocorrelation.
-    final minBpm = 60.0;
-    final maxBpm = 200.0;
+    const minBpm = 60.0;
+    const maxBpm = 200.0;
     final minLag = max(1, (60 * sampleRate / (maxBpm * hop)).round());
     final maxLag = min(
       onset.length ~/ 2,
@@ -78,7 +77,7 @@ class BpmAnalyzer {
     var bpm = 60 * sampleRate / (bestLag * hop);
 
     // Autocorrelation often locks onto half/double tempo. Prefer the
-    // musically common interpretation closest to 120 BPM.
+    // musically common interpretation closest to the normal dance range.
     while (bpm < 70) bpm *= 2;
     while (bpm > 180) bpm /= 2;
 
