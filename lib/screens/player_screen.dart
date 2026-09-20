@@ -416,17 +416,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
                   title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text('\${t.artist} • \${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    tooltip: 'Queue-Aktion',
-                    onSelected: (action) async {
-                      if (action == 'next') await widget.player.playNext(t);
-                      if (action == 'queue') await widget.player.addToQueue(t);
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'next', child: Text('Als Nächstes abspielen')),
-                      PopupMenuItem(value: 'queue', child: Text('An Queue anhängen')),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (t.bpm != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(_bpmLabel(t.bpm), style: Theme.of(context).textTheme.labelLarge),
+                        ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Queue-Aktion',
+                        onSelected: (action) async {
+                          if (action == 'next') await widget.player.playNext(t);
+                          if (action == 'queue') await widget.player.addToQueue(t);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'next', child: Text('Als Nächstes abspielen')),
+                          PopupMenuItem(value: 'queue', child: Text('An Queue anhängen')),
+                        ],
+                        icon: const Icon(Icons.more_vert),
+                      ),
                     ],
-                      icon: const Icon(Icons.more_vert),
-                    ),
                   ),
                   onTap: () => _playTrack(t),
                 );
