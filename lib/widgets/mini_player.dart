@@ -9,6 +9,13 @@ class MiniPlayer extends StatelessWidget {
 
   const MiniPlayer({super.key, required this.player});
 
+  void _openNowPlaying(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => NowPlayingScreen(player: player)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Track?>(
@@ -21,13 +28,22 @@ class MiniPlayer extends StatelessWidget {
         return Material(
           elevation: 10,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: InkWell(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NowPlayingScreen(player: player),
-              ),
-            ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openNowPlaying(context),
+            onHorizontalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity.abs() < 180) return;
+              if (velocity < 0) {
+                player.next();
+              } else {
+                player.previous();
+              }
+            },
+            onVerticalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity < -180) _openNowPlaying(context);
+            },
             child: SizedBox(
               height: 72,
               child: Padding(
@@ -40,9 +56,7 @@ class MiniPlayer extends StatelessWidget {
                           ? Container(
                               width: 52,
                               height: 52,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainer,
+                              color: Theme.of(context).colorScheme.surfaceContainer,
                               child: const Icon(Icons.music_note),
                             )
                           : Image.memory(
@@ -59,28 +73,28 @@ class MiniPlayer extends StatelessWidget {
                         builder: (_, state) => StreamBuilder<Duration>(
                           stream: player.positionStream,
                           builder: (_, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              track.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 4),
-                            LinearProgressIndicator(
-                              value: _progress(player),
-                              minHeight: 2,
-                            ),
-                          ],
-                        ),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                track.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                track.artist,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 4),
+                              LinearProgressIndicator(
+                                value: _progress(player),
+                                minHeight: 2,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
