@@ -72,6 +72,8 @@ class BpmFusionService {
 
     double chosen;
     double agreement;
+    final canonicalLocal = _canonical(localBpm);
+    final canonicalOnline = _canonical(online.bpm);
 
     switch (relation) {
       case BpmRelation.exact:
@@ -79,17 +81,11 @@ class BpmFusionService {
         agreement = 1.0;
         break;
       case BpmRelation.halfTempo:
-        final onlineAsDouble = online.bpm * 2;
-        final localAsDouble = localBpm * 2;
-        if (_distance(localBpm, onlineAsDouble) <= _distance(online.bpm, localAsDouble)) {
-          chosen = _weighted(localBpm, localWeight, onlineAsDouble, onlineWeight * 0.7);
-        } else {
-          chosen = _weighted(localAsDouble, localWeight * 0.7, online.bpm, onlineWeight);
-        }
-        agreement = 0.72;
-        break;
       case BpmRelation.doubleTempo:
-        chosen = _weighted(localBpm, localWeight, online.bpm, onlineWeight);
+        // First bring harmonic equivalents such as 64/128 or 128/256 to
+        // the same canonical tempo before weighting them. This avoids
+        // producing an artificial midpoint such as 96 BPM.
+        chosen = _weighted(canonicalLocal, localWeight, canonicalOnline, onlineWeight);
         agreement = 0.72;
         break;
       case BpmRelation.close:
@@ -152,4 +148,6 @@ class BpmFusionService {
     while (value < 70) value *= 2;
     return value;
   }
+
+  double _canonical(double bpm) => _normalize(bpm);
 }
