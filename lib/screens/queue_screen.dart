@@ -120,10 +120,7 @@ class _QueueScreenState extends State<QueueScreen> {
                           ),
                         ],
                       ),
-                      onTap: () async {
-                        await widget.player.setQueue(queue, startIndex: index);
-                        await widget.player.play();
-                      },
+                      onTap: () => widget.player.playAt(index),
                     );
                   },
                 ),
