@@ -77,6 +77,19 @@ class AudioPlayerService {
     _publishQueue();
   }
 
+  Future<void> playAt(int index) async {
+    if (index < 0 || index >= queue.length) return;
+    if (index == currentIndex && audio.processingState != ProcessingState.completed) {
+      await play();
+      return;
+    }
+
+    currentIndex = index;
+    await _load();
+    await play();
+    _publishQueue();
+  }
+
   Future<void> addToQueue(Track track) async {
     queue.add(track);
     if (currentIndex == -1) {
