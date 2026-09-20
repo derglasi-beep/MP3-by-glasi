@@ -302,8 +302,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _playTrack(Track t) async {
     final n = tracks.indexWhere((x) => x.id == t.id);
-    await widget.player.setQueue(tracks, startIndex: n);
-    await widget.player.play();
+    if (n < 0) return;
+
+    if (widget.player.queue.length != tracks.length ||
+        widget.player.queue.any((x) => x.id != tracks[widget.player.queue.indexOf(x)].id)) {
+      await widget.player.setQueue(tracks, startIndex: n);
+    } else {
+      await widget.player.playAt(n);
+    }
+
     unawaited(_analyzeTrack(t));
     if (mounted) setState(() {});
   }
