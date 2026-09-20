@@ -12,6 +12,7 @@ import '../services/music_scanner.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
+import 'queue_screen.dart';
 
 enum _SortMode { title, artist, album, bpm, year }
 
@@ -166,6 +167,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openQueue() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => QueueScreen(player: widget.player)));
+    if (mounted) setState(() {});
+  }
+
   Future<void> _openPlaylists() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistsScreen(player: widget.player, tracks: tracks)));
     if (mounted) setState(() {});
@@ -174,7 +180,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
-      IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.queue_music), tooltip: 'Playlists'),
+      IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
+      IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: 'Ordner scannen'),
     ]),
@@ -234,7 +241,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
                   title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text('\${t.artist} • \${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: BpmBadge(bpm: t.bpm),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Queue-Aktion',
+                    onSelected: (action) async {
+                      if (action == 'next') await widget.player.playNext(t);
+                      if (action == 'queue') await widget.player.addToQueue(t);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'next', child: Text('Als Nächstes abspielen')),
+                      PopupMenuItem(value: 'queue', child: Text('An Queue anhängen')),
+                    ],
+                    icon: const Icon(Icons.more_vert),
+                  ),
                   onTap: () => _playTrack(t),
                 );
               },
