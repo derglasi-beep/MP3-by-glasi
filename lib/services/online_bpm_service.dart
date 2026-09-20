@@ -139,9 +139,9 @@ class OnlineBpmService {
 
   String _clean(String value) => value
       .toLowerCase()
-      .replaceAll(RegExp(r'\\([^)]*\\)'), ' ')
+      .replaceAll(RegExp(r'\([^)]*\)'), ' ')
       .replaceAll(RegExp(r'[^a-z0-9äöüß]+'), ' ')
-      .replaceAll(RegExp(r'\\s+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
   void dispose() => _client.close(force: true);
