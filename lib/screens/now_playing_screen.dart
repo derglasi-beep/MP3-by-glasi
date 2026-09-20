@@ -12,7 +12,7 @@ class NowPlayingScreen extends StatelessWidget {
   const NowPlayingScreen({super.key, required this.player});
 
   String _time(Duration d) =>
-      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+      '\${d.inMinutes}:\${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -43,8 +43,10 @@ class NowPlayingScreen extends StatelessWidget {
                 final track = current.data;
                 final d = duration.data ?? track?.duration ?? Duration.zero;
                 final p = position.data ?? Duration.zero;
-                final max = d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1;
-                final value = p.inMilliseconds.clamp(0, max.toInt()).toDouble();
+                final max =
+                    d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1;
+                final value =
+                    p.inMilliseconds.clamp(0, max.toInt()).toDouble();
                 final playing = state.data?.playing ?? false;
 
                 return SafeArea(
@@ -54,7 +56,10 @@ class NowPlayingScreen extends StatelessWidget {
                       children: [
                         const SizedBox(height: 8),
                         ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
+                          constraints: const BoxConstraints(
+                            maxWidth: 520,
+                            maxHeight: 520,
+                          ),
                           child: AspectRatio(
                             aspectRatio: 1,
                             child: Hero(
@@ -65,10 +70,15 @@ class NowPlayingScreen extends StatelessWidget {
                                 clipBehavior: Clip.antiAlias,
                                 child: track?.artwork == null
                                     ? Container(
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHighest,
                                         child: const Icon(Icons.album, size: 150),
                                       )
-                                    : Image.memory(track!.artwork!, fit: BoxFit.cover),
+                                    : Image.memory(
+                                        track!.artwork!,
+                                        fit: BoxFit.cover,
+                                      ),
                               ),
                             ),
                           ),
@@ -79,9 +89,10 @@ class NowPlayingScreen extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -107,12 +118,17 @@ class NowPlayingScreen extends StatelessWidget {
                             const SizedBox(width: 8),
                             Chip(
                               avatar: const Icon(Icons.speed, size: 17),
-                              label: Text('${player.audio.speed.toStringAsFixed(2)}x'),
+                              label: Text(
+                                '\${player.audio.speed.toStringAsFixed(2)}x',
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        GlasiVisualizer(playing: playing, bpm: track?.bpm),
+                        GlasiVisualizer(
+                          playing: playing,
+                          bpm: track?.bpm,
+                        ),
                         Slider(
                           value: value,
                           max: max,
@@ -124,7 +140,10 @@ class NowPlayingScreen extends StatelessWidget {
                         ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [Text(_time(p)), Text(_time(d))],
+                          children: [
+                            Text(_time(p)),
+                            Text(_time(d)),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Row(
@@ -140,7 +159,8 @@ class NowPlayingScreen extends StatelessWidget {
                             ),
                             IconButton(
                               tooltip: 'Zurück',
-                              onPressed: player.previous,
+                              onPressed:
+                                  player.canGoPrevious ? player.previous : null,
                               icon: const Icon(Icons.skip_previous),
                               iconSize: 42,
                             ),
@@ -149,12 +169,14 @@ class NowPlayingScreen extends StatelessWidget {
                               onPressed: track == null
                                   ? null
                                   : (playing ? player.pause : player.play),
-                              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                              icon: Icon(
+                                playing ? Icons.pause : Icons.play_arrow,
+                              ),
                               iconSize: 42,
                             ),
                             IconButton(
                               tooltip: 'Weiter',
-                              onPressed: player.next,
+                              onPressed: player.canGoNext ? player.next : null,
                               icon: const Icon(Icons.skip_next),
                               iconSize: 42,
                             ),
