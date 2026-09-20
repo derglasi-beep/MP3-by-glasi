@@ -304,8 +304,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final n = tracks.indexWhere((x) => x.id == t.id);
     if (n < 0) return;
 
-    if (widget.player.queue.length != tracks.length ||
-        widget.player.queue.any((x) => x.id != tracks[widget.player.queue.indexOf(x)].id)) {
+    final queueMatchesLibrary =
+        widget.player.queue.length == tracks.length &&
+        widget.player.queue.asMap().entries.every(
+              (entry) => entry.value.id == tracks[entry.key].id,
+            );
+
+    if (!queueMatchesLibrary) {
       await widget.player.setQueue(tracks, startIndex: n);
     } else {
       await widget.player.playAt(n);
