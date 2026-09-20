@@ -15,11 +15,6 @@ class Mp3ByGlasiApp extends StatefulWidget {
 }
 
 class _AppState extends State<Mp3ByGlasiApp> {
-  @override
-  void dispose() {
-    widget.player.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
