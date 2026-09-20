@@ -5,19 +5,18 @@ import '../models/track.dart';
 class AudioPlayerService {
   final AndroidEqualizer equalizer = AndroidEqualizer();
   late final AudioPlayer audio;
-
-  AudioPlayerService() {
-    audio = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
-    );
   final List<Track> queue = [];
   final StreamController<Track?> _trackController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
+
   int currentIndex = -1;
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
 
   AudioPlayerService() {
+    audio = AudioPlayer(
+      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
+    );
     _stateSub = audio.playerStateStream.listen((state) async {
       if (state.processingState == ProcessingState.completed && loopMode == LoopMode.off) {
         await next();
@@ -29,16 +28,22 @@ class AudioPlayerService {
   Stream<Duration?> get durationStream => audio.durationStream;
   Stream<PlayerState> get playerStateStream => audio.playerStateStream;
   Stream<Track?> get currentTrackStream => _trackController.stream;
-  Track? get currentTrack => currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
+
+  Track? get currentTrack =>
+      currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
   Future<void> setQueue(List<Track> tracks, {int startIndex = 0}) async {
-    queue..clear()..addAll(tracks);
+    queue
+      ..clear()
+      ..addAll(tracks);
+
     if (queue.isEmpty) {
       currentIndex = -1;
       _trackController.add(null);
       await audio.stop();
       return;
     }
+
     currentIndex = startIndex.clamp(0, queue.length - 1);
     await _load();
   }
@@ -50,7 +55,10 @@ class AudioPlayerService {
     _trackController.add(t);
   }
 
-  Future<void> play() async { if (currentTrack != null) await audio.play(); }
+  Future<void> play() async {
+    if (currentTrack != null) await audio.play();
+  }
+
   Future<void> pause() => audio.pause();
   Future<void> seek(Duration p) => audio.seek(p);
   Future<void> setVolume(double v) => audio.setVolume(v.clamp(0, 1));
