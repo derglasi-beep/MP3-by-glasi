@@ -18,15 +18,47 @@ class SpinningPhaseSpec {
   });
 }
 
+class SpinningCurvePoint {
+  final Duration position;
+  final double targetBpm;
+  final SpinningPhase phase;
+  final double tolerance;
+
+  const SpinningCurvePoint({
+    required this.position,
+    required this.targetBpm,
+    required this.phase,
+    required this.tolerance,
+  });
+}
+
+class SpinningSelection {
+  final Track track;
+  final double targetBpm;
+  final SpinningPhase phase;
+  final double score;
+
+  const SpinningSelection({
+    required this.track,
+    required this.targetBpm,
+    required this.phase,
+    required this.score,
+  });
+}
+
 class SpinningPlan {
   final Duration duration;
   final List<Track> tracks;
   final List<SpinningPhaseSpec> phases;
+  final List<SpinningCurvePoint> curve;
+  final List<SpinningSelection> selections;
 
   const SpinningPlan({
     required this.duration,
     required this.tracks,
     required this.phases,
+    this.curve = const [],
+    this.selections = const [],
   });
 }
 
@@ -49,43 +81,116 @@ class SpinningPlaylistService {
       return SpinningPlan(duration: duration, tracks: const [], phases: phases);
     }
 
+    final curve = buildCurve(duration, phases);
     final selected = <Track>[];
+    final selections = <SpinningSelection>[];
     final used = <String>{};
-    for (final phase in phases) {
-      final phaseMinutes = duration.inMinutes * phase.share;
-      final targetCount = phaseMinutes <= 0 ? 0 : (phaseMinutes / 4.0).ceil();
-      final candidates = usable.where((t) =>
-          !used.contains(t.id) &&
-          t.bpm! >= phase.minBpm &&
-          t.bpm! <= phase.maxBpm).toList();
-      candidates.sort((a, b) => _phaseDistance(a, phase).compareTo(_phaseDistance(b, phase)));
-      for (final track in candidates.take(targetCount)) {
-        selected.add(track);
-        used.add(track.id);
-      }
+    var elapsed = Duration.zero;
+    Track? previous;
+
+    while (elapsed < duration && selected.length < usable.length) {
+      final point = _curveAt(curve, elapsed);
+      final candidates = usable.where((t) => !used.contains(t.id)).toList();
+      if (candidates.isEmpty) break;
+
+      candidates.sort((a, b) => _score(b, point, previous, duration - elapsed)
+          .compareTo(_score(a, point, previous, duration - elapsed)));
+      final chosen = candidates.first;
+      final score = _score(chosen, point, previous, duration - elapsed);
+      selected.add(chosen);
+      selections.add(SpinningSelection(
+        track: chosen,
+        targetBpm: point.targetBpm,
+        phase: point.phase,
+        score: score,
+      ));
+      used.add(chosen.id);
+      previous = chosen;
+      elapsed += chosen.duration ?? const Duration(minutes: 4);
     }
 
-    // Fill remaining slots with the closest BPM transitions, avoiding repeats.
-    final targetTracks = (duration.inMinutes / 4.0).ceil().clamp(1, usable.length);
-    while (selected.length < targetTracks) {
-      final remaining = usable.where((t) => !used.contains(t.id)).toList();
-      if (remaining.isEmpty) break;
-      final current = selected.isEmpty ? null : selected.last.bpm;
-      remaining.sort((a, b) {
-        final da = current == null ? 0 : (a.bpm! - current).abs();
-        final db = current == null ? 0 : (b.bpm! - current).abs();
-        return da.compareTo(db);
-      });
-      final next = remaining.first;
-      selected.add(next);
-      used.add(next.id);
-    }
-
-    return SpinningPlan(duration: duration, tracks: selected, phases: phases);
+    return SpinningPlan(
+      duration: duration,
+      tracks: selected,
+      phases: phases,
+      curve: curve,
+      selections: selections,
+    );
   }
 
-  double _phaseDistance(Track track, SpinningPhaseSpec phase) {
-    final center = (phase.minBpm + phase.maxBpm) / 2;
-    return (track.bpm! - center).abs();
+  List<SpinningCurvePoint> buildCurve(
+    Duration duration, [
+    List<SpinningPhaseSpec> phases = defaultPhases,
+  ]) {
+    final points = <SpinningCurvePoint>[];
+    var elapsed = Duration.zero;
+    for (final phase in phases) {
+      final phaseDuration = Duration(
+        milliseconds: (duration.inMilliseconds * phase.share).round(),
+      );
+      final targets = switch (phase.phase) {
+        SpinningPhase.warmup => const [95.0, 100.0, 105.0, 110.0],
+        SpinningPhase.build => const [110.0, 116.0, 122.0, 128.0, 130.0],
+        SpinningPhase.load => const [130.0, 134.0, 138.0, 142.0, 145.0],
+        SpinningPhase.peak => const [145.0, 150.0, 155.0, 158.0, 155.0],
+        SpinningPhase.cooldown => const [155.0, 148.0, 140.0, 130.0, 120.0, 110.0, 100.0],
+      };
+      for (var i = 0; i < targets.length; i++) {
+        final fraction = targets.length == 1 ? 0.0 : i / (targets.length - 1);
+        points.add(SpinningCurvePoint(
+          position: elapsed + Duration(milliseconds: (phaseDuration.inMilliseconds * fraction).round()),
+          targetBpm: targets[i],
+          phase: phase.phase,
+          tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+        ));
+      }
+      elapsed += phaseDuration;
+    }
+    return points;
+  }
+
+  double _score(
+    Track track,
+    SpinningCurvePoint point,
+    Track? previous,
+    Duration remaining,
+  ) {
+    final bpm = track.bpm!;
+    final targetDistance = (bpm - point.targetBpm).abs();
+    final targetScore = 1 - (targetDistance / 35).clamp(0, 1);
+    final transitionDistance = previous == null ? 0 : (bpm - previous.bpm!).abs();
+    final transitionScore = previous == null
+        ? 1
+        : 1 - (transitionDistance / (point.targetBpm * .08)).clamp(0, 1);
+    final confidenceScore = track.bpmConfidence ?? .55;
+    final length = (track.duration ?? const Duration(minutes: 4)).inSeconds;
+    final desired = remaining.inSeconds.clamp(120, 360);
+    final lengthScore = 1 - ((length - desired).abs() / 360).clamp(0, 1);
+    return targetScore * .40 +
+        transitionScore * .25 +
+        confidenceScore * .15 +
+        lengthScore * .10 +
+        (1 - (transitionDistance / 35).clamp(0, 1)) * .10;
+  }
+
+  SpinningCurvePoint _curveAt(List<SpinningCurvePoint> curve, Duration position) {
+    if (position <= curve.first.position) return curve.first;
+    for (var i = 1; i < curve.length; i++) {
+      if (position <= curve[i].position) {
+        final a = curve[i - 1];
+        final b = curve[i];
+        final span = b.position - a.position;
+        final fraction = span.inMilliseconds == 0
+            ? 0.0
+            : (position - a.position).inMilliseconds / span.inMilliseconds;
+        return SpinningCurvePoint(
+          position: position,
+          targetBpm: a.targetBpm + (b.targetBpm - a.targetBpm) * fraction,
+          phase: b.phase,
+          tolerance: b.tolerance,
+        );
+      }
+    }
+    return curve.last;
   }
 }
