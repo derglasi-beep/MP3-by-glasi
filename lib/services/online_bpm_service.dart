@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OnlineBpmResult {
   final double bpm;
@@ -21,6 +22,8 @@ class OnlineBpmResult {
 /// local playback or local BPM analysis.
 class OnlineBpmService {
   static const _source = 'Deezer';
+  static const _cachePrefix = 'online_bpm_v1:';
+  static const _cacheTtl = Duration(days: 30);
   final HttpClient _client;
 
   OnlineBpmService({HttpClient? client}) : _client = client ?? HttpClient();
@@ -33,6 +36,10 @@ class OnlineBpmService {
     final cleanTitle = _clean(title);
     final cleanArtist = _clean(artist);
     if (cleanTitle.isEmpty || cleanArtist.isEmpty) return null;
+
+    final cacheKey = _cacheKey(cleanTitle, cleanArtist, duration);
+    final cached = await _readCache(cacheKey);
+    if (cached != null) return cached;
 
     try {
       final query = 'artist:"$cleanArtist" track:"$cleanTitle"';
@@ -69,12 +76,14 @@ class OnlineBpmService {
       final bpm = (details['bpm'] as num?)?.toDouble();
       if (bpm == null || bpm < 40 || bpm > 240) return null;
 
-      return OnlineBpmResult(
+      final result = OnlineBpmResult(
         bpm: double.parse(bpm.toStringAsFixed(1)),
         source: _source,
         isrc: details['isrc']?.toString(),
         matchScore: double.parse(bestScore.toStringAsFixed(2)),
       );
+      await _writeCache(cacheKey, result);
+      return result;
     } catch (_) {
       return null;
     }
@@ -143,6 +152,53 @@ class OnlineBpmService {
       .replaceAll(RegExp(r'[^a-z0-9äöüß]+'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+
+  String _cacheKey(String title, String artist, Duration? duration) {
+    final seconds = duration?.inSeconds ?? 0;
+    return '$_cachePrefix${Uri.encodeComponent('$artist|$title|$seconds')}';
+  }
+
+  Future<OnlineBpmResult?> _readCache(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(key);
+      if (raw == null) return null;
+      final parts = raw.split('|');
+      if (parts.length < 5) {
+        await prefs.remove(key);
+        return null;
+      }
+      final savedAt = DateTime.tryParse(parts[0]);
+      final bpm = double.tryParse(parts[1]);
+      final score = double.tryParse(parts[4]);
+      if (savedAt == null || bpm == null || score == null ||
+          DateTime.now().difference(savedAt) > _cacheTtl) {
+        await prefs.remove(key);
+        return null;
+      }
+      return OnlineBpmResult(
+        bpm: bpm,
+        source: parts[2],
+        isrc: parts[3].isEmpty ? null : parts[3],
+        matchScore: score,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeCache(String key, OnlineBpmResult result) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, [
+        DateTime.now().toIso8601String(),
+        result.bpm.toString(),
+        result.source,
+        result.isrc ?? '',
+        result.matchScore.toString(),
+      ].join('|'));
+    } catch (_) {}
+  }
 
   void dispose() => _client.close(force: true);
 }
