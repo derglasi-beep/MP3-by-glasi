@@ -210,6 +210,7 @@ class AudioPlayerService {
       _trackController.add(null);
       rethrow;
     }
+  }
 
   Future<void> play() async {
     if (currentTrack == null) return;
