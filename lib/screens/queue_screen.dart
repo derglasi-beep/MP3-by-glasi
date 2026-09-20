@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import 'package:just_audio/just_audio.dart';
 import '../widgets/bpm_badge.dart';
 
 class QueueScreen extends StatefulWidget {
@@ -22,6 +23,32 @@ class _QueueScreenState extends State<QueueScreen> {
           builder: (_, snapshot) => Text('Queue (${snapshot.data?.length ?? 0})'),
         ),
         actions: [
+          IconButton(
+            tooltip: widget.player.shuffle ? 'Shuffle aus' : 'Shuffle an',
+            onPressed: () async {
+              await widget.player.toggleShuffle();
+              if (mounted) setState(() {});
+            },
+            icon: Icon(
+              Icons.shuffle,
+              color: widget.player.shuffle
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+          ),
+          IconButton(
+            tooltip: _repeatLabel(widget.player.loopMode),
+            onPressed: () async {
+              await widget.player.toggleRepeat();
+              if (mounted) setState(() {});
+            },
+            icon: Icon(
+              _repeatIcon(widget.player.loopMode),
+              color: widget.player.loopMode != LoopMode.off
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+          ),
           IconButton(
             tooltip: 'Queue leeren',
             onPressed: widget.player.queue.isEmpty ? null : _clearQueue,
@@ -107,6 +134,17 @@ class _QueueScreenState extends State<QueueScreen> {
     );
   }
 
+  String _repeatLabel(LoopMode mode) => switch (mode) {
+    LoopMode.off => 'Wiederholung aus',
+    LoopMode.all => 'Alle Titel wiederholen',
+    LoopMode.one => 'Titel wiederholen',
+  };
+
+  IconData _repeatIcon(LoopMode mode) => switch (mode) {
+    LoopMode.one => Icons.repeat_one,
+    _ => Icons.repeat,
+  };
+
   Future<void> _clearQueue() async {
     final shouldClear = await showDialog<bool>(
       context: context,
@@ -170,10 +208,21 @@ class _NowPlaying extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Pause',
-                  onPressed: player.pause,
-                  icon: const Icon(Icons.pause_circle_outline),
+                StreamBuilder<PlayerState>(
+                  stream: player.playerStateStream,
+                  initialData: player.audio.playerState,
+                  builder: (_, snapshot) {
+                    final playing = snapshot.data?.playing ?? player.audio.playing;
+                    return IconButton(
+                      tooltip: playing ? 'Pause' : 'Wiedergabe',
+                      onPressed: playing ? player.pause : player.play,
+                      icon: Icon(
+                        playing
+                            ? Icons.pause_circle_outline
+                            : Icons.play_circle_outline,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
