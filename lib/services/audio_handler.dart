@@ -27,10 +27,25 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   @override
-  Future<void> play() => player.play();
+  Future<void> play() async {
+    try {
+      await player.play();
+    } catch (_) {
+      playbackState.add(
+        playbackState.value.copyWith(
+          playing: false,
+          processingState: AudioProcessingState.error,
+        ),
+      );
+      rethrow;
+    }
+  }
 
   @override
-  Future<void> pause() => player.pause();
+  Future<void> pause() async {
+    await player.pause();
+    _publishProgress();
+  }
 
   @override
   Future<void> seek(Duration position) => player.seek(position);
@@ -54,6 +69,13 @@ class GlasiAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<void> stop() async {
     await player.audio.stop();
+    playbackState.add(
+      playbackState.value.copyWith(
+        playing: false,
+        processingState: AudioProcessingState.idle,
+        updatePosition: Duration.zero,
+      ),
+    );
     await super.stop();
   }
 
