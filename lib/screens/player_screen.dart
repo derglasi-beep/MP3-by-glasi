@@ -16,6 +16,7 @@ import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
 import 'queue_screen.dart';
 import 'now_playing_screen.dart';
+import 'spinning_screen.dart';
 
 enum _SortMode { title, artist, album, bpm, year }
 
@@ -322,6 +323,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
+      IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SpinningScreen(player: widget.player, tracks: tracks))), icon: const Icon(Icons.directions_bike), tooltip: 'Spinning DJ'),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: 'Ordner scannen'),
     ]),
