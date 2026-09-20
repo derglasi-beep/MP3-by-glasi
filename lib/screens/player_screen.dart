@@ -149,19 +149,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
 
     try {
+      var changed = false;
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
+
+        if (track.bpm != null) {
+          setState(() => analyzedCount++);
+          continue;
+        }
+
         final cached = await bpmCache.get(track.path);
-        if (cached != null) {
-          _setBpm(track.id, cached.toDouble());
-        } else {
-          final value = await bpm.analyzeFile(track.path);
-          if (value != null) {
-            await bpmCache.put(track.path, value.round());
-            _setBpm(track.id, value);
+        final value = cached?.toDouble() ?? await bpm.analyzeFile(track.path);
+        if (value != null) {
+          if (cached == null) await bpmCache.put(track.path, value.round());
+          final index = tracks.indexWhere((x) => x.id == track.id);
+          if (index >= 0) {
+            tracks[index] = tracks[index].copyWith(bpm: value);
+            changed = true;
           }
         }
         if (mounted) setState(() => analyzedCount++);
+      }
+
+      if (changed && mounted) {
+        await library.saveTracks(List<Track>.from(tracks));
+        await widget.player.setQueue(tracks);
+        setState(() {});
       }
     } finally {
       if (mounted) setState(() => analyzing = false);
