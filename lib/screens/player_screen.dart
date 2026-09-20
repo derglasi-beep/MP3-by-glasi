@@ -51,7 +51,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    widget.player.errorStream.listen(_showPlayerError);
     _restoreLibrary();
+  }
+
+  void _showPlayerError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 4),
+        ),
+      );
   }
 
   @override
