@@ -14,14 +14,15 @@ class AudioPlayerService {
   int currentIndex = -1;
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
+  bool _completionInProgress = false;
 
   AudioPlayerService() {
     audio = AudioPlayer(
       audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
     );
-    _stateSub = audio.playerStateStream.listen((state) async {
+    _stateSub = audio.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
-        await next();
+        _handleCompletion();
       }
     });
   }
@@ -35,12 +36,27 @@ class AudioPlayerService {
   Track? get currentTrack =>
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
+  bool get canGoNext =>
+      queue.length > 1 &&
+      (shuffle || currentIndex < queue.length - 1 || loopMode == LoopMode.all);
+
   bool get canGoPrevious =>
       audio.position > const Duration(seconds: 3) ||
-      _history.isNotEmpty ||
-      currentIndex > 0;
+      (shuffle && _history.isNotEmpty) ||
+      currentIndex > 0 ||
+      loopMode == LoopMode.all;
 
   void _publishQueue() => _queueController.add(List.unmodifiable(queue));
+
+  Future<void> _handleCompletion() async {
+    if (_completionInProgress) return;
+    _completionInProgress = true;
+    try {
+      await next();
+    } finally {
+      _completionInProgress = false;
+    }
+  }
 
   Future<void> setQueue(List<Track> tracks, {int startIndex = 0}) async {
     queue
@@ -203,7 +219,9 @@ class AudioPlayerService {
       return;
     }
 
-    if (currentIndex >= 0) _history.add(currentIndex);
+    if (shuffle && currentIndex >= 0) {
+      _history.add(currentIndex);
+    }
 
     if (shuffle && queue.length > 1) {
       currentIndex = _nextShuffleIndex();
