@@ -36,9 +36,13 @@ class AudioPlayerService {
   Track? get currentTrack =>
       currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
-  bool get canGoNext =>
-      queue.length > 1 &&
-      (shuffle || currentIndex < queue.length - 1 || loopMode == LoopMode.all);
+  bool get canGoNext {
+    if (queue.isEmpty || currentIndex < 0) return false;
+    if (loopMode == LoopMode.one) return true;
+    if (queue.length > 1 && shuffle) return true;
+    if (currentIndex < queue.length - 1) return true;
+    return loopMode == LoopMode.all;
+  }
 
   bool get canGoPrevious =>
       audio.position > const Duration(seconds: 3) ||
@@ -206,7 +210,14 @@ class AudioPlayerService {
   }
 
   Future<void> pause() => audio.pause();
-  Future<void> seek(Duration p) => audio.seek(p);
+  Future<void> seek(Duration p) {
+    final duration = audio.duration;
+    if (duration == null) return audio.seek(p);
+    final clamped = Duration(
+      milliseconds: p.inMilliseconds.clamp(0, duration.inMilliseconds),
+    );
+    return audio.seek(clamped);
+  }
   Future<void> setVolume(double v) => audio.setVolume(v.clamp(0, 1));
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
 
