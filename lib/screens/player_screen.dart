@@ -330,7 +330,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  String time(Duration d) => '\${d.inMinutes}:\${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+  String time(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
   Future<void> _playTrack(Track t) async {
     final n = tracks.indexWhere((x) => x.id == t.id);
