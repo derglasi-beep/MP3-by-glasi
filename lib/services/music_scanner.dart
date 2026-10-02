@@ -30,7 +30,7 @@ class MusicScanner {
         artist: m.artist?.trim().isNotEmpty == true ? m.artist!.trim() : 'Unbekannt',
         album: m.album?.trim().isNotEmpty == true ? m.album!.trim() : 'Unbekannt',
         year: m.year?.year, duration: m.duration,
-        artwork: m.pictures.isNotEmpty ? m.pictures.first.data : null,
+        artwork: m.pictures.isNotEmpty ? m.pictures.first.bytes : null,
       );
     } catch (_) {
       return Track(id: file.path, path: file.path, title: _filename(file.path));
