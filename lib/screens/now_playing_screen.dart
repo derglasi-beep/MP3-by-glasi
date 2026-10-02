@@ -13,7 +13,7 @@ class NowPlayingScreen extends StatelessWidget {
   const NowPlayingScreen({super.key, required this.player});
 
   String _time(Duration d) =>
-      '\${d.inMinutes}:\${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
