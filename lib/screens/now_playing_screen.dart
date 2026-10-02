@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
@@ -44,7 +45,7 @@ class NowPlayingScreen extends StatelessWidget {
                 final d = duration.data ?? track?.duration ?? Duration.zero;
                 final p = position.data ?? Duration.zero;
                 final max =
-                    d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1;
+                    d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1.0;
                 final value =
                     p.inMilliseconds.clamp(0, max.toInt()).toDouble();
                 final playing = state.data?.playing ?? false;
