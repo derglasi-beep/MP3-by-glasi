@@ -55,8 +55,8 @@ class AudioPlayerService {
   void _publishQueue() => _queueController.add(List.unmodifiable(queue));
 
   void _publishError(Object error, {String? fallback}) {
-    final message = error is PlayerException && error.message.isNotEmpty
-        ? error.message
+    final message = error is PlayerException && (error.message ?? '').isNotEmpty
+        ? error.message ?? ''
         : fallback ?? 'Wiedergabe konnte nicht gestartet werden.';
     if (!_errorController.isClosed) _errorController.add(message);
   }
