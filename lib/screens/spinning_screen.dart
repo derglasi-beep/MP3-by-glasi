@@ -129,7 +129,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
             padding: const EdgeInsets.symmetric(vertical: 5),
             child: Row(children: [
               Expanded(child: Text(phase.label)),
-              Text('${_displayBpm(phase.minBpm).round()}–${_displayBpm(phase.maxBpm).round()} BPM'),
+              Text('${_displayBpm(phase.minBpm.toDouble()).round()}–${_displayBpm(phase.maxBpm.toDouble()).round()} BPM'),
             ]),
           ),
         ]))),
