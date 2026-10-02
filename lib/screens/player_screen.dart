@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -503,7 +504,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             final t = current.data;
             final d = dur.data ?? t?.duration ?? Duration.zero;
             final p = pos.data ?? Duration.zero;
-            final max = d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1;
+            final max = d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1.0;
             final value = p.inMilliseconds.clamp(0, max.toInt()).toDouble();
 
             return SingleChildScrollView(
