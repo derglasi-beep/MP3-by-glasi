@@ -41,11 +41,23 @@ Nach dem Klonen:
     flutter pub get
     flutter run
 
-Für die Android-Plattform kann gezielt nur der fehlende Android-Unterbau erzeugt werden:
+Für die Android-Plattform kann gezielt nur der fehlende Android-Unterbau erzeugt werden.
+
+Unter Windows **CMD**:
+
+    tool\\setup_android.bat
+
+Unter Git Bash / Linux / macOS:
 
     bash tool/setup_android.sh
 
-Das Script erzeugt ausschließlich die Flutter-Android-Plattformdateien; der bestehende Dart-Code und die `pubspec.yaml` bleiben unangetastet.
+Beide Scripts erzeugen ausschließlich die Flutter-Android-Plattformdateien; der bestehende Dart-Code und die `pubspec.yaml` bleiben unangetastet.
+
+Wenn Windows meldet, dass `flutter` nicht gefunden wurde, ist Flutter noch nicht im PATH. Teste zuerst:
+
+    flutter --version
+
+Erst wenn dieser Befehl funktioniert, sollte das Android-Setup gestartet werden.
 
 Für Windows:
 
