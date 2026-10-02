@@ -8,7 +8,7 @@ class Track {
   final Duration? duration;
   final double? bpm;
   final double? bpmConfidence;
-  final List<int>? artwork;
+  final Uint8List? artwork;
 
   const Track({
     required this.id, required this.path, required this.title,
@@ -17,7 +17,7 @@ class Track {
   });
 
   Track copyWith({String? title, String? artist, String? album, int? year,
-      Duration? duration, double? bpm, double? bpmConfidence, List<int>? artwork}) => Track(
+      Duration? duration, double? bpm, double? bpmConfidence, Uint8List? artwork}) => Track(
     id: id, path: path, title: title ?? this.title,
     artist: artist ?? this.artist, album: album ?? this.album,
     year: year ?? this.year, duration: duration ?? this.duration,
