@@ -22,7 +22,7 @@ Future<void> main() async {
         androidNotificationChannelId: 'de.glasi.mp3byglasi.audio',
         androidNotificationChannelName: 'MP3 by Glasi',
         androidNotificationOngoing: true,
-        androidStopForegroundOnPause: false,
+        androidStopForegroundOnPause: true,
         androidResumeOnClick: true,
       ),
     );
