@@ -21,6 +21,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo Android-Plattform wurde erzeugt.
+echo Konfiguriere Android Media Service...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0configure_android_media.ps1"
+if errorlevel 1 (
+  echo.
+  echo WARNUNG: Android Media Service konnte nicht automatisch konfiguriert werden.
+  exit /b 1
+)
+echo Android-Plattform wurde erzeugt und fuer Hintergrundwiedergabe konfiguriert.
 echo Als naechstes: flutter pub get
 echo Danach: flutter run -d android
