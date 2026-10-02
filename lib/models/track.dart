@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class Track {
   final String id;
   final String path;
