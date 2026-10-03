@@ -18,7 +18,11 @@ class MusicScanner {
   Future<List<Track>> scanDirectory(String path) async {
     final dir = Directory(path);
     if (!await dir.exists()) return const [];
-    return scanFiles(dir.listSync(recursive: true, followLinks: false).whereType<File>());
+    final files = <File>[];
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) files.add(entity);
+    }
+    return scanFiles(files);
   }
 
   Track _readTrack(File file) {
