@@ -102,7 +102,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     setState(() => tracks = valid);
     if (valid.length != saved.length) await library.saveTracks(valid);
-    await widget.player.setQueue(tracks);
+    await widget.player.setQueue(tracks, load: false);
   }
 
   List<Track> get visible {
