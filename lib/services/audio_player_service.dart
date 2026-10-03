@@ -73,7 +73,7 @@ class AudioPlayerService {
     }
   }
 
-  Future<void> setQueue(List<Track> tracks, {int startIndex = 0}) async {
+  Future<void> setQueue(List<Track> tracks, {int startIndex = 0, bool load = true}) async {
     queue
       ..clear()
       ..addAll(tracks);
@@ -88,7 +88,7 @@ class AudioPlayerService {
     }
 
     currentIndex = startIndex.clamp(0, queue.length - 1);
-    await _load();
+    if (load) await _load();
     _publishQueue();
   }
 
