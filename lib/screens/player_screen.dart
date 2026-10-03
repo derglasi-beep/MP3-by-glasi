@@ -383,6 +383,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: addFolder,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Musikordner hinzufügen'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: addFiles,
+              tooltip: 'Einzelne Dateien hinzufügen',
+              icon: const Icon(Icons.library_music),
+            ),
+          ],
+        ),
+      ),
       SizedBox(
         height: 44,
         child: ListView(
