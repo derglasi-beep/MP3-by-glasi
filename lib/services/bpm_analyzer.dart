@@ -78,9 +78,10 @@ class BpmAnalyzer {
 
         final support = _harmonicSupport(scores, entry.key);
         final rangeBonus = _rangePreference(bpm);
+        final interpretationBonus = factor == 1.0 ? 0.018 : 0.0;
         candidates.add(_Candidate(
           bpm: bpm,
-          score: entry.value + support * 0.18 + rangeBonus,
+          score: entry.value + support * 0.18 + rangeBonus + interpretationBonus,
         ));
       }
     }
