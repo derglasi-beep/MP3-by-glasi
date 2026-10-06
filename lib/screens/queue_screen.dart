@@ -181,9 +181,9 @@ class _QueueSummary extends StatelessWidget {
     if (minutes >= 60) {
       final hours = minutes ~/ 60;
       final rest = (minutes % 60).toString().padLeft(2, '0');
-      return '\${hours}:\${rest}:\${seconds}';
+      return '${hours}:${rest}:${seconds}';
     }
-    return '\${minutes}:\${seconds}';
+    return '${minutes}:${seconds}';
   }
 
   @override
@@ -201,9 +201,9 @@ class _QueueSummary extends StatelessWidget {
             children: [
               Icon(Icons.queue_music, size: 18, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
-              Text('\${queue.length} Titel'),
+              Text('${queue.length} Titel'),
               const Spacer(),
-              if (current != null) Text('\${_duration(position)} / \${_duration(current.duration)}', style: Theme.of(context).textTheme.bodySmall),
+              if (current != null) Text('${_duration(position)} / ${_duration(current.duration)}', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(width: 12),
               Text(_duration(total), style: Theme.of(context).textTheme.bodySmall),
             ],
