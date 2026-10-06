@@ -74,6 +74,10 @@ class AudioPlayerService {
   }
 
   Future<void> setQueue(List<Track> tracks, {int startIndex = 0, bool load = true}) async {
+    final oldTrack = currentTrack;
+    final oldPosition = audio.position;
+    final wasPlaying = audio.playing;
+
     queue
       ..clear()
       ..addAll(tracks);
@@ -87,8 +91,22 @@ class AudioPlayerService {
       return;
     }
 
-    currentIndex = startIndex.clamp(0, queue.length - 1);
-    if (load) await _load();
+    final preservedIndex = oldTrack == null
+        ? -1
+        : queue.indexWhere((item) => item.id == oldTrack.id);
+    currentIndex = preservedIndex >= 0
+        ? preservedIndex
+        : startIndex.clamp(0, queue.length - 1);
+
+    if (load) {
+      await _load();
+      if (oldTrack != null && preservedIndex >= 0) {
+        await seek(oldPosition);
+        if (wasPlaying) await play();
+      }
+    } else {
+      _trackController.add(currentTrack);
+    }
     _publishQueue();
   }
 
