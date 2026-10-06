@@ -143,9 +143,11 @@ class BpmFusionService {
       (a * wa + b * wb) / (wa + wb);
 
   double _normalize(double bpm) {
+    if (bpm <= 0) return 0;
     var value = bpm;
-    while (value > 200) value /= 2;
-    while (value < 70) value *= 2;
+    // Fold harmonic equivalents into one musical octave: [80, 160).
+    while (value >= 160) value /= 2;
+    while (value < 80) value *= 2;
     return value;
   }
 
