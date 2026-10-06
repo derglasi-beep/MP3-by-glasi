@@ -65,7 +65,7 @@ class AudioPlayerService {
     if (_completionInProgress) return;
     _completionInProgress = true;
     try {
-      await next();
+      await next(fromCompletion: true);
     } catch (e) {
       _publishError(e);
     } finally {
@@ -280,10 +280,10 @@ class AudioPlayerService {
     return candidates.first;
   }
 
-  Future<void> next() async {
+  Future<void> next({bool fromCompletion = false}) async {
     if (queue.isEmpty) return;
 
-    if (loopMode == LoopMode.one) {
+    if (loopMode == LoopMode.one && fromCompletion) {
       await audio.seek(Duration.zero);
       await play();
       return;
