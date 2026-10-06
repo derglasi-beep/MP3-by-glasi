@@ -344,6 +344,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!queueMatchesLibrary) {
       await widget.player.setQueue(tracks, startIndex: n);
+      await widget.player.play();
     } else {
       await widget.player.playAt(n);
     }
