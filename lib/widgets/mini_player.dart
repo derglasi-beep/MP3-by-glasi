@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
@@ -111,25 +110,35 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    IconButton(
-                      tooltip: 'Zurück',
-                      onPressed: player.canGoPrevious ? player.previous : null,
-                      icon: const Icon(Icons.skip_previous),
-                    ),
-                    IconButton(
-                      tooltip: player.audio.playing ? 'Pause' : 'Wiedergabe',
-                      onPressed: player.audio.playing ? player.pause : player.play,
-                      icon: Icon(
-                        player.audio.playing
-                            ? Icons.pause_circle
-                            : Icons.play_circle,
-                        size: 34,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Weiter',
-                      onPressed: player.canGoNext ? player.next : null,
-                      icon: const Icon(Icons.skip_next),
+                    StreamBuilder<PlayerState>(
+                      stream: player.playerStateStream,
+                      initialData: player.audio.playerState,
+                      builder: (_, state) {
+                        final playing = state.data?.playing ?? false;
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Zurück',
+                              onPressed: player.canGoPrevious ? player.previous : null,
+                              icon: const Icon(Icons.skip_previous),
+                            ),
+                            IconButton(
+                              tooltip: playing ? 'Pause' : 'Wiedergabe',
+                              onPressed: playing ? player.pause : player.play,
+                              icon: Icon(
+                                playing ? Icons.pause_circle : Icons.play_circle,
+                                size: 34,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Weiter',
+                              onPressed: player.canGoNext ? player.next : null,
+                              icon: const Icon(Icons.skip_next),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
