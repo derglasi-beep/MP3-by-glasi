@@ -183,7 +183,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     setState(() => tracks = hydrated);
     await library.saveTracks(tracks);
-    await widget.player.setQueue(tracks);
+    await widget.player.setQueue(tracks, load: false);
   }
 
   Future<void> _analyzeTrack(Track t) async {
@@ -288,7 +288,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
       if (changed && mounted) {
         await library.saveTracks(List<Track>.from(tracks));
-        await widget.player.setQueue(tracks);
+        await widget.player.setQueue(tracks, load: false);
         setState(() {});
       }
     } finally {
@@ -432,10 +432,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Row(children: [
           const Icon(Icons.sort, size: 20),
           const SizedBox(width: 8),
-          Text('Sortierung: \${_sortLabel()}'),
+          Text('Sortierung: ${_sortLabel()}'),
           if (analyzing) ...[
             const SizedBox(width: 12),
-            Text('\${analyzedCount}/\${analysisTotal}'),
+            Text('${analyzedCount}/${analysisTotal}'),
           ],
           const Spacer(),
           IconButton(
@@ -481,7 +481,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ? const CircleAvatar(child: Icon(Icons.music_note))
                       : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
                   title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('\${t.artist} • \${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${t.artist} • ${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
