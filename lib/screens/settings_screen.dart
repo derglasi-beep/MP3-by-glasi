@@ -85,26 +85,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const Text('Der EQ wird auf Android über die native just_audio AudioPipeline angewendet.'),
       const Divider(height:32),
       Text('Lautstärke',style:Theme.of(context).textTheme.headlineSmall),
-      slider('\${(volume*100).round()} %',volume,0,1,(v){
+      slider('${(volume*100).round()} %',volume,0,1,(v){
         setState(()=>volume=v); widget.player.setVolume(v); s.setVolume(v);
       }),
       const Divider(height:32),
       Text('Sound',style:Theme.of(context).textTheme.headlineSmall),
-      slider('Preamp  \${preamp.toStringAsFixed(1)} dB',preamp,-12,12,(v){
+      slider('Preamp  ${preamp.toStringAsFixed(1)} dB',preamp,-12,12,(v){
         setState(()=>preamp=v); s.setPreamp(v);
       }),
-      slider('Bass  \${bass.toStringAsFixed(0)} dB',bass,-12,12,(v){
+      slider('Bass  ${bass.toStringAsFixed(0)} dB',bass,-12,12,(v){
         setState(()=>bass=v); s.setBass(v);
       }),
-      slider('Treble  \${treble.toStringAsFixed(0)} dB',treble,-12,12,(v){
+      slider('Treble  ${treble.toStringAsFixed(0)} dB',treble,-12,12,(v){
         setState(()=>treble=v); s.setTreble(v);
       }),
       const Divider(height:32),
       Text('Wiedergabe',style:Theme.of(context).textTheme.headlineSmall),
-      slider('Geschwindigkeit  \${speed.toStringAsFixed(2)}×',speed,.5,2,(v){
+      slider('Geschwindigkeit  ${speed.toStringAsFixed(2)}×',speed,.5,2,(v){
         setState(()=>speed=v); widget.player.setSpeed(v); s.setSpeed(v);
       }),
-      slider('Crossfade  \${crossfade.toStringAsFixed(0)} s',crossfade,0,12,(v){
+      slider('Crossfade  ${crossfade.toStringAsFixed(0)} s',crossfade,0,12,(v){
         setState(()=>crossfade=v); s.setCrossfade(v);
       }),
       const SizedBox(height:8),
