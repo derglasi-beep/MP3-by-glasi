@@ -49,12 +49,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   OnlineBpmResult? onlineBpmResult;
   BpmFusionResult? bpmFusionResult;
   late final StreamSubscription<String> _playerErrorSub;
+  late final StreamSubscription<Track?> _playerTrackSub;
+  Track? _pendingBpmAnalysis;
 
   @override
   void initState() {
     super.initState();
     _playerErrorSub = widget.player.errorStream.listen(_showPlayerError);
+    _playerTrackSub = widget.player.currentTrackStream.listen(_onCurrentTrackChanged);
     _restoreLibrary();
+  }
+
+  void _onCurrentTrackChanged(Track? track) {
+    if (track == null) return;
+    unawaited(_analyzeTrack(track));
   }
 
   void _showPlayerError(String message) {
@@ -88,6 +96,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _playerErrorSub.cancel();
+    _playerTrackSub.cancel();
     onlineBpm.dispose();
     super.dispose();
   }
@@ -187,7 +196,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _analyzeTrack(Track t) async {
-    if (analyzing) return;
+    if (analyzing) {
+      _pendingBpmAnalysis = t;
+      return;
+    }
     if (mounted) {
       setState(() {
         analyzing = true;
@@ -227,6 +239,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     } finally {
       if (mounted) setState(() => analyzing = false);
+      final pending = _pendingBpmAnalysis;
+      _pendingBpmAnalysis = null;
+      if (pending != null && pending.id != t.id) {
+        unawaited(_analyzeTrack(pending));
+      }
     }
   }
 
