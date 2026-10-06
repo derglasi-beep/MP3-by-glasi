@@ -246,6 +246,14 @@ class AudioPlayerService {
 
   Future<void> play() async {
     if (currentTrack == null) return;
+
+    // A restored queue can have a valid currentIndex while the native
+    // player is still idle. In that state play() alone cannot produce audio.
+    if (audio.processingState == ProcessingState.idle ||
+        audio.processingState == ProcessingState.completed) {
+      await _load();
+    }
+
     try {
       await audio.play();
     } on PlayerException catch (e) {
