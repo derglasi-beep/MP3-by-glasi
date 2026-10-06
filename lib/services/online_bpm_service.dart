@@ -90,12 +90,19 @@ class OnlineBpmService {
   }
 
   Future<Map<String, dynamic>?> _getJson(Uri uri) async {
-    final request = await _client.getUrl(uri);
+    final request = await _client.getUrl(uri).timeout(
+      const Duration(seconds: 8),
+    );
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     request.headers.set(HttpHeaders.userAgentHeader, 'MP3-by-Glasi/0.3');
-    final response = await request.close();
+    final response = await request.close().timeout(
+      const Duration(seconds: 8),
+    );
     if (response.statusCode != HttpStatus.ok) return null;
-    final body = await response.transform(utf8.decoder).join();
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(const Duration(seconds: 8));
     final decoded = jsonDecode(body);
     return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
