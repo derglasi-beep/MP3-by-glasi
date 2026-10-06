@@ -120,7 +120,7 @@ class NowPlayingScreen extends StatelessWidget {
                             Chip(
                               avatar: const Icon(Icons.speed, size: 17),
                               label: Text(
-                                '\${player.audio.speed.toStringAsFixed(2)}x',
+                                '${player.audio.speed.toStringAsFixed(2)}x',
                               ),
                             ),
                           ],
