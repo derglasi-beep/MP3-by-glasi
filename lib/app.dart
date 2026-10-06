@@ -48,7 +48,12 @@ class _ShellState extends State<_Shell> {
     return Scaffold(
       body: Column(
         children: [
-          Expanded(child: pages[index]),
+          Expanded(
+            child: IndexedStack(
+              index: index,
+              children: pages,
+            ),
+          ),
           MiniPlayer(player: widget.player),
         ],
       ),
