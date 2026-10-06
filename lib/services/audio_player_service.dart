@@ -94,7 +94,9 @@ class AudioPlayerService {
 
   Future<void> playAt(int index) async {
     if (index < 0 || index >= queue.length) return;
-    if (index == currentIndex && audio.processingState != ProcessingState.completed) {
+    if (index == currentIndex &&
+        audio.processingState != ProcessingState.idle &&
+        audio.processingState != ProcessingState.completed) {
       await play();
       return;
     }
