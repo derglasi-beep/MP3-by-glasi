@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_audio/return_code.dart';
@@ -28,7 +29,7 @@ class BpmService {
         bytes.offsetInBytes,
         bytes.lengthInBytes ~/ 4,
       );
-      return analyzer.estimateResult(data, 44100);
+      return Isolate.run(() => BpmAnalyzer().estimateResult(data, 44100));
     } catch (_) {
       return null;
     } finally {
