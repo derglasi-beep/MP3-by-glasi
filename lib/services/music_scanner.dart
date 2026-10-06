@@ -42,5 +42,5 @@ class MusicScanner {
   }
 
   String _extension(String p) { final i = p.lastIndexOf('.'); return i < 0 ? '' : p.substring(i).toLowerCase(); }
-  String _filename(String p) { final n = p.replaceAll('\\\\','/').split('/').last; final i = n.lastIndexOf('.'); return i > 0 ? n.substring(0,i) : n; }
+  String _filename(String p) { final n = p.replaceAll('\\','/').split('/').last; final i = n.lastIndexOf('.'); return i > 0 ? n.substring(0,i) : n; }
 }
