@@ -21,6 +21,7 @@ import 'queue_screen.dart';
 import 'now_playing_screen.dart';
 import 'spinning_screen.dart';
 import 'album_screen.dart';
+import 'artist_screen.dart';
 
 enum _SortMode { title, artist, album, bpm, year }
 
@@ -428,6 +429,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final fallback = _text(a.title).compareTo(_text(b.title));
       return sortAscending ? fallback : -fallback;
     });
+    return result;
+  }
+
+  List<List<Track>> get matchingArtists {
+    final q = search.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+
+    final groups = <String, List<Track>>{};
+    for (final track in tracks) {
+      final artist = track.artist.trim();
+      if (artist.isEmpty || artist.toLowerCase() == 'unbekannt') continue;
+      if (!artist.toLowerCase().contains(q)) continue;
+      groups.putIfAbsent(artist.toLowerCase(), () => <Track>[]).add(track);
+    }
+
+    final result = groups.values.toList()
+      ..sort(
+        (a, b) => a.first.artist.toLowerCase().compareTo(
+              b.first.artist.toLowerCase(),
+            ),
+      );
     return result;
   }
 
@@ -952,6 +974,89 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Expanded(
         child: Column(
           children: [
+            if (matchingArtists.isNotEmpty)
+              SizedBox(
+                height: 84,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+                  itemCount: matchingArtists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, index) {
+                    final artistTracks = matchingArtists[index];
+                    final first = artistTracks.first;
+                    Track coverTrack = first;
+                    for (final track in artistTracks) {
+                      if (track.artwork != null && track.artwork!.isNotEmpty) {
+                        coverTrack = track;
+                        break;
+                      }
+                    }
+
+                    return SizedBox(
+                      width: 280,
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ArtistScreen(
+                                player: widget.player,
+                                artist: first.artist,
+                                tracks: artistTracks,
+                              ),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 25,
+                                  backgroundImage: coverTrack.artwork == null
+                                      ? null
+                                      : MemoryImage(coverTrack.artwork!),
+                                  child: coverTrack.artwork == null
+                                      ? const Icon(Icons.person)
+                                      : null,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        first.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall,
+                                      ),
+                                      Text(
+                                        '${artistTracks.length} Titel',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             if (matchingAlbums.isNotEmpty)
               SizedBox(
                 height: 92,
