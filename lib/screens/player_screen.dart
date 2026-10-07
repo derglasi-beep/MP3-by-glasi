@@ -61,6 +61,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _librarySaveTimer;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
+  bool _backgroundBpmWorkerRunning = false;
 
   @override
   void initState() {
@@ -139,6 +140,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       setState(() => tracks = saved);
       await widget.player.setQueue(tracks, load: false);
       unawaited(_loadArtworkInBackground());
+      unawaited(_analyzeBpmInBackground());
       return;
     }
 
@@ -156,6 +158,87 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await library.saveTracks(valid);
     }
     await widget.player.setQueue(tracks, load: false);
+    unawaited(_analyzeBpmInBackground());
+  }
+
+  Future<void> _analyzeBpmInBackground() async {
+    if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
+    _backgroundBpmWorkerRunning = true;
+
+    try {
+      // Let startup, library restore and the first frame settle first.
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      for (final snapshot in List<Track>.from(tracks)) {
+        if (!mounted) return;
+
+        while (mounted && analyzing) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+        if (!mounted) return;
+
+        final index = tracks.indexWhere((item) => item.id == snapshot.id);
+        if (index < 0) continue;
+        final current = tracks[index];
+
+        // Already stable enough: no need to spend CPU on it again.
+        if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
+          continue;
+        }
+
+        // The foreground analysis has priority for the playing track.
+        if (widget.player.currentTrack?.id == current.id) {
+          await Future<void>.delayed(const Duration(seconds: 3));
+          continue;
+        }
+
+        final cached = await bpmCache.get(current.path);
+        if (cached != null) {
+          if (!mounted) return;
+          setState(() {
+            final freshIndex =
+                tracks.indexWhere((item) => item.id == current.id);
+            if (freshIndex >= 0) {
+              tracks[freshIndex] = tracks[freshIndex].copyWith(
+                bpm: cached.bpm,
+                bpmConfidence: cached.confidence,
+              );
+            }
+          });
+          _scheduleLibrarySave();
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
+
+        final result = await bpm.analyzeFileResult(current.path);
+        if (!mounted) return;
+        if (result != null && result.bpm > 0) {
+          await bpmCache.put(
+            current.path,
+            result.bpm,
+            confidence: result.confidence,
+          );
+
+          if (!mounted) return;
+          setState(() {
+            final freshIndex =
+                tracks.indexWhere((item) => item.id == current.id);
+            if (freshIndex >= 0) {
+              tracks[freshIndex] = tracks[freshIndex].copyWith(
+                bpm: result.bpm,
+                bpmConfidence: result.confidence,
+              );
+            }
+          });
+          _scheduleLibrarySave();
+        }
+
+        // Keep CPU/storage pressure low on large libraries.
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
+    } finally {
+      _backgroundBpmWorkerRunning = false;
+    }
   }
 
   Future<void> _loadArtworkInBackground() async {
@@ -406,6 +489,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (Platform.isAndroid) {
       unawaited(_loadArtworkInBackground());
     }
+    unawaited(_analyzeBpmInBackground());
   }
 
   Future<void> _analyzeTrack(Track t) async {
