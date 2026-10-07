@@ -881,48 +881,181 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ]),
       ),
-      Expanded(flex: 5, child: _player()),
-      const Divider(height: 1),
-      Expanded(flex: 5, child: visible.isEmpty
-          ? const Center(child: Text('Keine Titel in der Bibliothek'))
-          : ListView.builder(
-              itemCount: visible.length,
-              itemBuilder: (_, i) {
-                final t = visible[i];
-                return ListTile(
-                  selected: widget.player.currentTrack?.id == t.id,
-                  leading: t.artwork == null
-                      ? const CircleAvatar(child: Icon(Icons.music_note))
-                      : Image.memory(t.artwork!, width: 48, height: 48, fit: BoxFit.cover),
-                  title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('${t.artist} • ${t.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (t.bpm != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(_bpmLabel(t.bpm), style: Theme.of(context).textTheme.labelLarge),
+      Expanded(
+        child: visible.isEmpty
+            ? const Center(child: Text('Keine Titel in der Bibliothek'))
+            : ListView.builder(
+                itemCount: visible.length,
+                itemBuilder: (_, i) {
+                  final t = visible[i];
+                  return ListTile(
+                    selected: widget.player.currentTrack?.id == t.id,
+                    leading: t.artwork == null
+                        ? const CircleAvatar(child: Icon(Icons.music_note))
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.memory(
+                              t.artwork!,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                    title: Text(
+                      t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${t.artist} • ${t.album}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (t.bpm != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Text(
+                              _bpmLabel(t.bpm),
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ),
+                        PopupMenuButton<String>(
+                          tooltip: 'Queue-Aktion',
+                          onSelected: (action) async {
+                            if (action == 'next') await widget.player.playNext(t);
+                            if (action == 'queue') await widget.player.addToQueue(t);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'next',
+                              child: Text('Als Nächstes abspielen'),
+                            ),
+                            PopupMenuItem(
+                              value: 'queue',
+                              child: Text('An Queue anhängen'),
+                            ),
+                          ],
+                          icon: const Icon(Icons.more_vert),
                         ),
-                      PopupMenuButton<String>(
-                        tooltip: 'Queue-Aktion',
-                        onSelected: (action) async {
-                          if (action == 'next') await widget.player.playNext(t);
-                          if (action == 'queue') await widget.player.addToQueue(t);
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'next', child: Text('Als Nächstes abspielen')),
-                          PopupMenuItem(value: 'queue', child: Text('An Queue anhängen')),
-                        ],
-                        icon: const Icon(Icons.more_vert),
-                      ),
-                    ],
-                  ),
-                  onTap: () => _playTrack(t),
-                );
-              },
-            ))
+                      ],
+                    ),
+                    onTap: () => _playTrack(t),
+                  );
+                },
+              ),
+      ),
+      const Divider(height: 1),
+      _miniPlayer(),
     ]),
+  );
+
+  Widget _miniPlayer() => StreamBuilder<PlayerState>(
+    stream: widget.player.playerStateStream,
+    builder: (_, state) => StreamBuilder<Track?>(
+      stream: widget.player.currentTrackStream,
+      initialData: widget.player.currentTrack,
+      builder: (_, current) {
+        final track = current.data;
+        final playing = state.data?.playing ?? false;
+
+        if (track == null) {
+          return const SizedBox.shrink();
+        }
+
+        return Material(
+          color: Theme.of(context).colorScheme.surfaceContainer,
+          child: SafeArea(
+            top: false,
+            child: InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NowPlayingScreen(player: widget.player),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Hero(
+                      tag: 'now-playing-cover',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 52,
+                          height: 52,
+                          child: track.artwork == null
+                              ? Container(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
+                                  child: const Icon(Icons.album),
+                                )
+                              : Image.memory(
+                                  track.artwork!,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            track.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            track.artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (track.bpm != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          _bpmLabel(track.bpm),
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ),
+                    IconButton(
+                      tooltip: playing ? 'Pause' : 'Wiedergabe',
+                      onPressed: playing
+                          ? widget.player.pause
+                          : widget.player.play,
+                      icon: Icon(
+                        playing ? Icons.pause_circle : Icons.play_circle,
+                      ),
+                      iconSize: 38,
+                    ),
+                    IconButton(
+                      tooltip: 'Weiter',
+                      onPressed: widget.player.canGoNext
+                          ? widget.player.next
+                          : null,
+                      icon: const Icon(Icons.skip_next),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
   );
 
   Widget _player() => StreamBuilder<PlayerState>(
