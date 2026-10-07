@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/android_music_library_service.dart';
 import '../services/bpm_service.dart';
 import '../services/bpm_cache.dart';
 import '../services/online_bpm_service.dart';
@@ -29,6 +30,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   final scanner = MusicScanner();
+  final androidMusicLibrary = AndroidMusicLibraryService();
   final bpm = BpmService();
   final bpmCache = BpmCache();
   final onlineBpm = OnlineBpmService();
@@ -181,7 +183,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> addFolder() async {
-    final p = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Musikordner auswählen');
+    if (Platform.isAndroid) {
+      try {
+        final p = await androidMusicLibrary.getMusicDirectory();
+        if (p != null) {
+          await _add(await scanner.scanDirectory(p));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                e.toString().replaceFirst('Exception: ', ''),
+              ),
+            ),
+          );
+      }
+      return;
+    }
+
+    final p = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Musikordner auswählen',
+    );
     if (p != null) await _add(await scanner.scanDirectory(p));
   }
 
@@ -416,7 +442,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SpinningScreen(player: widget.player, tracks: tracks))), icon: const Icon(Icons.directions_bike), tooltip: 'Spinning DJ'),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
-      IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: 'Ordner scannen'),
+      IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Ordner scannen'),
     ]),
     body: Column(children: [
       Padding(
@@ -438,7 +464,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: FilledButton.tonalIcon(
                 onPressed: addFolder,
                 icon: const Icon(Icons.folder_open),
-                label: const Text('Musikordner hinzufügen'),
+                label: Text(Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Musikordner hinzufügen'),
               ),
             ),
             const SizedBox(width: 8),
