@@ -12,11 +12,20 @@ class MusicScanner {
 
   final Map<String, Future<Uint8List?>> _folderArtworkCache = {};
 
-  Future<List<Track>> scanFiles(Iterable<File> files) async {
+  Future<List<Track>> scanFiles(
+    Iterable<File> files, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final candidates = files
+        .where((file) => extensions.contains(_extension(file.path)))
+        .toList(growable: false);
     final result = <Track>[];
-    for (final file in files) {
-      if (!extensions.contains(_extension(file.path))) continue;
-      result.add(await _readTrack(file));
+    for (var i = 0; i < candidates.length; i++) {
+      result.add(await _readTrack(candidates[i]));
+      onProgress?.call(i + 1, candidates.length);
+      if (i % 8 == 7) {
+        await Future<void>.delayed(Duration.zero);
+      }
     }
     result.sort(
       (a, b) => (a.artist + a.title)
