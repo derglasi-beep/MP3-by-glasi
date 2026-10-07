@@ -72,6 +72,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _onCurrentTrackChanged(Track? track) {
     if (track == null) return;
+
+    // The currently playing track always gets artwork priority, regardless
+    // of whether playback was started from the library, queue, notification,
+    // lock screen or automatic next-track handling.
+    unawaited(
+      _ensureArtwork(
+        track,
+        allowMetadataRead: true,
+        allowOnlineLookup: true,
+      ),
+    );
     unawaited(_analyzeTrack(track));
   }
 
@@ -565,11 +576,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.player.playAt(n);
     }
 
-    unawaited(_ensureArtwork(
-      t,
-      allowMetadataRead: true,
-      allowOnlineLookup: true,
-    ));
     unawaited(_analyzeTrack(t));
     if (mounted) setState(() {});
   }
