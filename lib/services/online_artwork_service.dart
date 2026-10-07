@@ -2,12 +2,22 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+class OnlineArtworkResult {
+  final Uint8List bytes;
+  final String source;
+
+  const OnlineArtworkResult({
+    required this.bytes,
+    required this.source,
+  });
+}
+
 class OnlineArtworkService {
   final HttpClient _client;
 
   OnlineArtworkService({HttpClient? client}) : _client = client ?? HttpClient();
 
-  Future<Uint8List?> lookup({
+  Future<OnlineArtworkResult?> lookup({
     required String title,
     required String artist,
     Duration? duration,
@@ -20,8 +30,27 @@ class OnlineArtworkService {
       return null;
     }
 
+    final deezer = await _lookupDeezer(
+      cleanTitle,
+      cleanArtist,
+      duration,
+    );
+    if (deezer != null) return deezer;
+
+    return _lookupITunes(
+      cleanTitle,
+      cleanArtist,
+      duration,
+    );
+  }
+
+  Future<OnlineArtworkResult?> _lookupDeezer(
+    String title,
+    String artist,
+    Duration? duration,
+  ) async {
     try {
-      final query = 'artist:"$cleanArtist" track:"$cleanTitle"';
+      final query = 'artist:"$artist" track:"$title"';
       final searchUri = Uri.https('api.deezer.com', '/search/track', {
         'q': query,
         'limit': '5',
@@ -38,10 +67,15 @@ class OnlineArtworkService {
         if (item is! Map) continue;
         final candidate = Map<String, dynamic>.from(item);
         final score = _matchScore(
-          candidate,
-          cleanTitle,
-          cleanArtist,
-          duration,
+          candidateTitle: candidate['title']?.toString() ?? '',
+          candidateArtist: candidate['artist'] is Map
+              ? (candidate['artist'] as Map)['name']?.toString() ?? ''
+              : '',
+          candidateDurationSeconds:
+              (candidate['duration'] as num?)?.toDouble(),
+          title: title,
+          artist: artist,
+          duration: duration,
         );
         if (score > bestScore) {
           bestScore = score;
@@ -49,17 +83,76 @@ class OnlineArtworkService {
         }
       }
 
-      if (best == null || bestScore < 0.82) return null;
+      if (best == null || bestScore < 0.78) return null;
 
       final album = best['album'];
       if (album is! Map) return null;
 
       final coverUrl = album['cover_xl']?.toString() ??
           album['cover_big']?.toString() ??
-          album['cover_medium']?.toString();
+          album['cover_medium']?.toString() ??
+          album['cover']?.toString();
       if (coverUrl == null || coverUrl.isEmpty) return null;
 
-      return _download(Uri.parse(coverUrl));
+      final bytes = await _download(Uri.parse(coverUrl));
+      if (bytes == null) return null;
+      return OnlineArtworkResult(bytes: bytes, source: 'Deezer');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<OnlineArtworkResult?> _lookupITunes(
+    String title,
+    String artist,
+    Duration? duration,
+  ) async {
+    try {
+      final searchUri = Uri.https('itunes.apple.com', '/search', {
+        'term': '$artist $title',
+        'entity': 'song',
+        'limit': '8',
+      });
+
+      final search = await _getJson(searchUri);
+      final items = search?['results'];
+      if (items is! List || items.isEmpty) return null;
+
+      Map<String, dynamic>? best;
+      var bestScore = 0.0;
+
+      for (final item in items) {
+        if (item is! Map) continue;
+        final candidate = Map<String, dynamic>.from(item);
+        final milliseconds =
+            (candidate['trackTimeMillis'] as num?)?.toDouble();
+        final score = _matchScore(
+          candidateTitle: candidate['trackName']?.toString() ?? '',
+          candidateArtist: candidate['artistName']?.toString() ?? '',
+          candidateDurationSeconds:
+              milliseconds == null ? null : milliseconds / 1000,
+          title: title,
+          artist: artist,
+          duration: duration,
+        );
+        if (score > bestScore) {
+          bestScore = score;
+          best = candidate;
+        }
+      }
+
+      if (best == null || bestScore < 0.78) return null;
+
+      var artworkUrl = best['artworkUrl100']?.toString();
+      if (artworkUrl == null || artworkUrl.isEmpty) return null;
+
+      artworkUrl = artworkUrl
+          .replaceFirst('100x100bb', '600x600bb')
+          .replaceFirst('100x100', '600x600');
+
+      final bytes = await _download(Uri.parse(artworkUrl));
+      if (bytes == null) return null;
+      return OnlineArtworkResult(bytes: bytes, source: 'Apple Music');
     } catch (_) {
       return null;
     }
@@ -102,33 +195,29 @@ class OnlineArtworkService {
     return bytes.isEmpty ? null : Uint8List.fromList(bytes);
   }
 
-  double _matchScore(
-    Map<String, dynamic> item,
-    String title,
-    String artist,
-    Duration? duration,
-  ) {
-    final candidateTitle = _clean(item['title']?.toString() ?? '');
-    final artistMap = item['artist'];
-    final candidateArtist = _clean(
-      artistMap is Map ? artistMap['name']?.toString() ?? '' : '',
-    );
-
-    final titleScore = _similarity(candidateTitle, title);
-    final artistScore = _similarity(candidateArtist, artist);
+  double _matchScore({
+    required String candidateTitle,
+    required String candidateArtist,
+    required double? candidateDurationSeconds,
+    required String title,
+    required String artist,
+    required Duration? duration,
+  }) {
+    final titleScore = _similarity(_clean(candidateTitle), title);
+    final artistScore = _similarity(_clean(candidateArtist), artist);
     var score = titleScore * 0.6 + artistScore * 0.4;
 
-    if (duration != null) {
-      final seconds = (item['duration'] as num?)?.toDouble();
-      if (seconds != null && duration.inSeconds > 0) {
-        final delta = (seconds - duration.inSeconds).abs();
-        if (delta <= 2) {
-          score += 0.08;
-        } else if (delta <= 6) {
-          score += 0.04;
-        } else if (delta > 15) {
-          score -= 0.08;
-        }
+    if (duration != null &&
+        candidateDurationSeconds != null &&
+        duration.inSeconds > 0) {
+      final delta =
+          (candidateDurationSeconds - duration.inSeconds).abs();
+      if (delta <= 2) {
+        score += 0.08;
+      } else if (delta <= 6) {
+        score += 0.04;
+      } else if (delta > 20) {
+        score -= 0.08;
       }
     }
 
