@@ -105,6 +105,33 @@ class LibraryService {
     }
   }
 
+  Future<Uint8List?> loadArtwork(String id) async {
+    try {
+      final directory = await _artworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
+      );
+      if (!await file.exists()) return null;
+      final bytes = await file.readAsBytes();
+      return bytes.isEmpty ? null : bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveArtwork(String id, Uint8List artwork) async {
+    if (artwork.isEmpty) return;
+    try {
+      final directory = await _artworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
+      );
+      await file.writeAsBytes(artwork, flush: false);
+    } catch (_) {
+      // Artwork is optional; a failed cache write must not affect playback.
+    }
+  }
+
   Future<void> saveTracks(List<Track> tracks) {
     final snapshot = List<Track>.from(tracks);
     _trackSaveTail = _trackSaveTail.then((_) => _saveTracksNow(snapshot));
