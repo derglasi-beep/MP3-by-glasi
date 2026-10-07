@@ -187,11 +187,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _add(List<Track> found) async {
     final map = {for (final t in tracks) t.id: t};
-    for (final t in found) map[t.id] = t;
+    for (final t in found) {
+      final existing = map[t.id];
+      map[t.id] = existing != null && (t.artwork == null || t.artwork!.isEmpty)
+          ? t.copyWith(artwork: existing.artwork)
+          : t;
+    }
+
     final hydrated = <Track>[];
     for (final t in map.values) {
       final cached = await bpmCache.get(t.path);
-      hydrated.add(cached == null ? t : t.copyWith(bpm: cached.bpm, bpmConfidence: cached.confidence));
+      hydrated.add(
+        cached == null
+            ? t
+            : t.copyWith(
+                bpm: cached.bpm,
+                bpmConfidence: cached.confidence,
+              ),
+      );
     }
     setState(() => tracks = hydrated);
     await library.saveTracks(tracks);
