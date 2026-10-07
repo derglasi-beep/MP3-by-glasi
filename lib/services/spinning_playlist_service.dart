@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models/track.dart';
 
 enum SpinningPhase { warmup, build, load, peak, cooldown }
@@ -63,6 +65,7 @@ class SpinningPlan {
 }
 
 class SpinningPlaylistService {
+  final Random _random = Random();
   static const defaultPhases = <SpinningPhaseSpec>[
     SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
     SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aufbau', minBpm: 110, maxBpm: 130, share: .20),
@@ -95,7 +98,24 @@ class SpinningPlaylistService {
 
       candidates.sort((a, b) => _score(b, point, previous, duration - elapsed)
           .compareTo(_score(a, point, previous, duration - elapsed)));
-      final chosen = candidates.first;
+
+      final topCount = min(8, candidates.length);
+      final top = candidates.take(topCount).toList();
+
+      if (previous != null) {
+        final differentArtists = top
+            .where((track) =>
+                track.artist.trim().toLowerCase() !=
+                previous!.artist.trim().toLowerCase())
+            .toList();
+        if (differentArtists.isNotEmpty) {
+          top
+            ..clear()
+            ..addAll(differentArtists);
+        }
+      }
+
+      final chosen = top[_random.nextInt(top.length)];
       final score = _score(chosen, point, previous, duration - elapsed);
       selected.add(chosen);
       selections.add(SpinningSelection(
@@ -112,6 +132,38 @@ class SpinningPlaylistService {
     return SpinningPlan(
       duration: duration,
       tracks: selected,
+      phases: phases,
+      curve: curve,
+      selections: selections,
+    );
+  }
+
+  SpinningPlan buildFromTracks({
+    required List<Track> tracks,
+    required Duration duration,
+    List<SpinningPhaseSpec> phases = defaultPhases,
+  }) {
+    final usable = tracks.where((t) => t.bpm != null && t.bpm! > 0).toList();
+    final curve = buildCurve(duration, phases);
+    final selections = <SpinningSelection>[];
+    var elapsed = Duration.zero;
+
+    for (final track in usable) {
+      final point = _curveAt(curve, elapsed);
+      selections.add(
+        SpinningSelection(
+          track: track,
+          targetBpm: point.targetBpm,
+          phase: point.phase,
+          score: _score(track, point, selections.isEmpty ? null : selections.last.track, duration - elapsed),
+        ),
+      );
+      elapsed += track.duration ?? const Duration(minutes: 4);
+    }
+
+    return SpinningPlan(
+      duration: duration,
+      tracks: usable,
       phases: phases,
       curve: curve,
       selections: selections,
