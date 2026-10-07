@@ -457,16 +457,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return result;
   }
 
+  List<Track> _orderedAlbumTracks(List<Track> albumTracks) {
+    final ordered = List<Track>.from(albumTracks);
+    if (ordered.any((track) => track.trackNumber != null)) {
+      ordered.sort((a, b) {
+        final an = a.trackNumber;
+        final bn = b.trackNumber;
+        if (an == null && bn == null) return 0;
+        if (an == null) return 1;
+        if (bn == null) return -1;
+        return an.compareTo(bn);
+      });
+    }
+    return ordered;
+  }
+
   Future<void> _playAlbum(List<Track> albumTracks) async {
     if (albumTracks.isEmpty) return;
-    await widget.player.setQueue(albumTracks, startIndex: 0);
+    await widget.player.setQueue(
+      _orderedAlbumTracks(albumTracks),
+      startIndex: 0,
+    );
     await widget.player.play();
     if (mounted) setState(() {});
   }
 
   Future<void> _queueAlbum(List<Track> albumTracks) async {
     if (albumTracks.isEmpty) return;
-    await widget.player.addTracksToQueue(albumTracks);
+    await widget.player.addTracksToQueue(_orderedAlbumTracks(albumTracks));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
