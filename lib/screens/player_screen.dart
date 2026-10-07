@@ -51,6 +51,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final StreamSubscription<String> _playerErrorSub;
   late final StreamSubscription<Track?> _playerTrackSub;
   Track? _pendingBpmAnalysis;
+  Timer? _librarySaveTimer;
 
   @override
   void initState() {
@@ -95,6 +96,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _librarySaveTimer?.cancel();
+    if (_librarySaveTimer != null) {
+      unawaited(library.saveTracks(List<Track>.from(tracks)));
+    }
     _playerErrorSub.cancel();
     _playerTrackSub.cancel();
     onlineBpm.dispose();
@@ -315,9 +320,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     setState(() {
       final i = tracks.indexWhere((x) => x.id == id);
-      if (i >= 0) tracks[i] = tracks[i].copyWith(bpm: value, bpmConfidence: confidence);
+      if (i >= 0) {
+        tracks[i] = tracks[i].copyWith(
+          bpm: value,
+          bpmConfidence: confidence,
+        );
+      }
     });
-    unawaited(library.saveTracks(tracks));
+    _scheduleLibrarySave();
+  }
+
+  void _scheduleLibrarySave() {
+    _librarySaveTimer?.cancel();
+    _librarySaveTimer = Timer(const Duration(milliseconds: 500), () {
+      _librarySaveTimer = null;
+      unawaited(library.saveTracks(List<Track>.from(tracks)));
+    });
   }
 
   void _setSort(_SortMode mode) {
