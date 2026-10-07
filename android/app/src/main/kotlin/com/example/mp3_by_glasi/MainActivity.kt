@@ -37,7 +37,7 @@ class MainActivity : AudioServiceActivity() {
         if (permission == null ||
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         ) {
-            result.success(queryMusicFiles())
+            queryMusicFilesAsync(result)
             return
         }
 
@@ -68,38 +68,35 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    private fun queryMusicFilesAsync(result: MethodChannel.Result) {
+        Thread {
+            try {
+                val files = queryMusicFiles()
+                runOnUiThread { result.success(files) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    result.error(
+                        "media_store_error",
+                        e.message ?: "Android-Musikbibliothek konnte nicht gelesen werden.",
+                        null
+                    )
+                }
+            }
+        }.start()
+    }
+
     private fun queryMusicFiles(): List<String> {
         val result = mutableListOf<String>()
-
-        val projection = mutableListOf(
+        val projection = arrayOf(
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.IS_MUSIC
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            projection.add(MediaStore.Audio.Media.RELATIVE_PATH)
-        }
-
-        val selection: String
-        val selectionArgs: Array<String>
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            selection =
-                "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
-                "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
-            selectionArgs = arrayOf("Music/%")
-        } else {
-            selection =
-                "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
-                "${MediaStore.Audio.Media.DATA} LIKE ?"
-            selectionArgs = arrayOf("%/Music/%")
-        }
-
         contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-            projection.toTypedArray(),
-            selection,
-            selectionArgs,
+            projection,
+            "${MediaStore.Audio.Media.IS_MUSIC} != 0",
+            null,
             "${MediaStore.Audio.Media.ARTIST} COLLATE NOCASE, " +
                 "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE"
         )?.use { cursor ->
@@ -129,7 +126,7 @@ class MainActivity : AudioServiceActivity() {
         if (grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
-            result.success(queryMusicFiles())
+            queryMusicFilesAsync(result)
         } else {
             result.error(
                 "permission_denied",
