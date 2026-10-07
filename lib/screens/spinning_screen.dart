@@ -78,10 +78,137 @@ class _SpinningScreenState extends State<SpinningScreen> {
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   SpinningPlan? plan;
+  List<Track> manualTracks = [];
 
   double _displayBpm(double bpm) => sprintMode ? bpm : bpm / 2;
   String _bpmText(double bpm) => '${_displayBpm(bpm).round()} BPM${sprintMode ? ' · Sprint' : ''}';
-  void _buildPlan() => setState(() => plan = planner.build(library: widget.tracks, duration: duration));
+
+  void _buildPlan() => setState(
+        () => plan = planner.build(
+          library: widget.tracks,
+          duration: duration,
+        ),
+      );
+
+  void _buildManualPlan() {
+    setState(() {
+      plan = planner.buildFromTracks(
+        tracks: manualTracks,
+        duration: duration,
+      );
+    });
+  }
+
+  Future<void> _chooseManualTracks() async {
+    final usable = widget.tracks
+        .where((track) => track.bpm != null && track.bpm! > 0)
+        .toList(growable: false);
+
+    final selectedIds = manualTracks.map((track) => track.id).toList();
+    var query = '';
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final q = query.trim().toLowerCase();
+          final visible = usable.where((track) {
+            if (q.isEmpty) return true;
+            return track.title.toLowerCase().contains(q) ||
+                track.artist.toLowerCase().contains(q) ||
+                track.album.toLowerCase().contains(q);
+          }).toList(growable: false);
+
+          return AlertDialog(
+            title: const Text('Spinning-Titel auswählen'),
+            content: SizedBox(
+              width: 560,
+              height: 620,
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Titel, Interpret oder Album',
+                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => query = value),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('${selectedIds.length} Titel ausgewählt'),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: visible.length,
+                      itemBuilder: (_, index) {
+                        final track = visible[index];
+                        final selected = selectedIds.contains(track.id);
+                        return CheckboxListTile(
+                          value: selected,
+                          dense: true,
+                          title: Text(
+                            track.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${track.artist} · ${_bpmText(track.bpm!)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              if (value == true) {
+                                if (!selectedIds.contains(track.id)) {
+                                  selectedIds.add(track.id);
+                                }
+                              } else {
+                                selectedIds.remove(track.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Abbrechen'),
+              ),
+              TextButton(
+                onPressed: () => setDialogState(selectedIds.clear),
+                child: const Text('Leeren'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, List<String>.from(selectedIds)),
+                child: const Text('Übernehmen'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    final byId = {for (final track in usable) track.id: track};
+    setState(() {
+      manualTracks = [
+        for (final id in result)
+          if (byId[id] != null) byId[id]!,
+      ];
+      plan = null;
+    });
+  }
+
   Future<void> _start() async {
     final p = plan; if (p == null || p.tracks.isEmpty) return;
     await widget.player.setQueue(p.tracks); await widget.player.play();
@@ -111,7 +238,29 @@ class _SpinningScreenState extends State<SpinningScreen> {
           secondary: const Icon(Icons.speed),
         ),
         const SizedBox(height: 4),
-        FilledButton.icon(onPressed: _buildPlan, icon: const Icon(Icons.auto_awesome), label: const Text('Session automatisch planen')),
+        FilledButton.icon(
+          onPressed: _buildPlan,
+          icon: const Icon(Icons.auto_awesome),
+          label: const Text('Session automatisch planen'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _chooseManualTracks,
+          icon: const Icon(Icons.playlist_add),
+          label: Text(
+            manualTracks.isEmpty
+                ? 'Session manuell befüllen'
+                : 'Manuelle Auswahl: ${manualTracks.length} Titel',
+          ),
+        ),
+        if (manualTracks.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            onPressed: _buildManualPlan,
+            icon: const Icon(Icons.tune),
+            label: const Text('Manuelle Session übernehmen'),
+          ),
+        ],
       ]))),
       if (p != null) ...[
         const SizedBox(height: 14),
