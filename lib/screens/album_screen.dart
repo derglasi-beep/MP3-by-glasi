@@ -13,6 +13,21 @@ class AlbumScreen extends StatelessWidget {
     required this.tracks,
   });
 
+  List<Track> get _orderedTracks {
+    final ordered = List<Track>.from(tracks);
+    if (ordered.any((track) => track.trackNumber != null)) {
+      ordered.sort((a, b) {
+        final an = a.trackNumber;
+        final bn = b.trackNumber;
+        if (an == null && bn == null) return 0;
+        if (an == null) return 1;
+        if (bn == null) return -1;
+        return an.compareTo(bn);
+      });
+    }
+    return ordered;
+  }
+
   Track? get _coverTrack {
     for (final track in tracks) {
       if (track.artwork != null && track.artwork!.isNotEmpty) {
@@ -24,19 +39,20 @@ class AlbumScreen extends StatelessWidget {
 
   Future<void> _playAlbum() async {
     if (tracks.isEmpty) return;
-    await player.setQueue(tracks, startIndex: 0);
+    await player.setQueue(_orderedTracks, startIndex: 0);
     await player.play();
   }
 
   Future<void> _playTrack(int index) async {
-    if (index < 0 || index >= tracks.length) return;
-    await player.setQueue(tracks, startIndex: index);
+    final ordered = _orderedTracks;
+    if (index < 0 || index >= ordered.length) return;
+    await player.setQueue(ordered, startIndex: index);
     await player.play();
   }
 
   Future<void> _queueAlbum(BuildContext context) async {
     if (tracks.isEmpty) return;
-    await player.addTracksToQueue(tracks);
+    await player.addTracksToQueue(_orderedTracks);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -63,7 +79,8 @@ class AlbumScreen extends StatelessWidget {
       );
     }
 
-    final first = tracks.first;
+    final orderedTracks = _orderedTracks;
+    final first = orderedTracks.first;
     final cover = _coverTrack;
     final total = tracks.fold<Duration>(
       Duration.zero,
@@ -145,15 +162,15 @@ class AlbumScreen extends StatelessWidget {
           ),
           const SliverToBoxAdapter(child: Divider(height: 1)),
           SliverList.builder(
-            itemCount: tracks.length,
+            itemCount: orderedTracks.length,
             itemBuilder: (_, index) {
-              final track = tracks[index];
+              final track = orderedTracks[index];
               return ListTile(
                 leading: SizedBox(
                   width: 34,
                   child: Center(
                     child: Text(
-                      '${index + 1}',
+                      '${track.trackNumber ?? index + 1}',
                       style: Theme.of(context).textTheme.labelLarge,
                     ),
                   ),
