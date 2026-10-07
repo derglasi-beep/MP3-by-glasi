@@ -1171,7 +1171,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                           )
                                         : Image.memory(
                                             coverTrack.artwork!,
+                                            cacheWidth: 116,
+                                            cacheHeight: 116,
                                             fit: BoxFit.cover,
+                                            gaplessPlayback: true,
                                           ),
                                   ),
                                 ),
@@ -1262,7 +1265,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     t.artwork!,
                                     width: 48,
                                     height: 48,
+                                    cacheWidth: 96,
+                                    cacheHeight: 96,
                                     fit: BoxFit.cover,
+                                    gaplessPlayback: true,
                                   ),
                                 ),
                           title: Text(
