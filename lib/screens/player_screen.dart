@@ -150,8 +150,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
-        final current = tracks.where((item) => item.id == track.id).firstOrNull;
-        if (current?.artwork != null && current!.artwork!.isNotEmpty) continue;
+        final currentIndex = tracks.indexWhere((item) => item.id == track.id);
+        if (currentIndex < 0) continue;
+        final current = tracks[currentIndex];
+        if (current.artwork != null && current.artwork!.isNotEmpty) continue;
 
         await _ensureArtwork(track, allowMetadataRead: true);
         await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -357,6 +359,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => tracks = hydrated);
     await library.saveTracks(tracks);
     await widget.player.setQueue(tracks, load: false);
+    if (Platform.isAndroid) {
+      unawaited(_loadArtworkInBackground());
+    }
   }
 
   Future<void> _analyzeTrack(Track t) async {
