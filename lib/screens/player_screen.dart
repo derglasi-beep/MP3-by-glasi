@@ -122,7 +122,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _librarySaveTimer?.cancel();
     if (_librarySaveTimer != null) {
-      unawaited(library.saveTracks(List<Track>.from(tracks)));
+      unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
     }
     _playerErrorSub.cancel();
     _playerTrackSub.cancel();
@@ -211,7 +211,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
           pendingLibraryChanges++;
           if (pendingLibraryChanges >= 20) {
-            await library.saveTracks(List<Track>.from(tracks));
+            await library.saveTrackMetadata(List<Track>.from(tracks));
             pendingLibraryChanges = 0;
           }
           await Future<void>.delayed(const Duration(seconds: 2));
@@ -240,7 +240,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
           pendingLibraryChanges++;
           if (pendingLibraryChanges >= 20) {
-            await library.saveTracks(List<Track>.from(tracks));
+            await library.saveTrackMetadata(List<Track>.from(tracks));
             pendingLibraryChanges = 0;
           }
         }
@@ -251,7 +251,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } finally {
       await bpmCache.flush();
       if (pendingLibraryChanges > 0) {
-        await library.saveTracks(List<Track>.from(tracks));
+        await library.saveTrackMetadata(List<Track>.from(tracks));
       }
       _backgroundBpmWorkerRunning = false;
     }
@@ -318,7 +318,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             });
             pendingOnlineLibraryChanges++;
             if (pendingOnlineLibraryChanges >= 20) {
-              await library.saveTracks(List<Track>.from(tracks));
+              await library.saveTrackMetadata(List<Track>.from(tracks));
               pendingOnlineLibraryChanges = 0;
             }
           }
@@ -329,7 +329,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     } finally {
       if (pendingOnlineLibraryChanges > 0) {
-        await library.saveTracks(List<Track>.from(tracks));
+        await library.saveTrackMetadata(List<Track>.from(tracks));
       }
       _backgroundOnlineBpmWorkerRunning = false;
     }
@@ -790,7 +790,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       if (changed && mounted) {
-        await library.saveTracks(List<Track>.from(tracks));
+        await library.saveTrackMetadata(List<Track>.from(tracks));
         await widget.player.setQueue(tracks, load: false);
         setState(() {});
       }
@@ -817,7 +817,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _librarySaveTimer?.cancel();
     _librarySaveTimer = Timer(const Duration(milliseconds: 500), () {
       _librarySaveTimer = null;
-      unawaited(library.saveTracks(List<Track>.from(tracks)));
+      unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
     });
   }
 
