@@ -10,6 +10,7 @@ import '../services/android_music_library_service.dart';
 import '../services/bpm_service.dart';
 import '../services/bpm_cache.dart';
 import '../services/online_bpm_service.dart';
+import '../services/online_artwork_service.dart';
 import '../services/bpm_fusion_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
@@ -34,6 +35,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bpm = BpmService();
   final bpmCache = BpmCache();
   final onlineBpm = OnlineBpmService();
+  final onlineArtwork = OnlineArtworkService();
   final bpmFusion = BpmFusionService();
   final library = LibraryService();
   List<Track> tracks = [];
@@ -110,6 +112,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playerErrorSub.cancel();
     _playerTrackSub.cancel();
     onlineBpm.dispose();
+    onlineArtwork.dispose();
     super.dispose();
   }
 
@@ -155,8 +158,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final current = tracks[currentIndex];
         if (current.artwork != null && current.artwork!.isNotEmpty) continue;
 
-        await _ensureArtwork(track, allowMetadataRead: true);
-        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await _ensureArtwork(
+          track,
+          allowMetadataRead: true,
+          allowOnlineLookup: true,
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
       }
     } finally {
       _artworkWorkerRunning = false;
@@ -166,6 +173,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _ensureArtwork(
     Track track, {
     required bool allowMetadataRead,
+    bool allowOnlineLookup = false,
   }) async {
     if (_artworkLoads.contains(track.id)) return;
 
@@ -180,9 +188,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
       if ((artwork == null || artwork.isEmpty) && allowMetadataRead) {
         artwork = await scanner.loadArtwork(track.path);
-        if (artwork != null && artwork.isNotEmpty) {
-          await library.saveArtwork(track.id, artwork);
-        }
+      }
+
+      if ((artwork == null || artwork.isEmpty) && allowOnlineLookup) {
+        artwork = await onlineArtwork.lookup(
+          title: track.title,
+          artist: track.artist,
+          duration: track.duration,
+        );
+      }
+
+      if (artwork != null && artwork.isNotEmpty) {
+        await library.saveArtwork(track.id, artwork);
       }
 
       if (!mounted || artwork == null || artwork.isEmpty) return;
@@ -548,7 +565,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.player.playAt(n);
     }
 
-    unawaited(_ensureArtwork(t, allowMetadataRead: true));
+    unawaited(_ensureArtwork(
+      t,
+      allowMetadataRead: true,
+      allowOnlineLookup: true,
+    ));
     unawaited(_analyzeTrack(t));
     if (mounted) setState(() {});
   }
