@@ -655,9 +655,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final map = {for (final t in tracks) t.id: t};
     for (final t in found) {
       final existing = map[t.id];
-      map[t.id] = existing != null && (t.artwork == null || t.artwork!.isEmpty)
-          ? t.copyWith(artwork: existing.artwork)
-          : t;
+      if (existing == null) {
+        map[t.id] = t;
+        continue;
+      }
+
+      map[t.id] = t.copyWith(
+        bpm: existing.bpm,
+        bpmConfidence: existing.bpmConfidence,
+        artwork: (t.artwork == null || t.artwork!.isEmpty)
+            ? existing.artwork
+            : t.artwork,
+      );
     }
 
     final hydrated = <Track>[];
