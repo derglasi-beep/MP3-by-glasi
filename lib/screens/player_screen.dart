@@ -194,13 +194,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         scanTotal = 0;
       });
       try {
-        final files = await androidMusicLibrary.getMusicFiles().timeout(
+        final found = await androidMusicLibrary.getMusicTracks().timeout(
           const Duration(seconds: 20),
           onTimeout: () => throw TimeoutException(
             'Android-Musikbibliothek antwortet nicht.',
           ),
         );
-        if (files.isEmpty) {
+        if (found.isEmpty) {
           if (!mounted) return;
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -212,16 +212,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
             );
           return;
         }
-        final found = await scanner.scanFiles(
-          files,
-          onProgress: (done, total) {
-            if (!mounted) return;
-            setState(() {
-              scanDone = done;
-              scanTotal = total;
-            });
-          },
-        );
+        if (mounted) {
+          setState(() {
+            scanDone = found.length;
+            scanTotal = found.length;
+          });
+        }
         await _add(found);
         if (mounted) {
           ScaffoldMessenger.of(context)
