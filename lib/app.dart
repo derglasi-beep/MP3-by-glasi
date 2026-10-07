@@ -37,12 +37,27 @@ class _Shell extends StatefulWidget {
 
 class _ShellState extends State<_Shell> {
   int index = 0;
+  late final PlayerScreen _playerPage;
+  SettingsScreen? _settingsPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _playerPage = PlayerScreen(player: widget.player);
+  }
+
+  void _selectPage(int value) {
+    if (value == 1) {
+      _settingsPage ??= SettingsScreen(player: widget.player);
+    }
+    setState(() => index = value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      PlayerScreen(player: widget.player),
-      SettingsScreen(player: widget.player),
+    final pages = <Widget>[
+      _playerPage,
+      _settingsPage ?? const SizedBox.shrink(),
     ];
 
     return Scaffold(
@@ -59,7 +74,7 @@ class _ShellState extends State<_Shell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (value) => setState(() => index = value),
+        onDestinationSelected: _selectPage,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.library_music),
