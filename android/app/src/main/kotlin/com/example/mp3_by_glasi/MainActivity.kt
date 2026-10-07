@@ -3,7 +3,7 @@ package com.example.mp3_by_glasi
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.ryanheise.audioservice.AudioServiceActivity
@@ -16,7 +16,7 @@ class MainActivity : AudioServiceActivity() {
         private const val AUDIO_PERMISSION_REQUEST = 4107
     }
 
-    private var pendingMusicDirectoryResult: MethodChannel.Result? = null
+    private var pendingMusicFilesResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -26,22 +26,22 @@ class MainActivity : AudioServiceActivity() {
             CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getMusicDirectory" -> resolveMusicDirectory(result)
+                "getMusicFiles" -> resolveMusicFiles(result)
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun resolveMusicDirectory(result: MethodChannel.Result) {
+    private fun resolveMusicFiles(result: MethodChannel.Result) {
         val permission = audioReadPermission()
         if (permission == null ||
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         ) {
-            result.success(publicMusicDirectory())
+            result.success(queryMusicFiles())
             return
         }
 
-        if (pendingMusicDirectoryResult != null) {
+        if (pendingMusicFilesResult != null) {
             result.error(
                 "permission_pending",
                 "Die Audio-Berechtigung wird bereits angefordert.",
@@ -50,7 +50,7 @@ class MainActivity : AudioServiceActivity() {
             return
         }
 
-        pendingMusicDirectoryResult = result
+        pendingMusicFilesResult = result
         ActivityCompat.requestPermissions(
             this,
             arrayOf(permission),
@@ -68,11 +68,50 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun publicMusicDirectory(): String {
-        return Environment
-            .getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-            .absolutePath
+    private fun queryMusicFiles(): List<String> {
+        val result = mutableListOf<String>()
+
+        val projection = mutableListOf(
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.IS_MUSIC
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection.add(MediaStore.Audio.Media.RELATIVE_PATH)
+        }
+
+        val selection: String
+        val selectionArgs: Array<String>
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            selection =
+                "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
+                "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
+            selectionArgs = arrayOf("Music/%")
+        } else {
+            selection =
+                "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
+                "${MediaStore.Audio.Media.DATA} LIKE ?"
+            selectionArgs = arrayOf("%/Music/%")
+        }
+
+        contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection.toTypedArray(),
+            selection,
+            selectionArgs,
+            "${MediaStore.Audio.Media.ARTIST} COLLATE NOCASE, " +
+                "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE"
+        )?.use { cursor ->
+            val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            while (cursor.moveToNext()) {
+                if (dataIndex < 0) continue
+                val path = cursor.getString(dataIndex) ?: continue
+                if (path.isNotBlank()) result.add(path)
+            }
+        }
+
+        return result.distinct()
     }
 
     override fun onRequestPermissionsResult(
@@ -84,13 +123,13 @@ class MainActivity : AudioServiceActivity() {
 
         if (requestCode != AUDIO_PERMISSION_REQUEST) return
 
-        val result = pendingMusicDirectoryResult ?: return
-        pendingMusicDirectoryResult = null
+        val result = pendingMusicFilesResult ?: return
+        pendingMusicFilesResult = null
 
         if (grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
-            result.success(publicMusicDirectory())
+            result.success(queryMusicFiles())
         } else {
             result.error(
                 "permission_denied",
