@@ -16,7 +16,7 @@ class MainActivity : AudioServiceActivity() {
         private const val AUDIO_PERMISSION_REQUEST = 4107
     }
 
-    private var pendingMusicFilesResult: MethodChannel.Result? = null
+    private var pendingMusicTracksResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -26,22 +26,22 @@ class MainActivity : AudioServiceActivity() {
             CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getMusicFiles" -> resolveMusicFiles(result)
+                "getMusicTracks" -> resolveMusicTracks(result)
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun resolveMusicFiles(result: MethodChannel.Result) {
+    private fun resolveMusicTracks(result: MethodChannel.Result) {
         val permission = audioReadPermission()
         if (permission == null ||
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         ) {
-            queryMusicFilesAsync(result)
+            queryMusicTracksAsync(result)
             return
         }
 
-        if (pendingMusicFilesResult != null) {
+        if (pendingMusicTracksResult != null) {
             result.error(
                 "permission_pending",
                 "Die Audio-Berechtigung wird bereits angefordert.",
@@ -50,7 +50,7 @@ class MainActivity : AudioServiceActivity() {
             return
         }
 
-        pendingMusicFilesResult = result
+        pendingMusicTracksResult = result
         ActivityCompat.requestPermissions(
             this,
             arrayOf(permission),
@@ -68,11 +68,11 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    private fun queryMusicFilesAsync(result: MethodChannel.Result) {
+    private fun queryMusicTracksAsync(result: MethodChannel.Result) {
         Thread {
             try {
-                val files = queryMusicFiles()
-                runOnUiThread { result.success(files) }
+                val tracks = queryMusicTracks()
+                runOnUiThread { result.success(tracks) }
             } catch (e: Exception) {
                 runOnUiThread {
                     result.error(
@@ -85,11 +85,16 @@ class MainActivity : AudioServiceActivity() {
         }.start()
     }
 
-    private fun queryMusicFiles(): List<String> {
-        val result = mutableListOf<String>()
+    private fun queryMusicTracks(): List<Map<String, Any?>> {
+        val result = mutableListOf<Map<String, Any?>>()
         val projection = mutableListOf(
             MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.IS_MUSIC
+            MediaStore.Audio.Media.IS_MUSIC,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.YEAR
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -105,6 +110,11 @@ class MainActivity : AudioServiceActivity() {
                 "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE"
         )?.use { cursor ->
             val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            val titleIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+            val artistIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+            val albumIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
+            val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+            val yearIndex = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
             val relativePathIndex =
                 cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
 
@@ -129,13 +139,22 @@ class MainActivity : AudioServiceActivity() {
                         normalized.contains("/Music/", ignoreCase = true)
                     }
 
-                if (isInMusicDirectory) {
-                    result.add(path)
-                }
+                if (!isInMusicDirectory) continue
+
+                result.add(
+                    mapOf(
+                        "path" to path,
+                        "title" to if (titleIndex >= 0) cursor.getString(titleIndex) else null,
+                        "artist" to if (artistIndex >= 0) cursor.getString(artistIndex) else null,
+                        "album" to if (albumIndex >= 0) cursor.getString(albumIndex) else null,
+                        "durationMs" to if (durationIndex >= 0) cursor.getLong(durationIndex) else null,
+                        "year" to if (yearIndex >= 0) cursor.getInt(yearIndex) else null
+                    )
+                )
             }
         }
 
-        return result.distinct()
+        return result.distinctBy { it["path"] as? String }
     }
 
     override fun onRequestPermissionsResult(
@@ -147,13 +166,13 @@ class MainActivity : AudioServiceActivity() {
 
         if (requestCode != AUDIO_PERMISSION_REQUEST) return
 
-        val result = pendingMusicFilesResult ?: return
-        pendingMusicFilesResult = null
+        val result = pendingMusicTracksResult ?: return
+        pendingMusicTracksResult = null
 
         if (grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
-            queryMusicFilesAsync(result)
+            queryMusicTracksAsync(result)
         } else {
             result.error(
                 "permission_denied",
