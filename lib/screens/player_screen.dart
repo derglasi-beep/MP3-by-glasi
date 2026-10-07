@@ -104,10 +104,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _restoreLibrary() async {
     final saved = await library.loadTracks();
     if (!mounted || saved.isEmpty) return;
-    final valid = <Track>[];
-    for (final t in saved) {
-      if (await File(t.path).exists()) valid.add(t);
-    }
+    final checks = await Future.wait(saved.map((t) async => MapEntry(t, await File(t.path).exists())));
+    final valid = <Track>[for (final check in checks) if (check.value) check.key];
     if (!mounted) return;
     setState(() => tracks = valid);
     if (valid.length != saved.length) await library.saveTracks(valid);
