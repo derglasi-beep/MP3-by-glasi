@@ -17,6 +17,8 @@ class BpmCache {
 
   Future<Map<String, BpmCacheEntry>>? _dataFuture;
   Future<void> _writeTail = Future.value();
+  Timer? _deferredWriteTimer;
+  bool _deferredWriteDirty = false;
 
   Future<Map<String, BpmCacheEntry>> _data() =>
       _dataFuture ??= _readFromStorage();
@@ -60,6 +62,34 @@ class BpmCache {
     await _queueWrite(Map<String, BpmCacheEntry>.from(data));
   }
 
+  Future<void> putDeferred(
+    String path,
+    double bpm, {
+    double? confidence,
+  }) async {
+    final data = await _data();
+    data[path] = BpmCacheEntry(bpm: bpm, confidence: confidence);
+    _deferredWriteDirty = true;
+    _deferredWriteTimer?.cancel();
+    _deferredWriteTimer = Timer(const Duration(seconds: 8), () {
+      _deferredWriteTimer = null;
+      unawaited(flush());
+    });
+  }
+
+  Future<void> flush() async {
+    _deferredWriteTimer?.cancel();
+    _deferredWriteTimer = null;
+    if (!_deferredWriteDirty) {
+      await _writeTail;
+      return;
+    }
+
+    _deferredWriteDirty = false;
+    final data = await _data();
+    await _queueWrite(Map<String, BpmCacheEntry>.from(data));
+  }
+
   Future<void> remove(String path) async {
     final data = await _data();
     if (data.remove(path) == null) return;
@@ -67,6 +97,9 @@ class BpmCache {
   }
 
   Future<void> clear() async {
+    _deferredWriteTimer?.cancel();
+    _deferredWriteTimer = null;
+    _deferredWriteDirty = false;
     final data = await _data();
     data.clear();
 
