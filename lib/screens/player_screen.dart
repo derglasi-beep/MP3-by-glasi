@@ -185,10 +185,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> addFolder() async {
     if (Platform.isAndroid) {
       try {
-        final p = await androidMusicLibrary.getMusicDirectory();
-        if (p != null) {
-          await _add(await scanner.scanDirectory(p));
+        final files = await androidMusicLibrary.getMusicFiles();
+        if (files.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                behavior: SnackBarBehavior.floating,
+                content: Text('Keine Musikdateien im Android-Musikordner gefunden.'),
+              ),
+            );
+          return;
         }
+        await _add(await scanner.scanFiles(files));
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
