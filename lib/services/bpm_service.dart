@@ -8,9 +8,25 @@ import 'bpm_analyzer.dart';
 
 class BpmService {
   final BpmAnalyzer analyzer;
+  Future<void> _analysisTail = Future.value();
+
   BpmService({BpmAnalyzer? analyzer}) : analyzer = analyzer ?? BpmAnalyzer();
 
-  Future<BpmResult?> analyzeFileResult(String inputPath) async {
+  Future<BpmResult?> analyzeFileResult(String inputPath) {
+    final completer = Completer<BpmResult?>();
+    _analysisTail = _analysisTail.then((_) async {
+      try {
+        completer.complete(await _analyzeFileResultNow(inputPath));
+      } catch (error, stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      }
+    });
+    return completer.future;
+  }
+
+  Future<BpmResult?> _analyzeFileResultNow(String inputPath) async {
     final temp = await getTemporaryDirectory();
     final output = File(
       temp.path + '/bpm_' + DateTime.now().microsecondsSinceEpoch.toString() + '.f32',
