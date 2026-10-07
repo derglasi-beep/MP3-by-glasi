@@ -138,6 +138,21 @@ class LibraryService {
     return _trackSaveTail;
   }
 
+  Future<void> saveTrackMetadata(List<Track> tracks) {
+    final snapshot = List<Track>.from(tracks);
+    _trackSaveTail = _trackSaveTail.then((_) => _saveTrackMetadataNow(snapshot));
+    return _trackSaveTail;
+  }
+
+  Future<void> _saveTrackMetadataNow(List<Track> tracks) async {
+    final raw = jsonEncode(tracks.map(_trackToJson).toList());
+    final file = await _libraryFile();
+    await _writeLibraryFile(file, raw);
+
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_tracksKey);
+  }
+
   Future<void> _saveTracksNow(List<Track> tracks) async {
     final artworkDirectory = await _artworkDirectory();
     final liveArtworkFiles = <String>{};
@@ -170,14 +185,7 @@ class LibraryService {
       }
     }
 
-    final raw = jsonEncode(tracks.map(_trackToJson).toList());
-    final file = await _libraryFile();
-    await _writeLibraryFile(file, raw);
-
-    // The file is now the authoritative library store. Remove the large
-    // legacy SharedPreferences value after a successful write.
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_tracksKey);
+    await _saveTrackMetadataNow(tracks);
   }
 
   Future<void> _writeLibraryFile(File file, String raw) async {
