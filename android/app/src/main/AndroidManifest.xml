@@ -1,5 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Netzwerkzugriff für Online-BPM-Abgleich -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Lokale Audiodateien (Android 13+ / ältere Android-Versionen) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Benachrichtigung der Medienwiedergabe auf Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Audio / Hintergrundwiedergabe -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
