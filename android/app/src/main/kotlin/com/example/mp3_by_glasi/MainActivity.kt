@@ -94,7 +94,8 @@ class MainActivity : AudioServiceActivity() {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.YEAR
+            MediaStore.Audio.Media.YEAR,
+            MediaStore.Audio.Media.TRACK
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -115,6 +116,7 @@ class MainActivity : AudioServiceActivity() {
             val albumIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
             val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
             val yearIndex = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
+            val trackIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TRACK)
             val relativePathIndex =
                 cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
 
@@ -148,7 +150,15 @@ class MainActivity : AudioServiceActivity() {
                         "artist" to if (artistIndex >= 0) cursor.getString(artistIndex) else null,
                         "album" to if (albumIndex >= 0) cursor.getString(albumIndex) else null,
                         "durationMs" to if (durationIndex >= 0) cursor.getLong(durationIndex) else null,
-                        "year" to if (yearIndex >= 0) cursor.getInt(yearIndex) else null
+                        "year" to if (yearIndex >= 0) cursor.getInt(yearIndex) else null,
+                        "trackNumber" to if (trackIndex >= 0) {
+                            val rawTrack = cursor.getInt(trackIndex)
+                            when {
+                                rawTrack <= 0 -> null
+                                rawTrack >= 1000 -> rawTrack % 1000
+                                else -> rawTrack
+                            }
+                        } else null
                     )
                 )
             }
