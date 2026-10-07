@@ -46,6 +46,23 @@ class MusicScanner {
     return scanFiles(files);
   }
 
+  Future<Uint8List?> loadArtwork(String path) async {
+    final file = File(path);
+    try {
+      final metadata = readMetadata(file, getImage: true);
+      if (metadata.pictures.isNotEmpty) {
+        final bytes = metadata.pictures.first.bytes as List<int>;
+        if (bytes.isNotEmpty) {
+          return Uint8List.fromList(bytes);
+        }
+      }
+    } catch (_) {
+      // Fall through to folder artwork.
+    }
+
+    return _folderArtwork(file);
+  }
+
   Future<Track> _readTrack(File file) async {
     dynamic metadata;
     Uint8List? artwork;
