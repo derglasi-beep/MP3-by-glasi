@@ -53,13 +53,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     volume=values[6] as double;
     if (!mounted) return;
     setState(() {});
-    if (eqAvailable) {
-      for (var i=0;i<bands.length;i++) {
-        if (bands[i] != 0) await eq.setBand(i,bands[i]);
-      }
-    }
-    await widget.player.setVolume(volume);
-    await widget.player.setSpeed(speed);
   }
 
   Widget slider(String title,double value,double min,double max,ValueChanged<double> onChanged)=>
