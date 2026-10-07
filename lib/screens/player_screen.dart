@@ -889,7 +889,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final visibleTracks = visible;
+    final artistMatches = artistMatches;
+    final albumMatches = albumMatches;
+
+    return Scaffold(
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
@@ -1010,7 +1015,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Expanded(
         child: Column(
           children: [
-            if (matchingArtists.isNotEmpty) ...[
+            if (artistMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -1026,10 +1031,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-                  itemCount: matchingArtists.length,
+                  itemCount: artistMatches.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (_, index) {
-                    final artistTracks = matchingArtists[index];
+                    final artistTracks = artistMatches[index];
                     final first = artistTracks.first;
                     Track coverTrack = first;
                     for (final track in artistTracks) {
@@ -1104,7 +1109,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ],
-            if (matchingAlbums.isNotEmpty) ...[
+            if (albumMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -1120,10 +1125,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                  itemCount: matchingAlbums.length,
+                  itemCount: albumMatches.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (_, index) {
-                    final albumTracks = matchingAlbums[index];
+                    final albumTracks = albumMatches[index];
                     final first = albumTracks.first;
                     Track coverTrack = first;
                     for (final track in albumTracks) {
@@ -1231,20 +1236,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Titel (${visible.length})',
+                    'Titel (${visibleTracks.length})',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
             Expanded(
-              child: visible.isEmpty
+              child: visibleTracks.isEmpty
                   ? const Center(
                       child: Text('Keine Titel in der Bibliothek'),
                     )
                   : ListView.builder(
-                      itemCount: visible.length,
+                      itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
-                        final t = visible[i];
+                        final t = visibleTracks[i];
                         return ListTile(
                           selected: widget.player.currentTrack?.id == t.id,
                           leading: t.artwork == null
@@ -1320,6 +1325,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     ]),
   );
+  }
 
   Widget _player() => StreamBuilder<PlayerState>(
     stream: widget.player.playerStateStream,
