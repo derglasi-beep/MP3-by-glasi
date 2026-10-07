@@ -134,7 +134,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   double _phaseDistance(Track track, SpinningPhase phase) {
-    final bpm = track.bpm ?? 0;
+    final bpm = track.bpm;
+    if (bpm == null || bpm <= 0) return double.infinity;
     final spec = _phaseSpec(phase);
     if (bpm < spec.minBpm) return spec.minBpm - bpm;
     if (bpm > spec.maxBpm) return bpm - spec.maxBpm;
@@ -155,9 +156,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   Future<void> _chooseManualTracks() async {
-    final usable = widget.tracks
-        .where((track) => track.bpm != null && track.bpm! > 0)
-        .toList(growable: false);
+    final libraryTracks = List<Track>.from(widget.tracks);
 
     var activePhase = SpinningPhase.warmup;
     var query = '';
@@ -172,7 +171,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           final q = query.trim().toLowerCase();
-          final visible = usable.where((track) {
+          final visible = libraryTracks.where((track) {
             if (q.isEmpty) return true;
             return track.title.toLowerCase().contains(q) ||
                 track.artist.toLowerCase().contains(q) ||
@@ -231,7 +230,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         final spec = _phaseSpec(activePhase);
                         return Text(
                           'Phase: ${_phaseLabel(activePhase)} · '
-                          '${working[activePhase]!.length} Titel · '
+                          '${working[activePhase]!.length} gewählt · '
+                          '${visible.length} Treffer · '
                           'empfohlen ${_displayBpm(spec.minBpm.toDouble()).round()}–'
                           '${_displayBpm(spec.maxBpm.toDouble()).round()} BPM',
                         );
@@ -245,6 +245,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       itemBuilder: (_, index) {
                         final track = visible[index];
                         final selected = activeIds.contains(track.id);
+                        final hasBpm = track.bpm != null && track.bpm! > 0;
                         return CheckboxListTile(
                           value: selected,
                           dense: true,
@@ -254,12 +255,14 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${track.artist} · ${_bpmText(track.bpm!)} · '
-                            '${_phaseHint(track, activePhase)}',
+                            hasBpm
+                                ? '${track.artist} · ${_bpmText(track.bpm!)} · '
+                                    '${_phaseHint(track, activePhase)}'
+                                : '${track.artist} · BPM noch analysieren',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          onChanged: (value) {
+                          onChanged: hasBpm ? (value) {
                             setDialogState(() {
                               final list = working[activePhase]!;
                               if (value == true) {
@@ -270,7 +273,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                                 list.removeWhere((item) => item.id == track.id);
                               }
                             });
-                          },
+                          } : null,
                         );
                       },
                     ),
