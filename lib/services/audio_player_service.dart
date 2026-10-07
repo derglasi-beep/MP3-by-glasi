@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
+import 'equalizer_service.dart';
+import 'settings_service.dart';
 
 class AudioPlayerService {
   final AndroidEqualizer equalizer = AndroidEqualizer();
@@ -274,6 +276,37 @@ class AudioPlayerService {
   }
   Future<void> setVolume(double v) => audio.setVolume(v.clamp(0, 1));
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
+
+  Future<void> restoreAudioSettings() async {
+    final settings = SettingsService();
+    final values = await Future.wait([
+      settings.volume,
+      settings.speed,
+      settings.eqBands,
+    ]);
+
+    await setVolume(values[0] as double);
+    await setSpeed(values[1] as double);
+
+    final savedBands = values[2] as List<double>;
+    final eq = EqualizerService(effect: equalizer);
+    final info = await eq.info;
+    if (info == null || info.bands.isEmpty) return;
+
+    for (var i = 0; i < info.bands.length && i < savedBands.length; i++) {
+      final gain = savedBands[i].clamp(
+        info.minDecibels,
+        info.maxDecibels,
+      ).toDouble();
+      if (gain != 0) {
+        await info.bands[i].setGain(gain);
+      }
+    }
+
+    if (savedBands.take(info.bands.length).any((gain) => gain != 0)) {
+      await equalizer.setEnabled(true);
+    }
+  }
 
   int _nextShuffleIndex() {
     if (queue.length <= 1) return currentIndex;
