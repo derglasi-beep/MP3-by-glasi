@@ -111,6 +111,48 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
   int get _manualTrackCount =>
       manualPhaseTracks.values.fold(0, (sum, tracks) => sum + tracks.length);
+  SpinningPhaseSpec _phaseSpec(SpinningPhase phase) =>
+      SpinningPlaylistService.defaultPhases
+          .firstWhere((spec) => spec.phase == phase);
+
+  SpinningPhase _suggestedPhase(double bpm) {
+    SpinningPhase best = SpinningPhase.warmup;
+    var bestDistance = double.infinity;
+
+    for (final spec in SpinningPlaylistService.defaultPhases) {
+      final distance = bpm < spec.minBpm
+          ? spec.minBpm - bpm
+          : bpm > spec.maxBpm
+              ? bpm - spec.maxBpm
+              : 0.0;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = spec.phase;
+      }
+    }
+    return best;
+  }
+
+  double _phaseDistance(Track track, SpinningPhase phase) {
+    final bpm = track.bpm ?? 0;
+    final spec = _phaseSpec(phase);
+    if (bpm < spec.minBpm) return spec.minBpm - bpm;
+    if (bpm > spec.maxBpm) return bpm - spec.maxBpm;
+    return 0;
+  }
+
+  String _phaseHint(Track track, SpinningPhase phase) {
+    final bpm = track.bpm;
+    if (bpm == null) return 'BPM unbekannt';
+    final spec = _phaseSpec(phase);
+
+    if (bpm >= spec.minBpm && bpm <= spec.maxBpm) {
+      return 'Passt gut zu ${_phaseLabel(phase)}';
+    }
+
+    final suggested = _suggestedPhase(bpm);
+    return 'Eher ${_phaseLabel(suggested)}';
+  }
 
   Future<void> _chooseManualTracks() async {
     final usable = widget.tracks
@@ -135,7 +177,17 @@ class _SpinningScreenState extends State<SpinningScreen> {
             return track.title.toLowerCase().contains(q) ||
                 track.artist.toLowerCase().contains(q) ||
                 track.album.toLowerCase().contains(q);
-          }).toList(growable: false);
+          }).toList(growable: true)
+            ..sort((a, b) {
+              final distanceA = _phaseDistance(a, activePhase);
+              final distanceB = _phaseDistance(b, activePhase);
+              if (distanceA != distanceB) {
+                return distanceA.compareTo(distanceB);
+              }
+              return a.title.toLowerCase().compareTo(
+                    b.title.toLowerCase(),
+                  );
+            });
 
           final activeIds =
               working[activePhase]!.map((track) => track.id).toSet();
@@ -174,9 +226,16 @@ class _SpinningScreenState extends State<SpinningScreen> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Phase: ${_phaseLabel(activePhase)} · '
-                      '${working[activePhase]!.length} Titel',
+                    child: Builder(
+                      builder: (_) {
+                        final spec = _phaseSpec(activePhase);
+                        return Text(
+                          'Phase: ${_phaseLabel(activePhase)} · '
+                          '${working[activePhase]!.length} Titel · '
+                          'empfohlen ${_displayBpm(spec.minBpm.toDouble()).round()}–'
+                          '${_displayBpm(spec.maxBpm.toDouble()).round()} BPM',
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -195,8 +254,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${track.artist} · ${_bpmText(track.bpm!)}',
-                            maxLines: 1,
+                            '${track.artist} · ${_bpmText(track.bpm!)} · '
+                            '${_phaseHint(track, activePhase)}',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           onChanged: (value) {
