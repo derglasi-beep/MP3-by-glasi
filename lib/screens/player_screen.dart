@@ -891,8 +891,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final visibleTracks = visible;
-    final artistMatches = artistMatches;
-    final albumMatches = albumMatches;
+    final artistMatches = matchingArtists;
+    final albumMatches = matchingAlbums;
 
     return Scaffold(
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
