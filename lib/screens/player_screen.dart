@@ -62,6 +62,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   bool _backgroundBpmWorkerRunning = false;
+  bool _backgroundOnlineBpmWorkerRunning = false;
 
   @override
   void initState() {
@@ -238,6 +239,77 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     } finally {
       _backgroundBpmWorkerRunning = false;
+    }
+
+    if (mounted) {
+      unawaited(_verifyBpmOnlineInBackground());
+    }
+  }
+
+  Future<void> _verifyBpmOnlineInBackground() async {
+    if (_backgroundOnlineBpmWorkerRunning || tracks.isEmpty) return;
+
+    // Only start once the local pass has no unresolved titles left.
+    final unresolvedLocal = tracks.any(
+      (track) => track.bpm == null || track.bpm! <= 0,
+    );
+    if (unresolvedLocal) return;
+
+    _backgroundOnlineBpmWorkerRunning = true;
+    try {
+      await Future<void>.delayed(const Duration(seconds: 5));
+
+      for (final snapshot in List<Track>.from(tracks)) {
+        if (!mounted) return;
+
+        while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
+          await Future<void>.delayed(const Duration(seconds: 3));
+        }
+        if (!mounted) return;
+
+        final index = tracks.indexWhere((item) => item.id == snapshot.id);
+        if (index < 0) continue;
+        final current = tracks[index];
+        final localValue = current.bpm;
+        if (localValue == null || localValue <= 0) continue;
+
+        // High-confidence fused values do not need another background lookup.
+        if ((current.bpmConfidence ?? 0) >= 0.85) continue;
+
+        final online = await onlineBpm.lookup(
+          title: current.title,
+          artist: current.artist,
+          duration: current.duration,
+        );
+        if (!mounted) return;
+
+        if (online != null) {
+          final fusion = bpmFusion.fuse(
+            localBpm: localValue,
+            localConfidence: current.bpmConfidence,
+            online: online,
+          );
+
+          if (fusion.bpm > 0) {
+            setState(() {
+              final freshIndex =
+                  tracks.indexWhere((item) => item.id == current.id);
+              if (freshIndex >= 0) {
+                tracks[freshIndex] = tracks[freshIndex].copyWith(
+                  bpm: fusion.bpm,
+                  bpmConfidence: fusion.confidence,
+                );
+              }
+            });
+            _scheduleLibrarySave();
+          }
+        }
+
+        // Be deliberately gentle with the network/API.
+        await Future<void>.delayed(const Duration(seconds: 5));
+      }
+    } finally {
+      _backgroundOnlineBpmWorkerRunning = false;
     }
   }
 
