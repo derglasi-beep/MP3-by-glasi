@@ -62,14 +62,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _band(int i,double v) async {
     setState(()=>bands[i]=v);
-    await eq.setBand(i,v);
+    await widget.player.setEqBand(i,v);
     await s.setEqBand(i,v);
   }
 
   Future<void> _resetEq() async {
     for (var i=0;i<bands.length;i++) {
       bands[i]=0;
-      await eq.setBand(i,0);
+      await widget.player.setEqBand(i,0);
       await s.setEqBand(i,0);
     }
     if (mounted) setState(() {});
@@ -111,13 +111,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const Divider(height:32),
       Text('Sound',style:Theme.of(context).textTheme.headlineSmall),
       slider('Preamp  ${preamp.toStringAsFixed(1)} dB',preamp,-12,12,(v){
-        setState(()=>preamp=v); s.setPreamp(v);
+        setState(()=>preamp=v); widget.player.setPreamp(v); s.setPreamp(v);
       }),
       slider('Bass  ${bass.toStringAsFixed(0)} dB',bass,-12,12,(v){
-        setState(()=>bass=v); s.setBass(v);
+        setState(()=>bass=v); widget.player.setBass(v); s.setBass(v);
       }),
       slider('Treble  ${treble.toStringAsFixed(0)} dB',treble,-12,12,(v){
-        setState(()=>treble=v); s.setTreble(v);
+        setState(()=>treble=v); widget.player.setTreble(v); s.setTreble(v);
       }),
       const Divider(height:32),
       Text('Wiedergabe',style:Theme.of(context).textTheme.headlineSmall),
