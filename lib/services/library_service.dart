@@ -10,12 +10,22 @@ import '../models/track.dart';
 class LibraryService {
   static const _tracksKey = 'library_tracks_v1';
   static const _playlistsKey = 'library_playlists_v1';
+  static const _libraryFileName = 'library_tracks_v2.json';
 
   Future<void> _trackSaveTail = Future.value();
 
+  Future<File> _libraryFile() async {
+    final support = await getApplicationSupportDirectory();
+    return File(
+      '${support.path}${Platform.pathSeparator}$_libraryFileName',
+    );
+  }
+
   Future<Directory> _artworkDirectory() async {
     final support = await getApplicationSupportDirectory();
-    final directory = Directory('${support.path}${Platform.pathSeparator}artwork');
+    final directory = Directory(
+      '${support.path}${Platform.pathSeparator}artwork',
+    );
     if (!await directory.exists()) {
       await directory.create(recursive: true);
     }
@@ -33,32 +43,57 @@ class LibraryService {
   }
 
   Future<List<Track>> loadTracks() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_tracksKey);
-    if (raw == null) return [];
+    String? raw;
+    final file = await _libraryFile();
+
+    if (await file.exists()) {
+      try {
+        raw = await file.readAsString();
+      } catch (_) {
+        raw = null;
+      }
+    }
+
+    // One-time migration from the old SharedPreferences library.
+    if (raw == null || raw.isEmpty) {
+      final p = await SharedPreferences.getInstance();
+      raw = p.getString(_tracksKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          await _writeLibraryFile(file, raw);
+        } catch (_) {
+          // Keep using the legacy copy if migration cannot be written yet.
+        }
+      }
+    }
+
+    if (raw == null || raw.isEmpty) return [];
 
     try {
       final list = jsonDecode(raw) as List;
-      final artworkDirectory = await _artworkDirectory();
+      final artworkDirectory =
+          Platform.isAndroid ? null : await _artworkDirectory();
       final tracks = <Track>[];
 
       for (final entry in list) {
         final json = Map<String, dynamic>.from(entry as Map);
-        final id = json['id'] as String;
-        final artworkFile = File(
-          '${artworkDirectory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
-        );
+        Uint8List? artwork;
 
-        var artwork = await artworkFile.exists()
-            ? await artworkFile.readAsBytes()
-            : null;
+        // On Android the library must restore quickly even with 10k+ tracks.
+        // Artwork loading is intentionally skipped here and can be handled
+        // separately/lazily later.
+        if (artworkDirectory != null) {
+          final id = json['id'] as String;
+          final artworkFile = File(
+            '${artworkDirectory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
+          );
 
-        // Backwards compatibility with the old SharedPreferences format.
-        // Legacy artwork is migrated to a separate file on the next save.
-        if (artwork == null &&
-            json['artwork'] is String &&
-            (json['artwork'] as String).isNotEmpty) {
-          artwork = base64Decode(json['artwork'] as String);
+          if (await artworkFile.exists()) {
+            artwork = await artworkFile.readAsBytes();
+          } else if (json['artwork'] is String &&
+              (json['artwork'] as String).isNotEmpty) {
+            artwork = base64Decode(json['artwork'] as String);
+          }
         }
 
         tracks.add(_trackFromJson(json, artwork: artwork));
@@ -77,7 +112,6 @@ class LibraryService {
   }
 
   Future<void> _saveTracksNow(List<Track> tracks) async {
-    final p = await SharedPreferences.getInstance();
     final artworkDirectory = await _artworkDirectory();
     final liveArtworkFiles = <String>{};
 
@@ -97,7 +131,6 @@ class LibraryService {
       }
     }
 
-    // Remove covers for tracks that no longer exist in the library.
     await for (final entity in artworkDirectory.list()) {
       if (entity is File &&
           entity.path.endsWith('.img') &&
@@ -110,10 +143,33 @@ class LibraryService {
       }
     }
 
-    await p.setString(
-      _tracksKey,
-      jsonEncode(tracks.map(_trackToJson).toList()),
-    );
+    final raw = jsonEncode(tracks.map(_trackToJson).toList());
+    final file = await _libraryFile();
+    await _writeLibraryFile(file, raw);
+
+    // The file is now the authoritative library store. Remove the large
+    // legacy SharedPreferences value after a successful write.
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_tracksKey);
+  }
+
+  Future<void> _writeLibraryFile(File file, String raw) async {
+    final temp = File('${file.path}.tmp');
+    await temp.writeAsString(raw, flush: true);
+
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await temp.rename(file.path);
+    } catch (_) {
+      await file.writeAsString(raw, flush: true);
+      if (await temp.exists()) {
+        try {
+          await temp.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   Future<Map<String, List<String>>> loadPlaylists() async {
