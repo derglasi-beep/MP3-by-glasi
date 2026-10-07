@@ -19,7 +19,8 @@ class NowPlayingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Jetzt läuft'),
+        title: const SizedBox.shrink(),
+        centerTitle: false,
         actions: [
           IconButton(
             tooltip: 'Queue',
@@ -52,29 +53,29 @@ class NowPlayingScreen extends StatelessWidget {
 
                 return SafeArea(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                     child: Column(
                       children: [
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         ConstrainedBox(
                           constraints: const BoxConstraints(
-                            maxWidth: 520,
-                            maxHeight: 520,
+                            maxWidth: 560,
+                            maxHeight: 560,
                           ),
                           child: AspectRatio(
                             aspectRatio: 1,
                             child: Hero(
                               tag: 'now-playing-cover',
                               child: Material(
-                                elevation: 12,
-                                borderRadius: BorderRadius.circular(18),
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(12),
                                 clipBehavior: Clip.antiAlias,
                                 child: track?.artwork == null
                                     ? Container(
                                         color: Theme.of(context)
                                             .colorScheme
                                             .surfaceContainerHighest,
-                                        child: const Icon(Icons.album, size: 150),
+                                        child: const Icon(Icons.album, size: 160),
                                       )
                                     : Image.memory(
                                         track!.artwork!,
@@ -84,36 +85,41 @@ class NowPlayingScreen extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 20),
                         Text(
                           track?.title ?? 'Keine Wiedergabe',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
+                          textAlign: TextAlign.left,
                           style: Theme.of(context)
                               .textTheme
                               .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          track?.artist ?? 'Lokale Bibliothek',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            track?.artist ?? 'Lokale Bibliothek',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                         ),
                         if (track?.album != null) ...[
                           const SizedBox(height: 2),
-                          Text(
-                            track!.album,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              track!.album,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                           ),
                         ],
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             BpmBadge(bpm: track?.bpm),
                             const SizedBox(width: 8),
@@ -125,7 +131,7 @@ class NowPlayingScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         GlasiVisualizer(
                           playing: playing,
                           bpm: track?.bpm,
@@ -173,7 +179,8 @@ class NowPlayingScreen extends StatelessWidget {
                               icon: Icon(
                                 playing ? Icons.pause : Icons.play_arrow,
                               ),
-                              iconSize: 42,
+                              iconSize: 54,
+                              padding: const EdgeInsets.all(16),
                             ),
                             IconButton(
                               tooltip: 'Weiter',
