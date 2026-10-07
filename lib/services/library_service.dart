@@ -11,6 +11,8 @@ class LibraryService {
   static const _tracksKey = 'library_tracks_v1';
   static const _playlistsKey = 'library_playlists_v1';
 
+  Future<void> _trackSaveTail = Future.value();
+
   Future<Directory> _artworkDirectory() async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory('${support.path}${Platform.pathSeparator}artwork');
@@ -68,7 +70,13 @@ class LibraryService {
     }
   }
 
-  Future<void> saveTracks(List<Track> tracks) async {
+  Future<void> saveTracks(List<Track> tracks) {
+    final snapshot = List<Track>.from(tracks);
+    _trackSaveTail = _trackSaveTail.then((_) => _saveTracksNow(snapshot));
+    return _trackSaveTail;
+  }
+
+  Future<void> _saveTracksNow(List<Track> tracks) async {
     final p = await SharedPreferences.getInstance();
     final artworkDirectory = await _artworkDirectory();
     final liveArtworkFiles = <String>{};
