@@ -430,6 +430,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return result;
   }
 
+  List<List<Track>> get matchingAlbums {
+    final q = search.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+
+    final groups = <String, List<Track>>{};
+    for (final track in tracks) {
+      final album = track.album.trim();
+      if (album.isEmpty || album.toLowerCase() == 'unbekannt') continue;
+      if (!album.toLowerCase().contains(q)) continue;
+
+      final key = '${track.artist.trim().toLowerCase()}|${album.toLowerCase()}';
+      groups.putIfAbsent(key, () => <Track>[]).add(track);
+    }
+
+    final result = groups.values.toList()
+      ..sort((a, b) {
+        final albumCompare =
+            a.first.album.toLowerCase().compareTo(b.first.album.toLowerCase());
+        if (albumCompare != 0) return albumCompare;
+        return a.first.artist.toLowerCase().compareTo(
+              b.first.artist.toLowerCase(),
+            );
+      });
+    return result;
+  }
+
+  Future<void> _playAlbum(List<Track> albumTracks) async {
+    if (albumTracks.isEmpty) return;
+    await widget.player.setQueue(albumTracks, startIndex: 0);
+    await widget.player.play();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _queueAlbum(List<Track> albumTracks) async {
+    if (albumTracks.isEmpty) return;
+    await widget.player.addTracksToQueue(albumTracks);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            '${albumTracks.length} Titel aus "${albumTracks.first.album}" zur Queue hinzugefügt.',
+          ),
+        ),
+      );
+  }
+
   String _text(String value) => value.trim().toLowerCase();
 
   String _bpmLabel(double? value) => value == null ? '—' : '${value.round()} BPM';
@@ -882,70 +931,191 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ]),
       ),
       Expanded(
-        child: visible.isEmpty
-            ? const Center(child: Text('Keine Titel in der Bibliothek'))
-            : ListView.builder(
-                itemCount: visible.length,
-                itemBuilder: (_, i) {
-                  final t = visible[i];
-                  return ListTile(
-                    selected: widget.player.currentTrack?.id == t.id,
-                    leading: t.artwork == null
-                        ? const CircleAvatar(child: Icon(Icons.music_note))
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Image.memory(
-                              t.artwork!,
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
+        child: Column(
+          children: [
+            if (matchingAlbums.isNotEmpty)
+              SizedBox(
+                height: 92,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                  itemCount: matchingAlbums.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, index) {
+                    final albumTracks = matchingAlbums[index];
+                    final first = albumTracks.first;
+                    Track coverTrack = first;
+                    for (final track in albumTracks) {
+                      if (track.artwork != null && track.artwork!.isNotEmpty) {
+                        coverTrack = track;
+                        break;
+                      }
+                    }
+
+                    return SizedBox(
+                      width: 300,
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _playAlbum(albumTracks),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: SizedBox(
+                                    width: 58,
+                                    height: 58,
+                                    child: coverTrack.artwork == null
+                                        ? Container(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                            child: const Icon(Icons.album),
+                                          )
+                                        : Image.memory(
+                                            coverTrack.artwork!,
+                                            fit: BoxFit.cover,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        first.album,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall,
+                                      ),
+                                      Text(
+                                        '${first.artist} · ${albumTracks.length} Titel',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  tooltip: 'Album-Aktion',
+                                  onSelected: (action) async {
+                                    if (action == 'play') {
+                                      await _playAlbum(albumTracks);
+                                    } else if (action == 'queue') {
+                                      await _queueAlbum(albumTracks);
+                                    }
+                                  },
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(
+                                      value: 'play',
+                                      child: Text('Album abspielen'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'queue',
+                                      child: Text('Album zur Queue'),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                    title: Text(
-                      t.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${t.artist} • ${t.album}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (t.bpm != null)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: Text(
-                              _bpmLabel(t.bpm),
-                              style: Theme.of(context).textTheme.labelLarge,
-                            ),
-                          ),
-                        PopupMenuButton<String>(
-                          tooltip: 'Queue-Aktion',
-                          onSelected: (action) async {
-                            if (action == 'next') await widget.player.playNext(t);
-                            if (action == 'queue') await widget.player.addToQueue(t);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(
-                              value: 'next',
-                              child: Text('Als Nächstes abspielen'),
-                            ),
-                            PopupMenuItem(
-                              value: 'queue',
-                              child: Text('An Queue anhängen'),
-                            ),
-                          ],
-                          icon: const Icon(Icons.more_vert),
                         ),
-                      ],
-                    ),
-                    onTap: () => _playTrack(t),
-                  );
-                },
+                      ),
+                    );
+                  },
+                ),
               ),
+            Expanded(
+              child: visible.isEmpty
+                  ? const Center(
+                      child: Text('Keine Titel in der Bibliothek'),
+                    )
+                  : ListView.builder(
+                      itemCount: visible.length,
+                      itemBuilder: (_, i) {
+                        final t = visible[i];
+                        return ListTile(
+                          selected: widget.player.currentTrack?.id == t.id,
+                          leading: t.artwork == null
+                              ? const CircleAvatar(
+                                  child: Icon(Icons.music_note),
+                                )
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.memory(
+                                    t.artwork!,
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                          title: Text(
+                            t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${t.artist} • ${t.album}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (t.bpm != null)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(right: 4),
+                                  child: Text(
+                                    _bpmLabel(t.bpm),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge,
+                                  ),
+                                ),
+                              PopupMenuButton<String>(
+                                tooltip: 'Queue-Aktion',
+                                onSelected: (action) async {
+                                  if (action == 'next') {
+                                    await widget.player.playNext(t);
+                                  }
+                                  if (action == 'queue') {
+                                    await widget.player.addToQueue(t);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'next',
+                                    child: Text(
+                                      'Als Nächstes abspielen',
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'queue',
+                                    child: Text('An Queue anhängen'),
+                                  ),
+                                ],
+                                icon: const Icon(Icons.more_vert),
+                              ),
+                            ],
+                          ),
+                          onTap: () => _playTrack(t),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     ]),
   );
