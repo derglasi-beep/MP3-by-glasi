@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
@@ -33,4 +34,5 @@ Future<void> main() async {
   await session.configure(AudioSessionConfiguration.music());
 
   runApp(Mp3ByGlasiApp(player: player));
+  unawaited(player.restoreAudioSettings());
 }
