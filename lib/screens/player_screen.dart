@@ -251,12 +251,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _verifyBpmOnlineInBackground() async {
     if (_backgroundOnlineBpmWorkerRunning || tracks.isEmpty) return;
 
-    // Only start once the local pass has no unresolved titles left.
-    final unresolvedLocal = tracks.any(
-      (track) => track.bpm == null || track.bpm! <= 0,
-    );
-    if (unresolvedLocal) return;
-
+    // This method is only called after the local pass has finished.
+    // Tracks that could not be analyzed locally are allowed to fall back
+    // to a catalogue BPM result during this second, network-based pass.
     _backgroundOnlineBpmWorkerRunning = true;
     try {
       await Future<void>.delayed(const Duration(seconds: 5));
@@ -272,11 +269,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final index = tracks.indexWhere((item) => item.id == snapshot.id);
         if (index < 0) continue;
         final current = tracks[index];
-        final localValue = current.bpm;
-        if (localValue == null || localValue <= 0) continue;
+        final localValue =
+            current.bpm != null && current.bpm! > 0 ? current.bpm : null;
 
         // High-confidence fused values do not need another background lookup.
-        if ((current.bpmConfidence ?? 0) >= 0.85) continue;
+        if (localValue != null && (current.bpmConfidence ?? 0) >= 0.85) {
+          continue;
+        }
 
         final online = await onlineBpm.lookup(
           title: current.title,
@@ -445,11 +444,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final result = groups.values.toList()
-      ..sort(
-        (a, b) => a.first.artist.toLowerCase().compareTo(
-              b.first.artist.toLowerCase(),
-            ),
-      );
+      ..sort((a, b) {
+        final aa = a.first.artist.toLowerCase();
+        final bb = b.first.artist.toLowerCase();
+        final aExact = aa == q;
+        final bExact = bb == q;
+        if (aExact != bExact) return aExact ? -1 : 1;
+        return aa.compareTo(bb);
+      });
     return result;
   }
 
@@ -469,8 +471,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final result = groups.values.toList()
       ..sort((a, b) {
-        final albumCompare =
-            a.first.album.toLowerCase().compareTo(b.first.album.toLowerCase());
+        final aa = a.first.album.toLowerCase();
+        final bb = b.first.album.toLowerCase();
+        final aExact = aa == q;
+        final bExact = bb == q;
+        if (aExact != bExact) return aExact ? -1 : 1;
+        final albumCompare = aa.compareTo(bb);
         if (albumCompare != 0) return albumCompare;
         return a.first.artist.toLowerCase().compareTo(
               b.first.artist.toLowerCase(),
@@ -974,7 +980,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Expanded(
         child: Column(
           children: [
-            if (matchingArtists.isNotEmpty)
+            if (matchingArtists.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Interpreten',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
               SizedBox(
                 height: 84,
                 child: ListView.separated(
@@ -1057,7 +1073,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   },
                 ),
               ),
-            if (matchingAlbums.isNotEmpty)
+            ],
+            if (matchingAlbums.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Alben',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
               SizedBox(
                 height: 92,
                 child: ListView.separated(
@@ -1165,6 +1192,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+            ],
+            if (search.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Titel (${visible.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
             Expanded(
