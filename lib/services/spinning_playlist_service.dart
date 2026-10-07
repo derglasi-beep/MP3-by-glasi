@@ -170,6 +170,56 @@ class SpinningPlaylistService {
     );
   }
 
+  SpinningPlan buildFromPhaseTracks({
+    required Map<SpinningPhase, List<Track>> phaseTracks,
+    required Duration duration,
+    List<SpinningPhaseSpec> phases = defaultPhases,
+  }) {
+    final curve = buildCurve(duration, phases);
+    final selections = <SpinningSelection>[];
+    final tracks = <Track>[];
+    Track? previous;
+
+    for (final spec in phases) {
+      final selectedForPhase = phaseTracks[spec.phase] ?? const <Track>[];
+      for (final track in selectedForPhase) {
+        if (track.bpm == null || track.bpm! <= 0) continue;
+
+        final targetBpm = (spec.minBpm + spec.maxBpm) / 2;
+        final point = SpinningCurvePoint(
+          position: Duration.zero,
+          targetBpm: targetBpm,
+          phase: spec.phase,
+          tolerance: spec.phase == SpinningPhase.peak ? 5 : 7,
+        );
+
+        tracks.add(track);
+        selections.add(
+          SpinningSelection(
+            track: track,
+            targetBpm: targetBpm,
+            phase: spec.phase,
+            score: _score(
+              track,
+              point,
+              previous,
+              track.duration ?? const Duration(minutes: 4),
+            ),
+          ),
+        );
+        previous = track;
+      }
+    }
+
+    return SpinningPlan(
+      duration: duration,
+      tracks: tracks,
+      phases: phases,
+      curve: curve,
+      selections: selections,
+    );
+  }
+
   List<SpinningCurvePoint> buildCurve(
     Duration duration, [
     List<SpinningPhaseSpec> phases = defaultPhases,
