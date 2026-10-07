@@ -27,6 +27,7 @@ class AndroidMusicLibraryService {
         final album = _clean(map['album'] as String?) ?? 'Unbekannt';
         final durationMs = (map['durationMs'] as num?)?.toInt();
         final year = (map['year'] as num?)?.toInt();
+        final trackNumber = (map['trackNumber'] as num?)?.toInt();
 
         tracks.add(
           Track(
@@ -39,6 +40,9 @@ class AndroidMusicLibraryService {
                 ? null
                 : Duration(milliseconds: durationMs),
             year: year == null || year <= 0 ? null : year,
+            trackNumber: trackNumber == null || trackNumber <= 0
+                ? null
+                : trackNumber,
           ),
         );
       }
