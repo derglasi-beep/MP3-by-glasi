@@ -223,6 +223,7 @@ class LibraryService {
         'artist': t.artist,
         'album': t.album,
         'year': t.year,
+        'trackNumber': t.trackNumber,
         'durationMs': t.duration?.inMilliseconds,
         'bpm': t.bpm,
         'bpmConfidence': t.bpmConfidence,
@@ -239,6 +240,7 @@ class LibraryService {
         artist: j['artist'] as String? ?? 'Unbekannt',
         album: j['album'] as String? ?? 'Unbekannt',
         year: (j['year'] as num?)?.toInt(),
+        trackNumber: (j['trackNumber'] as num?)?.toInt(),
         duration: (j['durationMs'] as num?) == null
             ? null
             : Duration(milliseconds: (j['durationMs'] as num).toInt()),
