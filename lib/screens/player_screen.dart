@@ -114,11 +114,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _restoreLibrary() async {
     final saved = await library.loadTracks();
     if (!mounted || saved.isEmpty) return;
-    final checks = await Future.wait(saved.map((t) async => MapEntry(t, await File(t.path).exists())));
-    final valid = <Track>[for (final check in checks) if (check.value) check.key];
+
+    // Android tracks are restored from our persisted MediaStore snapshot.
+    // File.exists() is not a reliable validity check for scoped-storage
+    // media paths and previously caused a valid library to be emptied
+    // after restarting the app.
+    if (Platform.isAndroid) {
+      setState(() => tracks = saved);
+      await widget.player.setQueue(tracks, load: false);
+      return;
+    }
+
+    final checks = await Future.wait(
+      saved.map((t) async => MapEntry(t, await File(t.path).exists())),
+    );
+    final valid = <Track>[
+      for (final check in checks)
+        if (check.value) check.key,
+    ];
     if (!mounted) return;
+
     setState(() => tracks = valid);
-    if (valid.length != saved.length) await library.saveTracks(valid);
+    if (valid.length != saved.length) {
+      await library.saveTracks(valid);
+    }
     await widget.player.setQueue(tracks, load: false);
   }
 
