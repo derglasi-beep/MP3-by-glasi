@@ -57,6 +57,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final StreamSubscription<Track?> _playerTrackSub;
   Track? _pendingBpmAnalysis;
   Timer? _librarySaveTimer;
+  bool _artworkWorkerRunning = false;
+  final Set<String> _artworkLoads = <String>{};
 
   @override
   void initState() {
@@ -122,6 +124,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (Platform.isAndroid) {
       setState(() => tracks = saved);
       await widget.player.setQueue(tracks, load: false);
+      unawaited(_loadArtworkInBackground());
       return;
     }
 
@@ -139,6 +142,58 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await library.saveTracks(valid);
     }
     await widget.player.setQueue(tracks, load: false);
+  }
+
+  Future<void> _loadArtworkInBackground() async {
+    if (!Platform.isAndroid || _artworkWorkerRunning) return;
+    _artworkWorkerRunning = true;
+    try {
+      for (final track in List<Track>.from(tracks)) {
+        if (!mounted) return;
+        final current = tracks.where((item) => item.id == track.id).firstOrNull;
+        if (current?.artwork != null && current!.artwork!.isNotEmpty) continue;
+
+        await _ensureArtwork(track, allowMetadataRead: true);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+    } finally {
+      _artworkWorkerRunning = false;
+    }
+  }
+
+  Future<void> _ensureArtwork(
+    Track track, {
+    required bool allowMetadataRead,
+  }) async {
+    if (_artworkLoads.contains(track.id)) return;
+
+    final index = tracks.indexWhere((item) => item.id == track.id);
+    if (index < 0) return;
+    final current = tracks[index];
+    if (current.artwork != null && current.artwork!.isNotEmpty) return;
+
+    _artworkLoads.add(track.id);
+    try {
+      var artwork = await library.loadArtwork(track.id);
+
+      if ((artwork == null || artwork.isEmpty) && allowMetadataRead) {
+        artwork = await scanner.loadArtwork(track.path);
+        if (artwork != null && artwork.isNotEmpty) {
+          await library.saveArtwork(track.id, artwork);
+        }
+      }
+
+      if (!mounted || artwork == null || artwork.isEmpty) return;
+
+      final freshIndex = tracks.indexWhere((item) => item.id == track.id);
+      if (freshIndex < 0) return;
+
+      final updated = tracks[freshIndex].copyWith(artwork: artwork);
+      setState(() => tracks[freshIndex] = updated);
+      widget.player.updateTrack(updated);
+    } finally {
+      _artworkLoads.remove(track.id);
+    }
   }
 
   List<Track> get visible {
@@ -488,6 +543,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.player.playAt(n);
     }
 
+    unawaited(_ensureArtwork(t, allowMetadataRead: true));
     unawaited(_analyzeTrack(t));
     if (mounted) setState(() {});
   }
