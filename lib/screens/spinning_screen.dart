@@ -78,7 +78,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   SpinningPlan? plan;
-  List<Track> manualTracks = [];
+  final Map<SpinningPhase, List<Track>> manualPhaseTracks = {
+    for (final phase in SpinningPhase.values) phase: <Track>[],
+  };
 
   double _displayBpm(double bpm) => sprintMode ? bpm : bpm / 2;
   String _bpmText(double bpm) => '${_displayBpm(bpm).round()} BPM${sprintMode ? ' · Sprint' : ''}';
@@ -92,22 +94,38 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
   void _buildManualPlan() {
     setState(() {
-      plan = planner.buildFromTracks(
-        tracks: manualTracks,
+      plan = planner.buildFromPhaseTracks(
+        phaseTracks: manualPhaseTracks,
         duration: duration,
       );
     });
   }
+
+  String _phaseLabel(SpinningPhase phase) => switch (phase) {
+    SpinningPhase.warmup => 'Warm-up',
+    SpinningPhase.build => 'Aufbau',
+    SpinningPhase.load => 'Belastung',
+    SpinningPhase.peak => 'Peak',
+    SpinningPhase.cooldown => 'Cool-down',
+  };
+
+  int get _manualTrackCount =>
+      manualPhaseTracks.values.fold(0, (sum, tracks) => sum + tracks.length);
 
   Future<void> _chooseManualTracks() async {
     final usable = widget.tracks
         .where((track) => track.bpm != null && track.bpm! > 0)
         .toList(growable: false);
 
-    final selectedIds = manualTracks.map((track) => track.id).toList();
+    var activePhase = SpinningPhase.warmup;
     var query = '';
 
-    final result = await showDialog<List<String>>(
+    final working = {
+      for (final phase in SpinningPhase.values)
+        phase: List<Track>.from(manualPhaseTracks[phase] ?? const <Track>[]),
+    };
+
+    final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -119,15 +137,33 @@ class _SpinningScreenState extends State<SpinningScreen> {
                 track.album.toLowerCase().contains(q);
           }).toList(growable: false);
 
+          final activeIds =
+              working[activePhase]!.map((track) => track.id).toSet();
+
           return AlertDialog(
-            title: const Text('Spinning-Titel auswählen'),
+            title: const Text('Spinning-Phasen befüllen'),
             content: SizedBox(
-              width: 560,
-              height: 620,
+              width: 640,
+              height: 660,
               child: Column(
                 children: [
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final phase in SpinningPhase.values)
+                        ChoiceChip(
+                          label: Text(
+                            '${_phaseLabel(phase)} (${working[phase]!.length})',
+                          ),
+                          selected: activePhase == phase,
+                          onSelected: (_) =>
+                              setDialogState(() => activePhase = phase),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
-                    autofocus: true,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
                       hintText: 'Titel, Interpret oder Album',
@@ -138,7 +174,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('${selectedIds.length} Titel ausgewählt'),
+                    child: Text(
+                      'Phase: ${_phaseLabel(activePhase)} · '
+                      '${working[activePhase]!.length} Titel',
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Expanded(
@@ -146,7 +185,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       itemCount: visible.length,
                       itemBuilder: (_, index) {
                         final track = visible[index];
-                        final selected = selectedIds.contains(track.id);
+                        final selected = activeIds.contains(track.id);
                         return CheckboxListTile(
                           value: selected,
                           dense: true,
@@ -162,12 +201,13 @@ class _SpinningScreenState extends State<SpinningScreen> {
                           ),
                           onChanged: (value) {
                             setDialogState(() {
+                              final list = working[activePhase]!;
                               if (value == true) {
-                                if (!selectedIds.contains(track.id)) {
-                                  selectedIds.add(track.id);
+                                if (!list.any((item) => item.id == track.id)) {
+                                  list.add(track);
                                 }
                               } else {
-                                selectedIds.remove(track.id);
+                                list.removeWhere((item) => item.id == track.id);
                               }
                             });
                           },
@@ -180,16 +220,17 @@ class _SpinningScreenState extends State<SpinningScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Abbrechen'),
+                onPressed: () => setDialogState(
+                  () => working[activePhase]!.clear(),
+                ),
+                child: const Text('Phase leeren'),
               ),
               TextButton(
-                onPressed: () => setDialogState(selectedIds.clear),
-                child: const Text('Leeren'),
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Abbrechen'),
               ),
               FilledButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, List<String>.from(selectedIds)),
+                onPressed: () => Navigator.pop(dialogContext, true),
                 child: const Text('Übernehmen'),
               ),
             ],
@@ -198,13 +239,14 @@ class _SpinningScreenState extends State<SpinningScreen> {
       ),
     );
 
-    if (result == null || !mounted) return;
-    final byId = {for (final track in usable) track.id: track};
+    if (accepted != true || !mounted) return;
+
     setState(() {
-      manualTracks = [
-        for (final id in result)
-          if (byId[id] != null) byId[id]!,
-      ];
+      for (final phase in SpinningPhase.values) {
+        manualPhaseTracks[phase]!
+          ..clear()
+          ..addAll(working[phase]!);
+      }
       plan = null;
     });
   }
@@ -248,12 +290,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
           onPressed: _chooseManualTracks,
           icon: const Icon(Icons.playlist_add),
           label: Text(
-            manualTracks.isEmpty
+            _manualTrackCount == 0
                 ? 'Session manuell befüllen'
-                : 'Manuelle Auswahl: ${manualTracks.length} Titel',
+                : 'Manuelle Auswahl: $_manualTrackCount Titel',
           ),
         ),
-        if (manualTracks.isNotEmpty) ...[
+        if (_manualTrackCount > 0) ...[
           const SizedBox(height: 8),
           FilledButton.tonalIcon(
             onPressed: _buildManualPlan,
