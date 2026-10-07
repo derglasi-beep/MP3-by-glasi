@@ -20,6 +20,7 @@ import 'playlists_screen.dart';
 import 'queue_screen.dart';
 import 'now_playing_screen.dart';
 import 'spinning_screen.dart';
+import 'album_screen.dart';
 
 enum _SortMode { title, artist, album, bpm, year }
 
@@ -958,7 +959,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         margin: EdgeInsets.zero,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
-                          onTap: () => _playAlbum(albumTracks),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AlbumScreen(
+                                player: widget.player,
+                                tracks: albumTracks,
+                              ),
+                            ),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(8),
                             child: Row(
