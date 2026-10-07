@@ -87,24 +87,51 @@ class MainActivity : AudioServiceActivity() {
 
     private fun queryMusicFiles(): List<String> {
         val result = mutableListOf<String>()
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.IS_MUSIC
         )
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection.add(MediaStore.Audio.Media.RELATIVE_PATH)
+        }
+
         contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-            projection,
+            projection.toTypedArray(),
             "${MediaStore.Audio.Media.IS_MUSIC} != 0",
             null,
             "${MediaStore.Audio.Media.ARTIST} COLLATE NOCASE, " +
                 "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE"
         )?.use { cursor ->
             val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            val relativePathIndex =
+                cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+
             while (cursor.moveToNext()) {
                 if (dataIndex < 0) continue
+
                 val path = cursor.getString(dataIndex) ?: continue
-                if (path.isNotBlank()) result.add(path)
+                if (path.isBlank()) continue
+
+                val isInMusicDirectory =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                        relativePathIndex >= 0
+                    ) {
+                        val relativePath =
+                            cursor.getString(relativePathIndex).orEmpty()
+                                .replace('\\', '/')
+                                .trimStart('/')
+                        relativePath.equals("Music", ignoreCase = true) ||
+                            relativePath.startsWith("Music/", ignoreCase = true)
+                    } else {
+                        val normalized = path.replace('\\', '/')
+                        normalized.contains("/Music/", ignoreCase = true)
+                    }
+
+                if (isInMusicDirectory) {
+                    result.add(path)
+                }
             }
         }
 
