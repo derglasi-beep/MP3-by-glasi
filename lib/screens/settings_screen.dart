@@ -103,7 +103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (eqAvailable)
         Text('Gerätebereich: ${eqMin.toStringAsFixed(0)} bis ${eqMax.toStringAsFixed(0)} dB'),
       const Divider(height:32),
-      Text('Lautstärke',style:Theme.of(context).textTheme.headlineSmall),
+      Text('Player-Lautstärke',style:Theme.of(context).textTheme.headlineSmall),
+      const Text('Unabhängig von der Android-Medienlautstärke.'),
       slider('${(volume*100).round()} %',volume,0,1,(v){
         setState(()=>volume=v); widget.player.setVolume(v); s.setVolume(v);
       }),
