@@ -201,16 +201,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
         artwork = await scanner.loadArtwork(track.path);
       }
 
+      String? onlineSource;
       if ((artwork == null || artwork.isEmpty) && allowOnlineLookup) {
-        artwork = await onlineArtwork.lookup(
+        final online = await onlineArtwork.lookup(
           title: track.title,
           artist: track.artist,
           duration: track.duration,
         );
+        if (online != null) {
+          artwork = online.bytes;
+          onlineSource = online.source;
+        }
       }
 
       if (artwork != null && artwork.isNotEmpty) {
         await library.saveArtwork(track.id, artwork);
+        if (widget.player.currentTrack?.id == track.id) {
+          debugPrint(
+            '[Artwork] Cover geladen für "${track.artist} - ${track.title}"'
+            '${onlineSource == null ? ' (lokal/cache)' : ' von $onlineSource'}',
+          );
+        }
+      } else if (widget.player.currentTrack?.id == track.id) {
+        debugPrint(
+          '[Artwork] Kein Cover gefunden für '
+          '"${track.artist} - ${track.title}"',
+        );
       }
 
       if (!mounted || artwork == null || artwork.isEmpty) return;
