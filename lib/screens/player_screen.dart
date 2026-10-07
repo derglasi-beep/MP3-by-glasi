@@ -42,6 +42,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? bpmMin;
   int? bpmMax;
   bool analyzing = false;
+  bool scanningMusic = false;
+  int scanDone = 0;
+  int scanTotal = 0;
   int analyzedCount = 0;
   int analysisTotal = 0;
   double volume = .8;
@@ -184,8 +187,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> addFolder() async {
     if (Platform.isAndroid) {
+      if (scanningMusic) return;
+      setState(() {
+        scanningMusic = true;
+        scanDone = 0;
+        scanTotal = 0;
+      });
       try {
-        final files = await androidMusicLibrary.getMusicFiles();
+        final files = await androidMusicLibrary.getMusicFiles().timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw TimeoutException(
+            'Android-Musikbibliothek antwortet nicht.',
+          ),
+        );
         if (files.isEmpty) {
           if (!mounted) return;
           ScaffoldMessenger.of(context)
@@ -193,12 +207,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ..showSnackBar(
               const SnackBar(
                 behavior: SnackBarBehavior.floating,
-                content: Text('Keine Musikdateien im Android-Musikordner gefunden.'),
+                content: Text('Keine Musikdateien in der Android-Medienbibliothek gefunden.'),
               ),
             );
           return;
         }
-        await _add(await scanner.scanFiles(files));
+        final found = await scanner.scanFiles(
+          files,
+          onProgress: (done, total) {
+            if (!mounted) return;
+            setState(() {
+              scanDone = done;
+              scanTotal = total;
+            });
+          },
+        );
+        await _add(found);
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                behavior: SnackBarBehavior.floating,
+                content: Text('${found.length} Musikdateien eingelesen.'),
+              ),
+            );
+        }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
@@ -211,6 +245,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
           );
+      } finally {
+        if (mounted) {
+          setState(() {
+            scanningMusic = false;
+            scanDone = 0;
+            scanTotal = 0;
+          });
+        }
       }
       return;
     }
@@ -472,9 +514,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
           children: [
             Expanded(
               child: FilledButton.tonalIcon(
-                onPressed: addFolder,
-                icon: const Icon(Icons.folder_open),
-                label: Text(Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Musikordner hinzufügen'),
+                onPressed: scanningMusic ? null : addFolder,
+                icon: scanningMusic
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.folder_open),
+                label: Text(
+                  Platform.isAndroid
+                      ? (scanningMusic
+                          ? (scanTotal > 0
+                              ? 'Musik wird eingelesen: $scanDone / $scanTotal'
+                              : 'Musik wird gesucht…')
+                          : 'Smartphone-Musik scannen')
+                      : 'Musikordner hinzufügen',
+                ),
               ),
             ),
             const SizedBox(width: 8),
