@@ -167,6 +167,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _analyzeBpmInBackground() async {
     if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
     _backgroundBpmWorkerRunning = true;
+    var pendingLibraryChanges = 0;
 
     try {
       // Let startup, library restore and the first frame settle first.
@@ -208,7 +209,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }
           });
-          _scheduleLibrarySave();
+          pendingLibraryChanges++;
+          if (pendingLibraryChanges >= 20) {
+            await library.saveTracks(List<Track>.from(tracks));
+            pendingLibraryChanges = 0;
+          }
           await Future<void>.delayed(const Duration(seconds: 2));
           continue;
         }
@@ -216,7 +221,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final result = await bpm.analyzeFileResult(current.path);
         if (!mounted) return;
         if (result != null && result.bpm > 0) {
-          await bpmCache.put(
+          await bpmCache.putDeferred(
             current.path,
             result.bpm,
             confidence: result.confidence,
@@ -233,13 +238,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }
           });
-          _scheduleLibrarySave();
+          pendingLibraryChanges++;
+          if (pendingLibraryChanges >= 20) {
+            await library.saveTracks(List<Track>.from(tracks));
+            pendingLibraryChanges = 0;
+          }
         }
 
         // Keep CPU/storage pressure low on large libraries.
         await Future<void>.delayed(const Duration(seconds: 4));
       }
     } finally {
+      await bpmCache.flush();
+      if (pendingLibraryChanges > 0) {
+        await library.saveTracks(List<Track>.from(tracks));
+      }
       _backgroundBpmWorkerRunning = false;
     }
 
@@ -255,6 +268,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Tracks that could not be analyzed locally are allowed to fall back
     // to a catalogue BPM result during this second, network-based pass.
     _backgroundOnlineBpmWorkerRunning = true;
+    var pendingOnlineLibraryChanges = 0;
     try {
       await Future<void>.delayed(const Duration(seconds: 5));
 
@@ -302,7 +316,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 );
               }
             });
-            _scheduleLibrarySave();
+            pendingOnlineLibraryChanges++;
+            if (pendingOnlineLibraryChanges >= 20) {
+              await library.saveTracks(List<Track>.from(tracks));
+              pendingOnlineLibraryChanges = 0;
+            }
           }
         }
 
@@ -310,6 +328,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await Future<void>.delayed(const Duration(seconds: 5));
       }
     } finally {
+      if (pendingOnlineLibraryChanges > 0) {
+        await library.saveTracks(List<Track>.from(tracks));
+      }
       _backgroundOnlineBpmWorkerRunning = false;
     }
   }
