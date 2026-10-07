@@ -1,20 +1,44 @@
+import 'dart:io';
+
 import 'package:just_audio/just_audio.dart';
+
+class EqualizerInfo {
+  final double minDecibels;
+  final double maxDecibels;
+  final List<AndroidEqualizerBand> bands;
+
+  const EqualizerInfo({
+    required this.minDecibels,
+    required this.maxDecibels,
+    required this.bands,
+  });
+}
 
 class EqualizerService {
   final AndroidEqualizer effect;
 
   EqualizerService({AndroidEqualizer? effect}) : effect = effect ?? AndroidEqualizer();
 
-  Future<void> setBand(int index, double gain) async {
+  Future<EqualizerInfo?> get info async {
+    if (!Platform.isAndroid) return null;
     try {
       final params = await effect.parameters;
-      if (params.bands.isEmpty) return;
-      final safeIndex = index.clamp(0, params.bands.length - 1);
-      final safeGain = gain.clamp(params.minDecibels, params.maxDecibels);
-      await params.bands[safeIndex].setGain(safeGain);
-      await effect.setEnabled(true);
+      return EqualizerInfo(
+        minDecibels: params.minDecibels,
+        maxDecibels: params.maxDecibels,
+        bands: params.bands,
+      );
     } catch (_) {
-      // Desktop backends currently do not expose just_audio's Android EQ API.
+      return null;
     }
+  }
+
+  Future<void> setBand(int index, double gain) async {
+    final params = await info;
+    if (params == null || params.bands.isEmpty) return;
+    if (index < 0 || index >= params.bands.length) return;
+    final safeGain = gain.clamp(params.minDecibels, params.maxDecibels);
+    await params.bands[index].setGain(safeGain);
+    await effect.setEnabled(true);
   }
 }
