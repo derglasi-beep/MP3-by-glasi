@@ -12,9 +12,12 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final s = SettingsService();
   late final EqualizerService eq;
-  List<double> bands = List.filled(10, 0);
+  List<double> bands = const [];
+  List<String> bandLabels = const [];
+  double eqMin = -12;
+  double eqMax = 12;
+  bool eqAvailable = false;
   double bass=0, treble=0, preamp=0, crossfade=0, speed=1, volume=.8;
-  static const labels=['31','62','125','250','500','1k','2k','4k','8k','16k'];
 
   @override
   void initState() {
@@ -27,7 +30,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final values = await Future.wait([
       s.eqBands, s.bass, s.treble, s.preamp, s.crossfade, s.speed, s.volume,
     ]);
-    bands = values[0] as List<double>;
+    final savedBands = values[0] as List<double>;
+    final info = await eq.info;
+    if (info != null && info.bands.isNotEmpty) {
+      eqAvailable = true;
+      eqMin = info.minDecibels;
+      eqMax = info.maxDecibels;
+      bands = List.generate(
+        info.bands.length,
+        (i) => i < savedBands.length ? savedBands[i].clamp(eqMin, eqMax).toDouble() : 0,
+      );
+      bandLabels = info.bands.map((band) {
+        final hz = band.centerFrequency;
+        return hz >= 1000 ? '${(hz / 1000).toStringAsFixed(hz >= 10000 ? 0 : 1)}k' : hz.round().toString();
+      }).toList();
+    }
     bass=values[1] as double;
     treble=values[2] as double;
     preamp=values[3] as double;
@@ -36,8 +53,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     volume=values[6] as double;
     if (!mounted) return;
     setState(() {});
-    for (var i=0;i<bands.length;i++) {
-      if (bands[i] != 0) await eq.setBand(i,bands[i]);
+    if (eqAvailable) {
+      for (var i=0;i<bands.length;i++) {
+        if (bands[i] != 0) await eq.setBand(i,bands[i]);
+      }
     }
     await widget.player.setVolume(volume);
     await widget.player.setSpeed(speed);
@@ -68,21 +87,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     appBar:AppBar(title:const Text('Audio & Einstellungen')),
     body:ListView(padding:const EdgeInsets.all(20),children:[
       Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
-        Text('10-Band EQ',style:Theme.of(context).textTheme.headlineSmall),
+        Text(eqAvailable ? '${bands.length}-Band EQ' : 'Equalizer',style:Theme.of(context).textTheme.headlineSmall),
         TextButton.icon(onPressed:_resetEq,icon:const Icon(Icons.restart_alt),label:const Text('Reset')),
       ]),
       const SizedBox(height:8),
-      SizedBox(height:220,child:Row(
-        crossAxisAlignment:CrossAxisAlignment.stretch,
-        children:List.generate(10,(i)=>Expanded(child:Column(children:[
-          Expanded(child:RotatedBox(quarterTurns:3,child:Slider(
-            min:-12,max:12,value:bands[i],onChanged:(v)=>_band(i,v),
-          ))),
-          Text(labels[i],style:Theme.of(context).textTheme.labelSmall),
-          Text(bands[i].toStringAsFixed(0),style:Theme.of(context).textTheme.labelSmall),
-        ]))),
-      )),
-      const Text('Der EQ wird auf Android über die native just_audio AudioPipeline angewendet.'),
+      if (!eqAvailable)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Text('Auf diesem Gerät ist kein Android-Equalizer verfügbar.'),
+        )
+      else
+        SizedBox(height:220,child:Row(
+          crossAxisAlignment:CrossAxisAlignment.stretch,
+          children:List.generate(bands.length,(i)=>Expanded(child:Column(children:[
+            Expanded(child:RotatedBox(quarterTurns:3,child:Slider(
+              min:eqMin,max:eqMax,value:bands[i],onChanged:(v)=>_band(i,v),
+            ))),
+            Text(bandLabels[i],style:Theme.of(context).textTheme.labelSmall),
+            Text(bands[i].toStringAsFixed(0),style:Theme.of(context).textTheme.labelSmall),
+          ]))),
+        )),
+      if (eqAvailable)
+        Text('Gerätebereich: ${eqMin.toStringAsFixed(0)} bis ${eqMax.toStringAsFixed(0)} dB'),
       const Divider(height:32),
       Text('Lautstärke',style:Theme.of(context).textTheme.headlineSmall),
       slider('${(volume*100).round()} %',volume,0,1,(v){
