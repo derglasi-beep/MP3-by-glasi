@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
@@ -6,6 +7,7 @@ import 'settings_service.dart';
 
 class AudioPlayerService {
   final AndroidEqualizer equalizer = AndroidEqualizer();
+  final AndroidLoudnessEnhancer loudnessEnhancer = AndroidLoudnessEnhancer();
   late final AudioPlayer audio;
   final List<Track> queue = [];
   final List<int> _history = [];
@@ -18,10 +20,15 @@ class AudioPlayerService {
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
   bool _completionInProgress = false;
+  double _playerVolume = .8;
+  double _preamp = 0;
+  double _bass = 0;
+  double _treble = 0;
+  List<double> _manualEqBands = const [];
 
   AudioPlayerService() {
     audio = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]),
+      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer, loudnessEnhancer]),
     );
     _stateSub = audio.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
@@ -274,7 +281,99 @@ class AudioPlayerService {
     );
     return audio.seek(clamped);
   }
-  Future<void> setVolume(double v) => audio.setVolume(v.clamp(0, 1));
+  Future<void> setVolume(double v) async {
+    _playerVolume = v.clamp(0, 1).toDouble();
+    await _applyEffectiveVolume();
+  }
+
+  Future<void> _applyEffectiveVolume() async {
+    final attenuation = _preamp < 0 ? math.pow(10, _preamp / 20).toDouble() : 1.0;
+    await audio.setVolume((_playerVolume * attenuation).clamp(0, 1).toDouble());
+  }
+
+  Future<void> setPreamp(double decibels) async {
+    _preamp = decibels.clamp(-12, 12).toDouble();
+    await _applyEffectiveVolume();
+
+    if (_preamp > 0) {
+      await loudnessEnhancer.setTargetGain(_preamp);
+      await loudnessEnhancer.setEnabled(true);
+    } else {
+      await loudnessEnhancer.setTargetGain(0);
+      await loudnessEnhancer.setEnabled(false);
+    }
+  }
+
+  Future<void> setBass(double decibels) async {
+    _bass = decibels.clamp(-12, 12).toDouble();
+    await _applyToneEq();
+  }
+
+  Future<void> setTreble(double decibels) async {
+    _treble = decibels.clamp(-12, 12).toDouble();
+    await _applyToneEq();
+  }
+
+  Future<void> setEqBand(int index, double gain) async {
+    final eq = EqualizerService(effect: equalizer);
+    final info = await eq.info;
+    if (info == null || index < 0 || index >= info.bands.length) return;
+
+    if (_manualEqBands.length != info.bands.length) {
+      final old = _manualEqBands;
+      _manualEqBands = List.generate(
+        info.bands.length,
+        (i) => i < old.length ? old[i] : 0,
+      );
+    }
+
+    _manualEqBands[index] = gain.clamp(
+      info.minDecibels,
+      info.maxDecibels,
+    ).toDouble();
+    await _applyToneEq(info: info);
+  }
+
+  double _bassWeight(double hz) {
+    if (hz <= 125) return 1;
+    if (hz <= 250) return .7;
+    if (hz <= 500) return .35;
+    return 0;
+  }
+
+  double _trebleWeight(double hz) {
+    if (hz >= 8000) return 1;
+    if (hz >= 4000) return .7;
+    if (hz >= 2000) return .35;
+    return 0;
+  }
+
+  Future<void> _applyToneEq({EqualizerInfo? info}) async {
+    final params = info ?? await EqualizerService(effect: equalizer).info;
+    if (params == null || params.bands.isEmpty) return;
+
+    if (_manualEqBands.length != params.bands.length) {
+      final old = _manualEqBands;
+      _manualEqBands = List.generate(
+        params.bands.length,
+        (i) => i < old.length ? old[i] : 0,
+      );
+    }
+
+    var anyEffect = false;
+    for (var i = 0; i < params.bands.length; i++) {
+      final hz = params.bands[i].centerFrequency;
+      final gain = (
+        _manualEqBands[i] +
+        (_bass * _bassWeight(hz)) +
+        (_treble * _trebleWeight(hz))
+      ).clamp(params.minDecibels, params.maxDecibels).toDouble();
+      await params.bands[i].setGain(gain);
+      if (gain.abs() > .001) anyEffect = true;
+    }
+    await equalizer.setEnabled(anyEffect);
+  }
+
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
 
   Future<void> restoreAudioSettings() async {
@@ -283,9 +382,12 @@ class AudioPlayerService {
       settings.volume,
       settings.speed,
       settings.eqBands,
+      settings.preamp,
+      settings.bass,
+      settings.treble,
     ]);
 
-    await setVolume(values[0] as double);
+    _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
     await setSpeed(values[1] as double);
 
     final savedBands = values[2] as List<double>;
@@ -293,19 +395,18 @@ class AudioPlayerService {
     final info = await eq.info;
     if (info == null || info.bands.isEmpty) return;
 
-    for (var i = 0; i < info.bands.length && i < savedBands.length; i++) {
-      final gain = savedBands[i].clamp(
-        info.minDecibels,
-        info.maxDecibels,
-      ).toDouble();
-      if (gain != 0) {
-        await info.bands[i].setGain(gain);
-      }
-    }
+    _manualEqBands = List.generate(
+      info.bands.length,
+      (i) => i < savedBands.length
+          ? savedBands[i].clamp(info.minDecibels, info.maxDecibels).toDouble()
+          : 0,
+    );
+    _preamp = (values[3] as double).clamp(-12, 12).toDouble();
+    _bass = (values[4] as double).clamp(-12, 12).toDouble();
+    _treble = (values[5] as double).clamp(-12, 12).toDouble();
 
-    if (savedBands.take(info.bands.length).any((gain) => gain != 0)) {
-      await equalizer.setEnabled(true);
-    }
+    await setPreamp(_preamp);
+    await _applyToneEq(info: info);
   }
 
   int _nextShuffleIndex() {
