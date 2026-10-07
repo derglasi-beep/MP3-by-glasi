@@ -134,6 +134,18 @@ class AudioPlayerService {
     _publishQueue();
   }
 
+  void updateTrack(Track track) {
+    final index = queue.indexWhere((item) => item.id == track.id);
+    if (index < 0) return;
+
+    queue[index] = track;
+    _publishQueue();
+
+    if (index == currentIndex) {
+      _trackController.add(track);
+    }
+  }
+
   Future<void> addToQueue(Track track) async {
     queue.add(track);
     if (currentIndex == -1) {
