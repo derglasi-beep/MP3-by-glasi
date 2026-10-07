@@ -82,11 +82,12 @@ class LibraryService {
     final liveArtworkFiles = <String>{};
 
     for (final track in tracks) {
+      final fileName = _artworkFileName(track.id);
+      liveArtworkFiles.add(fileName);
+
       final artwork = track.artwork;
       if (artwork == null || artwork.isEmpty) continue;
 
-      final fileName = _artworkFileName(track.id);
-      liveArtworkFiles.add(fileName);
       final file = File(
         '${artworkDirectory.path}${Platform.pathSeparator}$fileName',
       );
