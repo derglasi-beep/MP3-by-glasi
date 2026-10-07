@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BpmCacheEntry {
@@ -13,12 +15,19 @@ class BpmCache {
   static const _legacyKey = 'bpm_cache_v2';
   static const _legacyKeyV1 = 'bpm_cache_v1';
 
-  Future<Map<String, BpmCacheEntry>> _read() async {
+  Future<Map<String, BpmCacheEntry>>? _dataFuture;
+  Future<void> _writeTail = Future.value();
+
+  Future<Map<String, BpmCacheEntry>> _data() =>
+      _dataFuture ??= _readFromStorage();
+
+  Future<Map<String, BpmCacheEntry>> _readFromStorage() async {
     final p = await SharedPreferences.getInstance();
     final raw = p.getString(_key) ??
         p.getString(_legacyKey) ??
         p.getString(_legacyKeyV1);
     if (raw == null) return {};
+
     try {
       final decoded = Map<String, dynamic>.from(jsonDecode(raw));
       return decoded.map((k, v) {
@@ -39,37 +48,51 @@ class BpmCache {
     }
   }
 
-  Future<BpmCacheEntry?> get(String path) async => (await _read())[path];
+  Future<BpmCacheEntry?> get(String path) async => (await _data())[path];
 
-  Future<void> put(String path, double bpm, {double? confidence}) async {
-    final p = await SharedPreferences.getInstance();
-    final data = await _read();
+  Future<void> put(
+    String path,
+    double bpm, {
+    double? confidence,
+  }) async {
+    final data = await _data();
     data[path] = BpmCacheEntry(bpm: bpm, confidence: confidence);
-    await p.setString(_key, jsonEncode({
-      for (final e in data.entries)
-        e.key: {
-          'bpm': e.value.bpm,
-          'confidence': e.value.confidence,
-        }
-    }));
-  }
-
-  Future<void> clear() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_key);
-    await p.remove(_legacyKey);
-    await p.remove(_legacyKeyV1);
+    await _queueWrite(Map<String, BpmCacheEntry>.from(data));
   }
 
   Future<void> remove(String path) async {
-    final p = await SharedPreferences.getInstance();
-    final data = await _read()..remove(path);
-    await p.setString(_key, jsonEncode({
-      for (final e in data.entries)
-        e.key: {
-          'bpm': e.value.bpm,
-          'confidence': e.value.confidence,
-        }
-    }));
+    final data = await _data();
+    if (data.remove(path) == null) return;
+    await _queueWrite(Map<String, BpmCacheEntry>.from(data));
+  }
+
+  Future<void> clear() async {
+    final data = await _data();
+    data.clear();
+
+    _writeTail = _writeTail.then((_) async {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_key);
+      await p.remove(_legacyKey);
+      await p.remove(_legacyKeyV1);
+    });
+    await _writeTail;
+  }
+
+  Future<void> _queueWrite(Map<String, BpmCacheEntry> snapshot) {
+    _writeTail = _writeTail.then((_) async {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(
+        _key,
+        jsonEncode({
+          for (final e in snapshot.entries)
+            e.key: {
+              'bpm': e.value.bpm,
+              'confidence': e.value.confidence,
+            },
+        }),
+      );
+    });
+    return _writeTail;
   }
 }
