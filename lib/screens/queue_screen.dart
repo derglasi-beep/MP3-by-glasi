@@ -203,7 +203,7 @@ class _QueueSummary extends StatelessWidget {
               const SizedBox(width: 8),
               Text('${queue.length} Titel'),
               const Spacer(),
-              if (current != null) Text('${_duration(position)} / ${_duration(current.duration)}', style: Theme.of(context).textTheme.bodySmall),
+              if (current != null) Text('${_duration(position)} / ${current.duration == null ? '—' : _duration(current.duration!)}', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(width: 12),
               Text(_duration(total), style: Theme.of(context).textTheme.bodySmall),
             ],
