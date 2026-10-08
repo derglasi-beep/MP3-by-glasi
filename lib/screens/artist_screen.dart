@@ -63,7 +63,7 @@ class ArtistScreen extends StatelessWidget {
   Future<void> _playAll() async {
     final ordered = _orderedTracks;
     if (ordered.isEmpty) return;
-    await player.setQueue(ordered, startIndex: 0);
+    await player.setQueue(ordered, startIndex: 0, preserveCurrent: false);
     await player.play();
   }
 
