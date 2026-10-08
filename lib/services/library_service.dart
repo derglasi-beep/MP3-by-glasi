@@ -1,11 +1,56 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
+
+List<Track> _decodeTrackMetadata(String raw) {
+  final list = jsonDecode(raw) as List;
+  return [
+    for (final entry in list)
+      _trackFromJsonStatic(Map<String, dynamic>.from(entry as Map)),
+  ];
+}
+
+Track _trackFromJsonStatic(
+  Map<String, dynamic> j, {
+  List<int>? artwork,
+}) =>
+    Track(
+      id: j['id'] as String,
+      path: j['path'] as String,
+      title: j['title'] as String? ?? 'Unbekannt',
+      artist: j['artist'] as String? ?? 'Unbekannt',
+      album: j['album'] as String? ?? 'Unbekannt',
+      year: (j['year'] as num?)?.toInt(),
+      trackNumber: (j['trackNumber'] as num?)?.toInt(),
+      duration: (j['durationMs'] as num?) == null
+          ? null
+          : Duration(milliseconds: (j['durationMs'] as num).toInt()),
+      bpm: (j['bpm'] as num?)?.toDouble(),
+      bpmConfidence: (j['bpmConfidence'] as num?)?.toDouble(),
+      artwork: artwork == null ? null : Uint8List.fromList(artwork),
+    );
+
+Map<String, dynamic> _trackToJsonStatic(Track t) => {
+      'id': t.id,
+      'path': t.path,
+      'title': t.title,
+      'artist': t.artist,
+      'album': t.album,
+      'year': t.year,
+      'trackNumber': t.trackNumber,
+      'durationMs': t.duration?.inMilliseconds,
+      'bpm': t.bpm,
+      'bpmConfidence': t.bpmConfidence,
+    };
+
+String _encodeTrackMetadata(List<Track> tracks) =>
+    jsonEncode(tracks.map(_trackToJsonStatic).toList());
 
 class LibraryService {
   static const _tracksKey = 'library_tracks_v1';
@@ -70,9 +115,13 @@ class LibraryService {
     if (raw == null || raw.isEmpty) return [];
 
     try {
+      if (Platform.isAndroid) {
+        final rawSnapshot = raw;
+        return await Isolate.run(() => _decodeTrackMetadata(rawSnapshot));
+      }
+
       final list = jsonDecode(raw) as List;
-      final artworkDirectory =
-          Platform.isAndroid ? null : await _artworkDirectory();
+      final artworkDirectory = await _artworkDirectory();
       final tracks = <Track>[];
 
       for (final entry in list) {
@@ -82,18 +131,16 @@ class LibraryService {
         // On Android the library must restore quickly even with 10k+ tracks.
         // Artwork loading is intentionally skipped here and can be handled
         // separately/lazily later.
-        if (artworkDirectory != null) {
-          final id = json['id'] as String;
-          final artworkFile = File(
-            '${artworkDirectory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
-          );
+        final id = json['id'] as String;
+        final artworkFile = File(
+          '${artworkDirectory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
+        );
 
-          if (await artworkFile.exists()) {
-            artwork = await artworkFile.readAsBytes();
-          } else if (json['artwork'] is String &&
-              (json['artwork'] as String).isNotEmpty) {
-            artwork = base64Decode(json['artwork'] as String);
-          }
+        if (await artworkFile.exists()) {
+          artwork = await artworkFile.readAsBytes();
+        } else if (json['artwork'] is String &&
+            (json['artwork'] as String).isNotEmpty) {
+          artwork = base64Decode(json['artwork'] as String);
         }
 
         tracks.add(_trackFromJson(json, artwork: artwork));
@@ -145,7 +192,8 @@ class LibraryService {
   }
 
   Future<void> _saveTrackMetadataNow(List<Track> tracks) async {
-    final raw = jsonEncode(tracks.map(_trackToJson).toList());
+    final snapshot = List<Track>.from(tracks);
+    final raw = await Isolate.run(() => _encodeTrackMetadata(snapshot));
     final file = await _libraryFile();
     await _writeLibraryFile(file, raw);
 
@@ -224,36 +272,11 @@ class LibraryService {
     await p.setString(_playlistsKey, jsonEncode(playlists));
   }
 
-  Map<String, dynamic> _trackToJson(Track t) => {
-        'id': t.id,
-        'path': t.path,
-        'title': t.title,
-        'artist': t.artist,
-        'album': t.album,
-        'year': t.year,
-        'trackNumber': t.trackNumber,
-        'durationMs': t.duration?.inMilliseconds,
-        'bpm': t.bpm,
-        'bpmConfidence': t.bpmConfidence,
-      };
+  Map<String, dynamic> _trackToJson(Track t) => _trackToJsonStatic(t);
 
   Track _trackFromJson(
     Map<String, dynamic> j, {
     List<int>? artwork,
   }) =>
-      Track(
-        id: j['id'] as String,
-        path: j['path'] as String,
-        title: j['title'] as String? ?? 'Unbekannt',
-        artist: j['artist'] as String? ?? 'Unbekannt',
-        album: j['album'] as String? ?? 'Unbekannt',
-        year: (j['year'] as num?)?.toInt(),
-        trackNumber: (j['trackNumber'] as num?)?.toInt(),
-        duration: (j['durationMs'] as num?) == null
-            ? null
-            : Duration(milliseconds: (j['durationMs'] as num).toInt()),
-        bpm: (j['bpm'] as num?)?.toDouble(),
-        bpmConfidence: (j['bpmConfidence'] as num?)?.toDouble(),
-        artwork: artwork == null ? null : Uint8List.fromList(artwork),
-      );
+      _trackFromJsonStatic(j, artwork: artwork);
 }
