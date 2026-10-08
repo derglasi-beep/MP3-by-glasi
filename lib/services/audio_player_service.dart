@@ -420,20 +420,53 @@ class AudioPlayerService {
   Future<EqualizerInfo?> equalizerInfo() =>
       EqualizerService(effect: equalizer).info;
 
-  Future<void> _restoreEqualizerIfAvailable() async {
-    final info = await equalizerInfo();
-    if (info == null || info.bands.isEmpty) return;
+  Future<EqualizerInfo?> ensureEqualizerReady() async {
+    var info = await equalizerInfo();
+    if (info != null && info.bands.isNotEmpty) return info;
+
+    // Android creates/binds the audio-effect session lazily. A restored queue
+    // uses load:false at startup, so no native source may exist yet. Load the
+    // current source silently to give the equalizer a valid session without
+    // starting playback.
+    final track = currentTrack;
+    if (track != null &&
+        (audio.processingState == ProcessingState.idle ||
+            audio.processingState == ProcessingState.completed)) {
+      try {
+        await audio.setFilePath(track.path);
+        _trackController.add(track);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (var attempt = 0; attempt < 4; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      info = await equalizerInfo();
+      if (info != null && info.bands.isNotEmpty) {
+        if (_audioSettingsLoaded) {
+          await _restoreEqualizerIfAvailable(info: info);
+        }
+        return info;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _restoreEqualizerIfAvailable({EqualizerInfo? info}) async {
+    final params = info ?? await equalizerInfo();
+    if (params == null || params.bands.isEmpty) return;
 
     _manualEqBands = List.generate(
-      info.bands.length,
+      params.bands.length,
       (i) => i < _savedEqBands.length
           ? _savedEqBands[i].clamp(
-              info.minDecibels,
-              info.maxDecibels,
+              params.minDecibels,
+              params.maxDecibels,
             ).toDouble()
           : 0,
     );
-    await _applyToneEq(info: info);
+    await _applyToneEq(info: params);
   }
 
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
