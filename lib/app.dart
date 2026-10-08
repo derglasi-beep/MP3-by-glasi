@@ -48,7 +48,9 @@ class _ShellState extends State<_Shell> {
 
   void _selectPage(int value) {
     if (value == 1) {
-      _settingsPage ??= SettingsScreen(player: widget.player);
+      // Recreate the audio page so a temporarily unavailable Android
+      // equalizer gets a fresh availability check when the user returns.
+      _settingsPage = SettingsScreen(player: widget.player);
     }
     setState(() => index = value);
   }
