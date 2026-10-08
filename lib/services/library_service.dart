@@ -74,6 +74,17 @@ class LibraryService {
     );
   }
 
+  Future<Directory> _albumArtworkDirectory() async {
+    final support = await getApplicationSupportDirectory();
+    final directory = Directory(
+      '${support.path}${Platform.pathSeparator}album_artwork',
+    );
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
+  }
+
   Future<Directory> _artworkDirectory() async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
@@ -157,6 +168,45 @@ class LibraryService {
       return tracks;
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<bool> hasAlbumArtwork(String albumKey) async {
+    try {
+      final directory = await _albumArtworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName('album:$albumKey')}',
+      );
+      return await file.exists() && await file.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Uint8List?> loadAlbumArtwork(String albumKey) async {
+    try {
+      final directory = await _albumArtworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName('album:$albumKey')}',
+      );
+      if (!await file.exists()) return null;
+      final bytes = await file.readAsBytes();
+      return bytes.isEmpty ? null : bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveAlbumArtwork(String albumKey, Uint8List artwork) async {
+    if (artwork.isEmpty) return;
+    try {
+      final directory = await _albumArtworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName('album:$albumKey')}',
+      );
+      await file.writeAsBytes(artwork, flush: false);
+    } catch (_) {
+      // Album artwork is optional; failures must not affect playback.
     }
   }
 
