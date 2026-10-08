@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
@@ -53,14 +52,13 @@ class NowPlayingScreen extends StatelessWidget {
 
                 return SafeArea(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
                     child: Column(
                       children: [
-                        const SizedBox(height: 2),
                         ConstrainedBox(
                           constraints: const BoxConstraints(
-                            maxWidth: 560,
-                            maxHeight: 560,
+                            maxWidth: 620,
+                            maxHeight: 620,
                           ),
                           child: AspectRatio(
                             aspectRatio: 1,
@@ -79,24 +77,32 @@ class NowPlayingScreen extends StatelessWidget {
                                       )
                                     : Image.memory(
                                         track!.artwork!,
+                                        cacheWidth: 1200,
+                                        cacheHeight: 1200,
                                         fit: BoxFit.cover,
+                                        gaplessPlayback: true,
                                       ),
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          track?.title ?? 'Keine Wiedergabe',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.left,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
+                        const SizedBox(height: 18),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            track?.title ?? 'Keine Wiedergabe',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.08,
+                                ),
+                          ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -123,19 +129,34 @@ class NowPlayingScreen extends StatelessWidget {
                           children: [
                             BpmBadge(bpm: track?.bpm),
                             const SizedBox(width: 8),
-                            Chip(
-                              avatar: const Icon(Icons.speed, size: 17),
-                              label: Text(
-                                '${player.audio.speed.toStringAsFixed(2)}x',
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.speed, size: 16),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '${player.audio.speed.toStringAsFixed(2)}x',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium,
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        GlasiVisualizer(
-                          playing: playing,
-                          bpm: track?.bpm,
-                        ),
+                        const SizedBox(height: 8),
                         Slider(
                           value: value,
                           max: max,
@@ -152,7 +173,12 @@ class NowPlayingScreen extends StatelessWidget {
                             Text(_time(d)),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 12),
+                        GlasiVisualizer(
+                          playing: playing,
+                          bpm: track?.bpm,
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -179,8 +205,8 @@ class NowPlayingScreen extends StatelessWidget {
                               icon: Icon(
                                 playing ? Icons.pause : Icons.play_arrow,
                               ),
-                              iconSize: 54,
-                              padding: const EdgeInsets.all(16),
+                              iconSize: 58,
+                              padding: const EdgeInsets.all(18),
                             ),
                             IconButton(
                               tooltip: 'Weiter',
