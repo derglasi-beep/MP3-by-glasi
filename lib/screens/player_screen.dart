@@ -31,7 +31,7 @@ class PlayerScreen extends StatefulWidget {
   @override State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
+class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver {
   final scanner = MusicScanner();
   final androidMusicLibrary = AndroidMusicLibraryService();
   final bpm = BpmService();
@@ -68,13 +68,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final Set<String> _artworkLoads = <String>{};
   bool _backgroundBpmWorkerRunning = false;
   bool _backgroundOnlineBpmWorkerRunning = false;
+  int _backgroundBpmDone = 0;
+  int _backgroundBpmTotal = 0;
+  int _backgroundArtworkDone = 0;
+  int _backgroundArtworkTotal = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _playerErrorSub = widget.player.errorStream.listen(_showPlayerError);
     _playerTrackSub = widget.player.currentTrackStream.listen(_onCurrentTrackChanged);
     _restoreLibrary();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || tracks.isEmpty) return;
+    unawaited(_loadArtworkInBackground());
+    unawaited(_analyzeBpmInBackground());
   }
 
   void _onCurrentTrackChanged(Track? track) {
@@ -123,6 +135,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _librarySaveTimer?.cancel();
     _backgroundUiRefreshTimer?.cancel();
     if (_librarySaveTimer != null) {
@@ -208,6 +221,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _analyzeBpmInBackground() async {
     if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
     _backgroundBpmWorkerRunning = true;
+    _backgroundBpmDone = 0;
+    _backgroundBpmTotal = tracks.length;
     var pendingLibraryChanges = 0;
 
     try {
@@ -225,6 +240,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final index = tracks.indexWhere((item) => item.id == snapshot.id);
         if (index < 0) continue;
         final current = tracks[index];
+        _backgroundBpmDone++;
 
         // Already stable enough: no need to spend CPU on it again.
         if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
@@ -376,12 +392,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _loadArtworkInBackground() async {
     if (!Platform.isAndroid || _artworkWorkerRunning) return;
     _artworkWorkerRunning = true;
+    _backgroundArtworkDone = 0;
+    _backgroundArtworkTotal = tracks.length;
     try {
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
         final currentIndex = tracks.indexWhere((item) => item.id == track.id);
         if (currentIndex < 0) continue;
         final current = tracks[currentIndex];
+        _backgroundArtworkDone++;
         if (current.artwork != null && current.artwork!.isNotEmpty) continue;
 
         await _ensureArtwork(
@@ -1052,6 +1071,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ]),
       ),
+      if (_backgroundBpmWorkerRunning || _artworkWorkerRunning)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              [
+                if (_backgroundBpmWorkerRunning)
+                  'BPM $_backgroundBpmDone/$_backgroundBpmTotal',
+                if (_artworkWorkerRunning)
+                  'Cover $_backgroundArtworkDone/$_backgroundArtworkTotal',
+              ].join(' · '),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+        ),
       Expanded(
         child: Column(
           children: [
