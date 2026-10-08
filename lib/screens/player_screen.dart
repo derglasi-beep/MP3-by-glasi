@@ -71,6 +71,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   bool _libraryScrolling = false;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
+  static const int _maxArtworkInMemory = 80;
+  final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
   bool _backgroundOnlineBpmWorkerRunning = false;
   int _backgroundBpmDone = 0;
@@ -94,6 +96,50 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   int _trackIndex(String id) => _trackIndexById[id] ?? -1;
+
+  void _touchArtworkInMemory(String id) {
+    _artworkLru.remove(id);
+    _artworkLru.add(id);
+
+    while (_artworkLru.length > _maxArtworkInMemory) {
+      final evictId = _artworkLru.removeAt(0);
+      if (widget.player.currentTrack?.id == evictId) {
+        _artworkLru.add(evictId);
+        if (_artworkLru.length <= _maxArtworkInMemory + 1) break;
+        continue;
+      }
+
+      final index = _trackIndex(evictId);
+      if (index < 0) continue;
+      final track = tracks[index];
+      if (track.artwork == null || track.artwork!.isEmpty) continue;
+
+      final cleared = track.copyWith(clearArtwork: true);
+      tracks[index] = cleared;
+
+      if (_visibleCache != null) {
+        final visibleIndex =
+            _visibleCache!.indexWhere((item) => item.id == evictId);
+        if (visibleIndex >= 0) {
+          _visibleCache![visibleIndex] = cleared;
+        }
+      }
+    }
+  }
+
+  void _loadVisibleArtwork(Track track) {
+    if (track.artwork != null && track.artwork!.isNotEmpty) {
+      _touchArtworkInMemory(track.id);
+      return;
+    }
+    unawaited(
+      _ensureArtwork(
+        track,
+        allowMetadataRead: false,
+        allowOnlineLookup: false,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -184,6 +230,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (Platform.isAndroid) {
       setState(() {
         tracks = saved;
+        _artworkLru.clear();
         _rebuildTrackIndex();
         _invalidateVisibleCache();
       });
@@ -594,6 +641,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
       final updated = tracks[freshIndex].copyWith(artwork: artwork);
       tracks[freshIndex] = updated;
+      _touchArtworkInMemory(track.id);
       if (_visibleCache != null) {
         final cachedIndex =
             _visibleCache!.indexWhere((item) => item.id == track.id);
@@ -601,7 +649,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           _visibleCache![cachedIndex] = updated;
         }
       }
-      widget.player.updateTrack(updated);
+      if (widget.player.currentTrack?.id == track.id) {
+        widget.player.updateTrack(updated);
+      }
       _scheduleBackgroundUiRefresh();
     } finally {
       _artworkLoads.remove(track.id);
@@ -1493,6 +1543,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
+                        _loadVisibleArtwork(t);
                         return ListTile(
                           selected: widget.player.currentTrack?.id == t.id,
                           leading: t.artwork == null
