@@ -67,18 +67,26 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Track? _pendingBpmAnalysis;
   Timer? _librarySaveTimer;
   Timer? _backgroundUiRefreshTimer;
+  Timer? _artworkMissSaveTimer;
   bool _backgroundUiDirty = false;
   bool _libraryScrolling = false;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
+  final Set<String> _artworkMisses = <String>{};
   static const int _maxArtworkInMemory = 80;
   final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
   bool _backgroundOnlineBpmWorkerRunning = false;
   int _backgroundBpmDone = 0;
   int _backgroundBpmTotal = 0;
+  int _backgroundBpmExisting = 0;
+  int _backgroundBpmCached = 0;
+  int _backgroundBpmNew = 0;
   int _backgroundArtworkDone = 0;
   int _backgroundArtworkTotal = 0;
+  int _backgroundArtworkCached = 0;
+  int _backgroundArtworkNew = 0;
+  int _backgroundArtworkMissSkipped = 0;
 
   void _rebuildTrackIndex() {
     _trackIndexById
@@ -139,6 +147,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         allowOnlineLookup: false,
       ),
     );
+  }
+
+  void _scheduleArtworkMissSave() {
+    _artworkMissSaveTimer?.cancel();
+    _artworkMissSaveTimer = Timer(const Duration(seconds: 3), () {
+      _artworkMissSaveTimer = null;
+      unawaited(library.saveArtworkMisses(Set<String>.from(_artworkMisses)));
+    });
   }
 
   @override
@@ -209,8 +225,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
     _librarySaveTimer?.cancel();
     _backgroundUiRefreshTimer?.cancel();
+    _artworkMissSaveTimer?.cancel();
     if (_librarySaveTimer != null) {
       unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
+    }
+    if (_artworkMissSaveTimer != null) {
+      unawaited(library.saveArtworkMisses(Set<String>.from(_artworkMisses)));
     }
     _playerErrorSub.cancel();
     _playerTrackSub.cancel();
@@ -220,8 +240,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _restoreLibrary() async {
-    final saved = await library.loadTracks();
+    final results = await Future.wait([
+      library.loadTracks(),
+      library.loadArtworkMisses(),
+    ]);
+    final saved = results[0] as List<Track>;
+    final artworkMisses = results[1] as Set<String>;
     if (!mounted || saved.isEmpty) return;
+    _artworkMisses
+      ..clear()
+      ..addAll(artworkMisses);
 
     // Android tracks are restored from our persisted MediaStore snapshot.
     // File.exists() is not a reliable validity check for scoped-storage
@@ -327,6 +355,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _backgroundBpmWorkerRunning = true;
     _backgroundBpmDone = 0;
     _backgroundBpmTotal = tracks.length;
+    _backgroundBpmExisting = 0;
+    _backgroundBpmCached = 0;
+    _backgroundBpmNew = 0;
     var pendingLibraryChanges = 0;
 
     try {
@@ -348,6 +379,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
           // Already stable enough: no need to spend CPU on it again.
           if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
+            _backgroundBpmExisting++;
             continue;
           }
 
@@ -359,6 +391,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
           final cached = await bpmCache.get(current.path);
           if (cached != null) {
+            _backgroundBpmCached++;
             if (!mounted) return;
             final freshIndex = _trackIndex(current.id);
             if (freshIndex >= 0) {
@@ -391,6 +424,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           final result = await bpm.analyzeFileResult(current.path);
           if (!mounted) return;
           if (result != null && result.bpm > 0) {
+            _backgroundBpmNew++;
             await bpmCache.putDeferred(
               current.path,
               result.bpm,
@@ -554,6 +588,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _artworkWorkerRunning = true;
     _backgroundArtworkDone = 0;
     _backgroundArtworkTotal = tracks.length;
+    _backgroundArtworkCached = 0;
+    _backgroundArtworkNew = 0;
+    _backgroundArtworkMissSkipped = 0;
     try {
       await Future<void>.delayed(const Duration(seconds: 2));
       for (final track in List<Track>.from(tracks)) {
@@ -563,13 +600,35 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           final currentIndex = _trackIndex(track.id);
           if (currentIndex < 0) continue;
           final current = tracks[currentIndex];
-          if (current.artwork != null && current.artwork!.isNotEmpty) continue;
+
+          if (current.artwork != null && current.artwork!.isNotEmpty) {
+            _backgroundArtworkCached++;
+            continue;
+          }
+
+          if (await library.hasArtwork(track.id)) {
+            _backgroundArtworkCached++;
+            continue;
+          }
+
+          if (_artworkMisses.contains(track.id)) {
+            _backgroundArtworkMissSkipped++;
+            continue;
+          }
 
           await _ensureArtwork(
             track,
             allowMetadataRead: true,
             allowOnlineLookup: true,
           );
+
+          final freshIndex = _trackIndex(track.id);
+          if (freshIndex >= 0 &&
+              tracks[freshIndex].artwork != null &&
+              tracks[freshIndex].artwork!.isNotEmpty) {
+            _backgroundArtworkNew++;
+          }
+
           await Future<void>.delayed(const Duration(seconds: 2));
         } catch (error) {
           debugPrint(
@@ -621,17 +680,25 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
       if (artwork != null && artwork.isNotEmpty) {
         await library.saveArtwork(track.id, artwork);
+        if (_artworkMisses.remove(track.id)) {
+          _scheduleArtworkMissSave();
+        }
         if (widget.player.currentTrack?.id == track.id) {
           debugPrint(
             '[Artwork] Cover geladen für "${track.artist} - ${track.title}"'
             '${onlineSource == null ? ' (lokal/cache)' : ' von $onlineSource'}',
           );
         }
-      } else if (widget.player.currentTrack?.id == track.id) {
-        debugPrint(
-          '[Artwork] Kein Cover gefunden für '
-          '"${track.artist} - ${track.title}"',
-        );
+      } else {
+        if (allowOnlineLookup && _artworkMisses.add(track.id)) {
+          _scheduleArtworkMissSave();
+        }
+        if (widget.player.currentTrack?.id == track.id) {
+          debugPrint(
+            '[Artwork] Kein Cover gefunden für '
+            '"${track.artist} - ${track.title}"',
+          );
+        }
       }
 
       if (!mounted || artwork == null || artwork.isEmpty) return;
@@ -1292,9 +1359,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             child: Text(
               [
                 if (_backgroundBpmWorkerRunning)
-                  'BPM $_backgroundBpmDone/$_backgroundBpmTotal',
+                  'BPM geprüft $_backgroundBpmDone/$_backgroundBpmTotal'
+                  ' · vorhanden $_backgroundBpmExisting'
+                  ' · Cache $_backgroundBpmCached'
+                  ' · neu $_backgroundBpmNew',
                 if (_artworkWorkerRunning)
-                  'Cover $_backgroundArtworkDone/$_backgroundArtworkTotal',
+                  'Cover geprüft $_backgroundArtworkDone/$_backgroundArtworkTotal'
+                  ' · Cache $_backgroundArtworkCached'
+                  ' · neu $_backgroundArtworkNew'
+                  ' · ohne Treffer $_backgroundArtworkMissSkipped',
               ].join(' · '),
               style: Theme.of(context).textTheme.labelSmall,
             ),
