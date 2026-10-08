@@ -105,6 +105,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   int _trackIndex(String id) => _trackIndexById[id] ?? -1;
 
+  String _albumArtworkKey(Track track) {
+    final album = track.album.trim().toLowerCase();
+    if (album.isEmpty || album == 'unbekannt' || album == 'unknown') {
+      return 'track:${track.id}';
+    }
+    return 'album:$album|${track.year ?? 0}';
+  }
+
   void _touchArtworkInMemory(String id) {
     _artworkLru.remove(id);
     _artworkLru.add(id);
@@ -601,17 +609,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           if (currentIndex < 0) continue;
           final current = tracks[currentIndex];
 
+          final albumKey = _albumArtworkKey(current);
+
           if (current.artwork != null && current.artwork!.isNotEmpty) {
+            if (!await library.hasAlbumArtwork(albumKey)) {
+              await library.saveAlbumArtwork(albumKey, current.artwork!);
+            }
+            _backgroundArtworkCached++;
+            continue;
+          }
+
+          if (await library.hasAlbumArtwork(albumKey)) {
             _backgroundArtworkCached++;
             continue;
           }
 
           if (await library.hasArtwork(track.id)) {
-            _backgroundArtworkCached++;
-            continue;
+            final legacyArtwork = await library.loadArtwork(track.id);
+            if (legacyArtwork != null && legacyArtwork.isNotEmpty) {
+              await library.saveAlbumArtwork(albumKey, legacyArtwork);
+              _backgroundArtworkCached++;
+              continue;
+            }
           }
 
-          if (_artworkMisses.contains(track.id)) {
+          if (_artworkMisses.contains(albumKey)) {
             _backgroundArtworkMissSkipped++;
             continue;
           }
@@ -658,8 +680,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (current.artwork != null && current.artwork!.isNotEmpty) return;
 
     _artworkLoads.add(track.id);
+    final albumKey = _albumArtworkKey(track);
     try {
-      var artwork = await library.loadArtwork(track.id);
+      var artwork = await library.loadAlbumArtwork(albumKey);
+
+      if (artwork == null || artwork.isEmpty) {
+        artwork = await library.loadArtwork(track.id);
+        if (artwork != null && artwork.isNotEmpty) {
+          await library.saveAlbumArtwork(albumKey, artwork);
+        }
+      }
 
       if ((artwork == null || artwork.isEmpty) && allowMetadataRead) {
         artwork = await scanner.loadArtwork(track.path);
@@ -679,8 +709,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       }
 
       if (artwork != null && artwork.isNotEmpty) {
+        await library.saveAlbumArtwork(albumKey, artwork);
         await library.saveArtwork(track.id, artwork);
-        if (_artworkMisses.remove(track.id)) {
+        if (_artworkMisses.remove(albumKey)) {
           _scheduleArtworkMissSave();
         }
         if (widget.player.currentTrack?.id == track.id) {
@@ -690,7 +721,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           );
         }
       } else {
-        if (allowOnlineLookup && _artworkMisses.add(track.id)) {
+        if (allowOnlineLookup && _artworkMisses.add(albumKey)) {
           _scheduleArtworkMissSave();
         }
         if (widget.player.currentTrack?.id == track.id) {
