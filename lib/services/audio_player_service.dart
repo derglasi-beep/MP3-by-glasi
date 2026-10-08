@@ -419,14 +419,25 @@ class AudioPlayerService {
   }
 
   Future<EqualizerInfo?> equalizerInfo() async {
-    final info = await EqualizerService(effect: equalizer).info;
-    debugPrint(
-      '[EQ] parameters: '
-      '${info == null ? 'nicht verfügbar' : '${info.bands.length} Bänder'} '
-      'session=${audio.androidAudioSessionId} '
-      'state=${audio.processingState.name} playing=${audio.playing}',
-    );
-    return info;
+    try {
+      final info = await EqualizerService(effect: equalizer)
+          .info
+          .timeout(const Duration(milliseconds: 800));
+      debugPrint(
+        '[EQ] parameters: '
+        '${info == null ? 'nicht verfügbar' : '${info.bands.length} Bänder'} '
+        'session=${audio.androidAudioSessionId} '
+        'state=${audio.processingState.name} playing=${audio.playing}',
+      );
+      return info;
+    } on TimeoutException {
+      debugPrint(
+        '[EQ] parameters Timeout '
+        'session=${audio.androidAudioSessionId} '
+        'state=${audio.processingState.name} playing=${audio.playing}',
+      );
+      return null;
+    }
   }
 
   Future<EqualizerInfo?> ensureEqualizerReady() async {
@@ -436,10 +447,15 @@ class AudioPlayerService {
       'state=${audio.processingState.name} playing=${audio.playing}',
     );
 
-    var info = await equalizerInfo();
-    if (info != null && info.bands.isNotEmpty) {
-      debugPrint('[EQ] bereits verfügbar.');
-      return info;
+    EqualizerInfo? info;
+    if (audio.androidAudioSessionId != null) {
+      info = await equalizerInfo();
+      if (info != null && info.bands.isNotEmpty) {
+        debugPrint('[EQ] bereits verfügbar.');
+        return info;
+      }
+    } else {
+      debugPrint('[EQ] noch keine Session, Parameterabfrage wird übersprungen.');
     }
 
     final track = currentTrack;
