@@ -25,6 +25,8 @@ class AudioPlayerService {
   double _bass = 0;
   double _treble = 0;
   List<double> _manualEqBands = const [];
+  List<double> _savedEqBands = const [];
+  bool _audioSettingsLoaded = false;
 
   AudioPlayerService() {
     audio = AudioPlayer(
@@ -261,6 +263,9 @@ class AudioPlayerService {
 
     try {
       await audio.setFilePath(t.path);
+      if (_audioSettingsLoaded) {
+        await _restoreEqualizerIfAvailable();
+      }
       _trackController.add(t);
     } on PlayerException catch (e) {
       await audio.stop();
@@ -332,23 +337,39 @@ class AudioPlayerService {
   }
 
   Future<void> setEqBand(int index, double gain) async {
-    final eq = EqualizerService(effect: equalizer);
-    final info = await eq.info;
-    if (info == null || index < 0 || index >= info.bands.length) return;
+    try {
+      final info = await EqualizerService(effect: equalizer).info;
+      if (info == null || index < 0 || index >= info.bands.length) return;
 
-    if (_manualEqBands.length != info.bands.length) {
-      final old = _manualEqBands;
-      _manualEqBands = List.generate(
-        info.bands.length,
-        (i) => i < old.length ? old[i] : 0,
-      );
+      if (_manualEqBands.length != info.bands.length) {
+        final old = _manualEqBands;
+        _manualEqBands = List.generate(
+          info.bands.length,
+          (i) => i < old.length ? old[i] : 0,
+        );
+      }
+
+      _manualEqBands[index] = gain.clamp(
+        info.minDecibels,
+        info.maxDecibels,
+      ).toDouble();
+      _savedEqBands = List<double>.from(_manualEqBands);
+      await _applyToneEq(info: info);
+    } catch (_) {
+      // Android can temporarily invalidate the audio effect/session.
+      // Keep the requested value in memory and reapply it after the next load.
+      if (index >= 0) {
+        final needed = index + 1;
+        if (_savedEqBands.length < needed) {
+          final old = _savedEqBands;
+          _savedEqBands = List.generate(
+            needed,
+            (i) => i < old.length ? old[i] : 0,
+          );
+        }
+        _savedEqBands[index] = gain;
+      }
     }
-
-    _manualEqBands[index] = gain.clamp(
-      info.minDecibels,
-      info.maxDecibels,
-    ).toDouble();
-    await _applyToneEq(info: info);
   }
 
   double _bassWeight(double hz) {
@@ -366,29 +387,53 @@ class AudioPlayerService {
   }
 
   Future<void> _applyToneEq({EqualizerInfo? info}) async {
-    final params = info ?? await EqualizerService(effect: equalizer).info;
-    if (params == null || params.bands.isEmpty) return;
+    try {
+      final params = info ?? await EqualizerService(effect: equalizer).info;
+      if (params == null || params.bands.isEmpty) return;
 
-    if (_manualEqBands.length != params.bands.length) {
-      final old = _manualEqBands;
-      _manualEqBands = List.generate(
-        params.bands.length,
-        (i) => i < old.length ? old[i] : 0,
-      );
-    }
+      if (_manualEqBands.length != params.bands.length) {
+        final source = _savedEqBands.isNotEmpty ? _savedEqBands : _manualEqBands;
+        _manualEqBands = List.generate(
+          params.bands.length,
+          (i) => i < source.length ? source[i] : 0,
+        );
+      }
 
-    var anyEffect = false;
-    for (var i = 0; i < params.bands.length; i++) {
-      final hz = params.bands[i].centerFrequency;
-      final gain = (
-        _manualEqBands[i] +
-        (_bass * _bassWeight(hz)) +
-        (_treble * _trebleWeight(hz))
-      ).clamp(params.minDecibels, params.maxDecibels).toDouble();
-      await params.bands[i].setGain(gain);
-      if (gain.abs() > .001) anyEffect = true;
+      var anyEffect = false;
+      for (var i = 0; i < params.bands.length; i++) {
+        final hz = params.bands[i].centerFrequency;
+        final gain = (
+          _manualEqBands[i] +
+          (_bass * _bassWeight(hz)) +
+          (_treble * _trebleWeight(hz))
+        ).clamp(params.minDecibels, params.maxDecibels).toDouble();
+        await params.bands[i].setGain(gain);
+        if (gain.abs() > .001) anyEffect = true;
+      }
+      await equalizer.setEnabled(anyEffect);
+    } catch (_) {
+      // The native effect can disappear briefly when Android recreates
+      // the audio session. It will be reapplied after the next track load.
     }
-    await equalizer.setEnabled(anyEffect);
+  }
+
+  Future<EqualizerInfo?> equalizerInfo() =>
+      EqualizerService(effect: equalizer).info;
+
+  Future<void> _restoreEqualizerIfAvailable() async {
+    final info = await equalizerInfo();
+    if (info == null || info.bands.isEmpty) return;
+
+    _manualEqBands = List.generate(
+      info.bands.length,
+      (i) => i < _savedEqBands.length
+          ? _savedEqBands[i].clamp(
+              info.minDecibels,
+              info.maxDecibels,
+            ).toDouble()
+          : 0,
+    );
+    await _applyToneEq(info: info);
   }
 
   Future<void> setSpeed(double v) => audio.setSpeed(v.clamp(.5, 2));
@@ -405,25 +450,22 @@ class AudioPlayerService {
     ]);
 
     _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
-    await setSpeed(values[1] as double);
-
-    final savedBands = values[2] as List<double>;
-    final eq = EqualizerService(effect: equalizer);
-    final info = await eq.info;
-    if (info == null || info.bands.isEmpty) return;
-
-    _manualEqBands = List.generate(
-      info.bands.length,
-      (i) => i < savedBands.length
-          ? savedBands[i].clamp(info.minDecibels, info.maxDecibels).toDouble()
-          : 0,
-    );
+    _savedEqBands = List<double>.from(values[2] as List<double>);
     _preamp = (values[3] as double).clamp(-12, 12).toDouble();
     _bass = (values[4] as double).clamp(-12, 12).toDouble();
     _treble = (values[5] as double).clamp(-12, 12).toDouble();
+    _audioSettingsLoaded = true;
 
-    await setPreamp(_preamp);
-    await _applyToneEq(info: info);
+    await setSpeed(values[1] as double);
+    await _applyEffectiveVolume();
+
+    try {
+      await setPreamp(_preamp);
+    } catch (_) {
+      // Loudness enhancer may also be unavailable before the first source.
+    }
+
+    await _restoreEqualizerIfAvailable();
   }
 
   int _nextShuffleIndex() {
