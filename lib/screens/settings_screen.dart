@@ -31,20 +31,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       s.eqBands, s.bass, s.treble, s.preamp, s.crossfade, s.speed, s.volume,
     ]);
     final savedBands = values[0] as List<double>;
-    final info = await eq.info;
-    if (info != null && info.bands.isNotEmpty) {
-      eqAvailable = true;
-      eqMin = info.minDecibels;
+
+    EqualizerInfo? info;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      info = await widget.player.equalizerInfo();
+      if (info != null && info.bands.isNotEmpty) break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+
+    eqAvailable = info != null && info.bands.isNotEmpty;
+    if (eqAvailable) {
+      eqMin = info!.minDecibels;
       eqMax = info.maxDecibels;
       bands = List.generate(
         info.bands.length,
-        (i) => i < savedBands.length ? savedBands[i].clamp(eqMin, eqMax).toDouble() : 0,
+        (i) => i < savedBands.length
+            ? savedBands[i].clamp(eqMin, eqMax).toDouble()
+            : 0,
       );
       bandLabels = info.bands.map((band) {
         final hz = band.centerFrequency;
-        return hz >= 1000 ? '${(hz / 1000).toStringAsFixed(hz >= 10000 ? 0 : 1)}k' : hz.round().toString();
+        return hz >= 1000
+            ? '${(hz / 1000).toStringAsFixed(hz >= 10000 ? 0 : 1)}k'
+            : hz.round().toString();
       }).toList();
+    } else {
+      bands = const [];
+      bandLabels = const [];
     }
+
     bass=values[1] as double;
     treble=values[2] as double;
     preamp=values[3] as double;
@@ -85,9 +100,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ]),
       const SizedBox(height:8),
       if (!eqAvailable)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: Text('Auf diesem Gerät ist kein Android-Equalizer verfügbar.'),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            children: [
+              const Text('Android-Equalizer ist momentan nicht verfügbar.'),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Erneut prüfen'),
+              ),
+            ],
+          ),
         )
       else
         SizedBox(height:220,child:Row(
