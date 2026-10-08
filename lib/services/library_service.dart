@@ -56,6 +56,7 @@ class LibraryService {
   static const _tracksKey = 'library_tracks_v1';
   static const _playlistsKey = 'library_playlists_v1';
   static const _libraryFileName = 'library_tracks_v2.json';
+  static const _artworkMissesFileName = 'artwork_misses_v1.json';
 
   Future<void> _trackSaveTail = Future.value();
 
@@ -63,6 +64,13 @@ class LibraryService {
     final support = await getApplicationSupportDirectory();
     return File(
       '${support.path}${Platform.pathSeparator}$_libraryFileName',
+    );
+  }
+
+  Future<File> _artworkMissesFile() async {
+    final support = await getApplicationSupportDirectory();
+    return File(
+      '${support.path}${Platform.pathSeparator}$_artworkMissesFileName',
     );
   }
 
@@ -149,6 +157,41 @@ class LibraryService {
       return tracks;
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<bool> hasArtwork(String id) async {
+    try {
+      final directory = await _artworkDirectory();
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}${_artworkFileName(id)}',
+      );
+      return await file.exists() && await file.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Set<String>> loadArtworkMisses() async {
+    try {
+      final file = await _artworkMissesFile();
+      if (!await file.exists()) return <String>{};
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return <String>{};
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <String>{};
+      return decoded.map((value) => value.toString()).toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Future<void> saveArtworkMisses(Set<String> ids) async {
+    try {
+      final file = await _artworkMissesFile();
+      await _writeLibraryFile(file, jsonEncode(ids.toList(growable: false)));
+    } catch (_) {
+      // A miss cache is only an optimization.
     }
   }
 
