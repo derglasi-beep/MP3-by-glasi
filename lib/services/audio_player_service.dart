@@ -264,8 +264,10 @@ class AudioPlayerService {
     if (t == null) return;
 
     try {
+      // Persist the selected track before touching the native audio source.
+      // This survives fast app closes and source-load failures much better.
+      await _settings.setLastTrackId(t.id);
       await audio.setFilePath(t.path);
-      unawaited(_settings.setLastTrackId(t.id));
       if (_audioSettingsLoaded) {
         await _restoreEqualizerIfAvailable();
       }
