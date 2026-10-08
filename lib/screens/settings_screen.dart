@@ -32,12 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
     final savedBands = values[0] as List<double>;
 
-    EqualizerInfo? info;
-    for (var attempt = 0; attempt < 4; attempt++) {
-      info = await widget.player.equalizerInfo();
-      if (info != null && info.bands.isNotEmpty) break;
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    }
+    final info = await widget.player.ensureEqualizerReady();
 
     eqAvailable = info != null && info.bands.isNotEmpty;
     if (eqAvailable) {
