@@ -7,6 +7,7 @@ class SettingsService {
   static const _treble='treble';
   static const _preamp='preamp';
   static const _crossfade='crossfade';
+  static const _lastTrackId='last_track_id';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -16,6 +17,7 @@ class SettingsService {
   Future<double> get treble async => (await _prefs).getDouble(_treble) ?? 0;
   Future<double> get preamp async => (await _prefs).getDouble(_preamp) ?? 0;
   Future<double> get crossfade async => (await _prefs).getDouble(_crossfade) ?? 0;
+  Future<String?> get lastTrackId async => (await _prefs).getString(_lastTrackId);
 
   Future<List<double>> get eqBands async {
     final p = await _prefs;
@@ -28,5 +30,6 @@ class SettingsService {
   Future<void> setTreble(double v) async => (await _prefs).setDouble(_treble,v);
   Future<void> setPreamp(double v) async => (await _prefs).setDouble(_preamp,v);
   Future<void> setCrossfade(double v) async => (await _prefs).setDouble(_crossfade,v);
+  Future<void> setLastTrackId(String id) async => (await _prefs).setString(_lastTrackId,id);
   Future<void> setEqBand(int i,double v) async => (await _prefs).setDouble('eq_$i',v);
 }
