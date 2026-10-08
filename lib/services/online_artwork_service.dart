@@ -14,6 +14,12 @@ class OnlineArtworkResult {
 
 class OnlineArtworkService {
   final HttpClient _client;
+  DateTime? _lastMusicBrainzRequest;
+
+  static const String _amazonCoverProxyUrl = String.fromEnvironment(
+    'AMAZON_COVER_PROXY_URL',
+    defaultValue: '',
+  );
 
   OnlineArtworkService({HttpClient? client}) : _client = client ?? HttpClient();
 
@@ -37,7 +43,21 @@ class OnlineArtworkService {
     );
     if (deezer != null) return deezer;
 
-    return _lookupITunes(
+    final apple = await _lookupITunes(
+      cleanTitle,
+      cleanArtist,
+      duration,
+    );
+    if (apple != null) return apple;
+
+    final musicBrainz = await _lookupMusicBrainz(
+      cleanTitle,
+      cleanArtist,
+      duration,
+    );
+    if (musicBrainz != null) return musicBrainz;
+
+    return _lookupAmazon(
       cleanTitle,
       cleanArtist,
       duration,
@@ -158,12 +178,151 @@ class OnlineArtworkService {
     }
   }
 
-  Future<Map<String, dynamic>?> _getJson(Uri uri) async {
+  Future<OnlineArtworkResult?> _lookupMusicBrainz(
+    String title,
+    String artist,
+    Duration? duration,
+  ) async {
+    try {
+      await _respectMusicBrainzRateLimit();
+
+      final query = 'recording:"$title" AND artist:"$artist"';
+      final searchUri = Uri.https('musicbrainz.org', '/ws/2/recording/', {
+        'query': query,
+        'fmt': 'json',
+        'limit': '5',
+      });
+
+      final search = await _getJson(
+        searchUri,
+        userAgent: 'MP3-by-Glasi/0.3 (https://github.com/derglasi-beep/MP3-by-glasi)',
+      );
+      _lastMusicBrainzRequest = DateTime.now();
+
+      final recordings = search?['recordings'];
+      if (recordings is! List || recordings.isEmpty) return null;
+
+      Map<String, dynamic>? best;
+      var bestScore = 0.0;
+
+      for (final item in recordings) {
+        if (item is! Map) continue;
+        final candidate = Map<String, dynamic>.from(item);
+        final artistCredit = candidate['artist-credit'];
+        var candidateArtist = '';
+        if (artistCredit is List && artistCredit.isNotEmpty) {
+          final first = artistCredit.first;
+          if (first is Map) {
+            candidateArtist = first['name']?.toString() ??
+                (first['artist'] is Map
+                    ? (first['artist'] as Map)['name']?.toString() ?? ''
+                    : '');
+          }
+        }
+
+        final lengthMs = (candidate['length'] as num?)?.toDouble();
+        var score = _matchScore(
+          candidateTitle: candidate['title']?.toString() ?? '',
+          candidateArtist: candidateArtist,
+          candidateDurationSeconds:
+              lengthMs == null ? null : lengthMs / 1000,
+          title: title,
+          artist: artist,
+          duration: duration,
+        );
+
+        final mbScore = (candidate['score'] as num?)?.toDouble();
+        if (mbScore != null) {
+          score = (score * 0.8 + (mbScore / 100) * 0.2).clamp(0.0, 1.0);
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          best = candidate;
+        }
+      }
+
+      if (best == null || bestScore < 0.74) return null;
+
+      final releases = best['releases'];
+      if (releases is! List || releases.isEmpty) return null;
+
+      for (final release in releases.take(4)) {
+        if (release is! Map) continue;
+        final id = release['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+
+        final uri = Uri.https(
+          'coverartarchive.org',
+          '/release/$id/front-500',
+        );
+        final bytes = await _download(uri);
+        if (bytes != null) {
+          return OnlineArtworkResult(
+            bytes: bytes,
+            source: 'MusicBrainz / Cover Art Archive',
+          );
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _respectMusicBrainzRateLimit() async {
+    final last = _lastMusicBrainzRequest;
+    if (last == null) return;
+    final elapsed = DateTime.now().difference(last);
+    const minimum = Duration(milliseconds: 1100);
+    if (elapsed < minimum) {
+      await Future<void>.delayed(minimum - elapsed);
+    }
+  }
+
+  Future<OnlineArtworkResult?> _lookupAmazon(
+    String title,
+    String artist,
+    Duration? duration,
+  ) async {
+    if (_amazonCoverProxyUrl.isEmpty) return null;
+
+    try {
+      final base = Uri.parse(_amazonCoverProxyUrl);
+      final uri = base.replace(
+        queryParameters: {
+          ...base.queryParameters,
+          'title': title,
+          'artist': artist,
+          if (duration != null) 'durationMs': '${duration.inMilliseconds}',
+        },
+      );
+
+      final response = await _getJson(uri);
+      final imageUrl = response?['imageUrl']?.toString();
+      if (imageUrl == null || imageUrl.isEmpty) return null;
+
+      final bytes = await _download(Uri.parse(imageUrl));
+      if (bytes == null) return null;
+
+      return OnlineArtworkResult(
+        bytes: bytes,
+        source: 'Amazon',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _getJson(
+    Uri uri, {
+    String userAgent = 'MP3-by-Glasi/0.3',
+  }) async {
     final request = await _client.getUrl(uri).timeout(
       const Duration(seconds: 8),
     );
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    request.headers.set(HttpHeaders.userAgentHeader, 'MP3-by-Glasi/0.3');
+    request.headers.set(HttpHeaders.userAgentHeader, userAgent);
 
     final response = await request.close().timeout(
       const Duration(seconds: 8),
