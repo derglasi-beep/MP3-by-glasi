@@ -263,95 +263,105 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       for (final snapshot in List<Track>.from(tracks)) {
         if (!mounted) return;
 
-        while (mounted && analyzing) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-        }
-        if (!mounted) return;
-
-        final index = _trackIndex(snapshot.id);
-        if (index < 0) continue;
-        final current = tracks[index];
-        _backgroundBpmDone++;
-        _scheduleBackgroundUiRefresh();
-
-        // Already stable enough: no need to spend CPU on it again.
-        if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
-          continue;
-        }
-
-        // The foreground analysis has priority for the playing track.
-        if (widget.player.currentTrack?.id == current.id) {
-          await Future<void>.delayed(const Duration(seconds: 3));
-          continue;
-        }
-
-        final cached = await bpmCache.get(current.path);
-        if (cached != null) {
+        try {
+          while (mounted && analyzing) {
+            await Future<void>.delayed(const Duration(seconds: 2));
+          }
           if (!mounted) return;
-          final freshIndex =
-              _trackIndex(current.id);
-          if (freshIndex >= 0) {
-            tracks[freshIndex] = tracks[freshIndex].copyWith(
-              bpm: cached.bpm,
-              bpmConfidence: cached.confidence,
-            );
-            if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
-              _invalidateVisibleCache();
-            } else if (_visibleCache != null) {
-              final cachedIndex = _visibleCache!
-                  .indexWhere((item) => item.id == current.id);
-              if (cachedIndex >= 0) {
-                _visibleCache![cachedIndex] = tracks[freshIndex];
-              }
-            }
-            _scheduleBackgroundUiRefresh();
-          }
-          pendingLibraryChanges++;
-          if (pendingLibraryChanges >= 20) {
-            await library.saveTrackMetadata(List<Track>.from(tracks));
-            pendingLibraryChanges = 0;
-          }
-          await Future<void>.delayed(const Duration(seconds: 2));
-          continue;
-        }
 
-        final result = await bpm.analyzeFileResult(current.path);
-        if (!mounted) return;
-        if (result != null && result.bpm > 0) {
-          await bpmCache.putDeferred(
-            current.path,
-            result.bpm,
-            confidence: result.confidence,
+          final index = _trackIndex(snapshot.id);
+          if (index < 0) continue;
+          final current = tracks[index];
+
+          // Already stable enough: no need to spend CPU on it again.
+          if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
+            continue;
+          }
+
+          // The foreground analysis has priority for the playing track.
+          if (widget.player.currentTrack?.id == current.id) {
+            await Future<void>.delayed(const Duration(seconds: 3));
+            continue;
+          }
+
+          final cached = await bpmCache.get(current.path);
+          if (cached != null) {
+            if (!mounted) return;
+            final freshIndex = _trackIndex(current.id);
+            if (freshIndex >= 0) {
+              tracks[freshIndex] = tracks[freshIndex].copyWith(
+                bpm: cached.bpm,
+                bpmConfidence: cached.confidence,
+              );
+              if (sortMode == _SortMode.bpm ||
+                  bpmMin != null ||
+                  bpmMax != null) {
+                _invalidateVisibleCache();
+              } else if (_visibleCache != null) {
+                final cachedIndex = _visibleCache!
+                    .indexWhere((item) => item.id == current.id);
+                if (cachedIndex >= 0) {
+                  _visibleCache![cachedIndex] = tracks[freshIndex];
+                }
+              }
+              _scheduleBackgroundUiRefresh();
+            }
+            pendingLibraryChanges++;
+            if (pendingLibraryChanges >= 20) {
+              await library.saveTrackMetadata(List<Track>.from(tracks));
+              pendingLibraryChanges = 0;
+            }
+            await Future<void>.delayed(const Duration(seconds: 2));
+            continue;
+          }
+
+          final result = await bpm.analyzeFileResult(current.path);
+          if (!mounted) return;
+          if (result != null && result.bpm > 0) {
+            await bpmCache.putDeferred(
+              current.path,
+              result.bpm,
+              confidence: result.confidence,
+            );
+
+            if (!mounted) return;
+            final freshIndex = _trackIndex(current.id);
+            if (freshIndex >= 0) {
+              tracks[freshIndex] = tracks[freshIndex].copyWith(
+                bpm: result.bpm,
+                bpmConfidence: result.confidence,
+              );
+              if (sortMode == _SortMode.bpm ||
+                  bpmMin != null ||
+                  bpmMax != null) {
+                _invalidateVisibleCache();
+              } else if (_visibleCache != null) {
+                final cachedIndex = _visibleCache!
+                    .indexWhere((item) => item.id == current.id);
+                if (cachedIndex >= 0) {
+                  _visibleCache![cachedIndex] = tracks[freshIndex];
+                }
+              }
+              _scheduleBackgroundUiRefresh();
+            }
+            pendingLibraryChanges++;
+            if (pendingLibraryChanges >= 20) {
+              await library.saveTrackMetadata(List<Track>.from(tracks));
+              pendingLibraryChanges = 0;
+            }
+          }
+
+          // Keep CPU/storage pressure low on large libraries.
+          await Future<void>.delayed(const Duration(seconds: 4));
+        } catch (error) {
+          debugPrint(
+            '[BPM] Hintergrundanalyse überspringt '
+            '"${snapshot.artist} - ${snapshot.title}": $error',
           );
-
-          if (!mounted) return;
-          final freshIndex =
-              _trackIndex(current.id);
-          if (freshIndex >= 0) {
-            tracks[freshIndex] = tracks[freshIndex].copyWith(
-              bpm: result.bpm,
-              bpmConfidence: result.confidence,
-            );
-            if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
-              _invalidateVisibleCache();
-            } else if (_visibleCache != null) {
-              final cachedIndex = _visibleCache!
-                  .indexWhere((item) => item.id == current.id);
-              if (cachedIndex >= 0) {
-                _visibleCache![cachedIndex] = tracks[freshIndex];
-              }
-            }
-            _scheduleBackgroundUiRefresh();
-          }
-          pendingLibraryChanges++;
-          if (pendingLibraryChanges >= 20) {
-            await library.saveTrackMetadata(List<Track>.from(tracks));
-            pendingLibraryChanges = 0;
-          }
+        } finally {
+          _backgroundBpmDone++;
+          _scheduleBackgroundUiRefresh();
         }
-
-        // Keep CPU/storage pressure low on large libraries.
-        await Future<void>.delayed(const Duration(seconds: 4));
       }
     } finally {
       _backgroundBpmWorkerRunning = false;
@@ -385,7 +395,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       for (final snapshot in List<Track>.from(tracks)) {
         if (!mounted) return;
 
-        while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
+        try {
+          while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
           await Future<void>.delayed(const Duration(seconds: 3));
         }
         if (!mounted) return;
@@ -442,8 +453,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           }
         }
 
-        // Be deliberately gentle with the network/API.
-        await Future<void>.delayed(const Duration(seconds: 5));
+          // Be deliberately gentle with the network/API.
+          await Future<void>.delayed(const Duration(seconds: 5));
+        } catch (error) {
+          debugPrint(
+            '[BPM] Online-Prüfung überspringt '
+            '"${snapshot.artist} - ${snapshot.title}": $error',
+          );
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
       }
     } finally {
       _backgroundOnlineBpmWorkerRunning = false;
@@ -467,19 +485,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       await Future<void>.delayed(const Duration(seconds: 2));
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
-        final currentIndex = _trackIndex(track.id);
-        if (currentIndex < 0) continue;
-        final current = tracks[currentIndex];
-        _backgroundArtworkDone++;
-        _scheduleBackgroundUiRefresh();
-        if (current.artwork != null && current.artwork!.isNotEmpty) continue;
 
-        await _ensureArtwork(
-          track,
-          allowMetadataRead: true,
-          allowOnlineLookup: true,
-        );
-        await Future<void>.delayed(const Duration(seconds: 2));
+        try {
+          final currentIndex = _trackIndex(track.id);
+          if (currentIndex < 0) continue;
+          final current = tracks[currentIndex];
+          if (current.artwork != null && current.artwork!.isNotEmpty) continue;
+
+          await _ensureArtwork(
+            track,
+            allowMetadataRead: true,
+            allowOnlineLookup: true,
+          );
+          await Future<void>.delayed(const Duration(seconds: 2));
+        } catch (error) {
+          debugPrint(
+            '[Artwork] Hintergrundlauf überspringt '
+            '"${track.artist} - ${track.title}": $error',
+          );
+        } finally {
+          _backgroundArtworkDone++;
+          _scheduleBackgroundUiRefresh();
+        }
       }
     } finally {
       _artworkWorkerRunning = false;
