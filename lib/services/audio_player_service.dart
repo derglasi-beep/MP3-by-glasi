@@ -434,17 +434,42 @@ class AudioPlayerService {
         _trackController.add(track);
       }
 
-      // Some Android/MIUI devices do not create the actual audio-effect
-      // session until playback starts. Prime that session silently, then
-      // pause again before the user hears anything.
-      if (!audio.playing) {
+      if (audio.androidAudioSessionId == null) {
         final oldPosition = audio.position;
-        await audio.setVolume(0);
-        unawaited(audio.play());
-        await Future<void>.delayed(const Duration(milliseconds: 180));
-        await audio.pause();
-        await audio.seek(oldPosition);
-        await _applyEffectiveVolume();
+        final wasPlaying = audio.playing;
+
+        if (!wasPlaying) {
+          await audio.setVolume(0);
+          unawaited(audio.play());
+        }
+
+        try {
+          await audio.androidAudioSessionIdStream
+              .firstWhere((id) => id != null)
+              .timeout(const Duration(seconds: 3));
+        } on TimeoutException {
+          // Some devices only publish the session after playback progresses.
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+
+        if (!wasPlaying) {
+          await audio.pause();
+          await audio.seek(oldPosition);
+          await _applyEffectiveVolume();
+        }
+      }
+
+      if (audio.androidAudioSessionId == null) return null;
+
+      for (var attempt = 0; attempt < 6; attempt++) {
+        info = await equalizerInfo();
+        if (info != null && info.bands.isNotEmpty) {
+          if (_audioSettingsLoaded) {
+            await _restoreEqualizerIfAvailable(info: info);
+          }
+          return info;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
       }
     } catch (_) {
       try {
@@ -453,16 +478,6 @@ class AudioPlayerService {
       return null;
     }
 
-    for (var attempt = 0; attempt < 6; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      info = await equalizerInfo();
-      if (info != null && info.bands.isNotEmpty) {
-        if (_audioSettingsLoaded) {
-          await _restoreEqualizerIfAvailable(info: info);
-        }
-        return info;
-      }
-    }
     return null;
   }
 
