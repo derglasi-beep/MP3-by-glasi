@@ -424,24 +424,37 @@ class AudioPlayerService {
     var info = await equalizerInfo();
     if (info != null && info.bands.isNotEmpty) return info;
 
-    // Android creates/binds the audio-effect session lazily. A restored queue
-    // uses load:false at startup, so no native source may exist yet. Load the
-    // current source silently to give the equalizer a valid session without
-    // starting playback.
     final track = currentTrack;
-    if (track != null &&
-        (audio.processingState == ProcessingState.idle ||
-            audio.processingState == ProcessingState.completed)) {
-      try {
+    if (track == null) return null;
+
+    try {
+      if (audio.processingState == ProcessingState.idle ||
+          audio.processingState == ProcessingState.completed) {
         await audio.setFilePath(track.path);
         _trackController.add(track);
-      } catch (_) {
-        return null;
       }
+
+      // Some Android/MIUI devices do not create the actual audio-effect
+      // session until playback starts. Prime that session silently, then
+      // pause again before the user hears anything.
+      if (!audio.playing) {
+        final oldPosition = audio.position;
+        await audio.setVolume(0);
+        unawaited(audio.play());
+        await Future<void>.delayed(const Duration(milliseconds: 180));
+        await audio.pause();
+        await audio.seek(oldPosition);
+        await _applyEffectiveVolume();
+      }
+    } catch (_) {
+      try {
+        await _applyEffectiveVolume();
+      } catch (_) {}
+      return null;
     }
 
-    for (var attempt = 0; attempt < 4; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+    for (var attempt = 0; attempt < 6; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
       info = await equalizerInfo();
       if (info != null && info.bands.isNotEmpty) {
         if (_audioSettingsLoaded) {
