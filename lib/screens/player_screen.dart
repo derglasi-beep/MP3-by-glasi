@@ -41,6 +41,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final bpmFusion = BpmFusionService();
   final library = LibraryService();
   List<Track> tracks = [];
+  final Map<String, int> _trackIndexById = <String, int>{};
+  List<Track>? _visibleCache;
+  String? _visibleCacheKey;
 
   String search = '';
   int? bpmMin;
@@ -73,6 +76,23 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   int _backgroundArtworkDone = 0;
   int _backgroundArtworkTotal = 0;
 
+  void _rebuildTrackIndex() {
+    _trackIndexById
+      ..clear()
+      ..addEntries(
+        tracks.asMap().entries.map(
+          (entry) => MapEntry(entry.value.id, entry.key),
+        ),
+      );
+  }
+
+  void _invalidateVisibleCache() {
+    _visibleCache = null;
+    _visibleCacheKey = null;
+  }
+
+  int _trackIndex(String id) => _trackIndexById[id] ?? -1;
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +122,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         allowOnlineLookup: true,
       ),
     );
-    unawaited(_analyzeTrack(track));
+    if (widget.player.audio.processingState != ProcessingState.idle ||
+        widget.player.audio.playing) {
+      unawaited(_analyzeTrack(track));
+    }
   }
 
   void _showPlayerError(String message) {
@@ -157,7 +180,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     // media paths and previously caused a valid library to be emptied
     // after restarting the app.
     if (Platform.isAndroid) {
-      setState(() => tracks = saved);
+      setState(() {
+        tracks = saved;
+        _rebuildTrackIndex();
+        _invalidateVisibleCache();
+      });
       await widget.player.setQueue(tracks, load: false);
       unawaited(_loadArtworkInBackground());
       unawaited(_analyzeBpmInBackground());
@@ -173,7 +200,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     ];
     if (!mounted) return;
 
-    setState(() => tracks = valid);
+    setState(() {
+      tracks = valid;
+      _rebuildTrackIndex();
+      _invalidateVisibleCache();
+    });
     if (valid.length != saved.length) {
       await library.saveTracks(valid);
     }
@@ -237,7 +268,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         }
         if (!mounted) return;
 
-        final index = tracks.indexWhere((item) => item.id == snapshot.id);
+        final index = _trackIndex(snapshot.id);
         if (index < 0) continue;
         final current = tracks[index];
         _backgroundBpmDone++;
@@ -258,12 +289,21 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         if (cached != null) {
           if (!mounted) return;
           final freshIndex =
-              tracks.indexWhere((item) => item.id == current.id);
+              _trackIndex(current.id);
           if (freshIndex >= 0) {
             tracks[freshIndex] = tracks[freshIndex].copyWith(
               bpm: cached.bpm,
               bpmConfidence: cached.confidence,
             );
+            if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
+              _invalidateVisibleCache();
+            } else if (_visibleCache != null) {
+              final cachedIndex = _visibleCache!
+                  .indexWhere((item) => item.id == current.id);
+              if (cachedIndex >= 0) {
+                _visibleCache![cachedIndex] = tracks[freshIndex];
+              }
+            }
             _scheduleBackgroundUiRefresh();
           }
           pendingLibraryChanges++;
@@ -286,12 +326,21 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
           if (!mounted) return;
           final freshIndex =
-              tracks.indexWhere((item) => item.id == current.id);
+              _trackIndex(current.id);
           if (freshIndex >= 0) {
             tracks[freshIndex] = tracks[freshIndex].copyWith(
               bpm: result.bpm,
               bpmConfidence: result.confidence,
             );
+            if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
+              _invalidateVisibleCache();
+            } else if (_visibleCache != null) {
+              final cachedIndex = _visibleCache!
+                  .indexWhere((item) => item.id == current.id);
+              if (cachedIndex >= 0) {
+                _visibleCache![cachedIndex] = tracks[freshIndex];
+              }
+            }
             _scheduleBackgroundUiRefresh();
           }
           pendingLibraryChanges++;
@@ -341,7 +390,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         }
         if (!mounted) return;
 
-        final index = tracks.indexWhere((item) => item.id == snapshot.id);
+        final index = _trackIndex(snapshot.id);
         if (index < 0) continue;
         final current = tracks[index];
         final localValue =
@@ -368,12 +417,21 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
           if (fusion.bpm > 0) {
             final freshIndex =
-                tracks.indexWhere((item) => item.id == current.id);
+                _trackIndex(current.id);
             if (freshIndex >= 0) {
               tracks[freshIndex] = tracks[freshIndex].copyWith(
                 bpm: fusion.bpm,
                 bpmConfidence: fusion.confidence,
               );
+              if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
+                _invalidateVisibleCache();
+              } else if (_visibleCache != null) {
+                final cachedIndex = _visibleCache!
+                    .indexWhere((item) => item.id == current.id);
+                if (cachedIndex >= 0) {
+                  _visibleCache![cachedIndex] = tracks[freshIndex];
+                }
+              }
               _scheduleBackgroundUiRefresh();
             }
             pendingOnlineLibraryChanges++;
@@ -406,9 +464,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _backgroundArtworkDone = 0;
     _backgroundArtworkTotal = tracks.length;
     try {
+      await Future<void>.delayed(const Duration(seconds: 2));
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
-        final currentIndex = tracks.indexWhere((item) => item.id == track.id);
+        final currentIndex = _trackIndex(track.id);
         if (currentIndex < 0) continue;
         final current = tracks[currentIndex];
         _backgroundArtworkDone++;
@@ -434,7 +493,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }) async {
     if (_artworkLoads.contains(track.id)) return;
 
-    final index = tracks.indexWhere((item) => item.id == track.id);
+    final index = _trackIndex(track.id);
     if (index < 0) return;
     final current = tracks[index];
     if (current.artwork != null && current.artwork!.isNotEmpty) return;
@@ -477,11 +536,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
       if (!mounted || artwork == null || artwork.isEmpty) return;
 
-      final freshIndex = tracks.indexWhere((item) => item.id == track.id);
+      final freshIndex = _trackIndex(track.id);
       if (freshIndex < 0) return;
 
       final updated = tracks[freshIndex].copyWith(artwork: artwork);
       tracks[freshIndex] = updated;
+      if (_visibleCache != null) {
+        final cachedIndex =
+            _visibleCache!.indexWhere((item) => item.id == track.id);
+        if (cachedIndex >= 0) {
+          _visibleCache![cachedIndex] = updated;
+        }
+      }
       widget.player.updateTrack(updated);
       _scheduleBackgroundUiRefresh();
     } finally {
@@ -491,6 +557,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   List<Track> get visible {
     final q = search.toLowerCase().trim();
+    final cacheKey =
+        '$q|$bpmMin|$bpmMax|${sortMode.name}|$sortAscending|${tracks.length}';
+    if (_visibleCache != null && _visibleCacheKey == cacheKey) {
+      return _visibleCache!;
+    }
+
     final result = tracks.where((t) =>
       q.isEmpty ||
       t.title.toLowerCase().contains(q) ||
@@ -519,6 +591,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       final fallback = _text(a.title).compareTo(_text(b.title));
       return sortAscending ? fallback : -fallback;
     });
+    _visibleCache = result;
+    _visibleCacheKey = cacheKey;
     return result;
   }
 
@@ -752,7 +826,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               ),
       );
     }
-    setState(() => tracks = hydrated);
+    setState(() {
+      tracks = hydrated;
+      _rebuildTrackIndex();
+      _invalidateVisibleCache();
+    });
     await library.saveTracks(tracks);
     await widget.player.setQueue(tracks, load: false);
     if (Platform.isAndroid) {
@@ -882,12 +960,21 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void _setBpm(String id, double value, double? confidence) {
     if (!mounted) return;
     setState(() {
-      final i = tracks.indexWhere((x) => x.id == id);
+      final i = _trackIndex(id);
       if (i >= 0) {
         tracks[i] = tracks[i].copyWith(
           bpm: value,
           bpmConfidence: confidence,
         );
+        if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
+          _invalidateVisibleCache();
+        } else if (_visibleCache != null) {
+          final cachedIndex =
+              _visibleCache!.indexWhere((track) => track.id == id);
+          if (cachedIndex >= 0) {
+            _visibleCache![cachedIndex] = tracks[i];
+          }
+        }
       }
     });
     _scheduleLibrarySave();
@@ -909,6 +996,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         sortMode = mode;
         sortAscending = true;
       }
+      _invalidateVisibleCache();
     });
   }
 
@@ -977,7 +1065,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         child: TextField(
-          onChanged: (v) => setState(() => search = v),
+          onChanged: (v) => setState(() {
+            search = v;
+            _invalidateVisibleCache();
+          }),
           decoration: const InputDecoration(
             prefixIcon: Icon(Icons.search),
             hintText: 'Titel, Interpret oder Album',
@@ -1037,7 +1128,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 child: FilterChip(
                   label: Text(zone.label),
                   selected: bpmMin == zone.min && bpmMax == zone.max,
-                  onSelected: (_) => setState(() { bpmMin = zone.min; bpmMax = zone.max; }),
+                  onSelected: (_) => setState(() {
+                    bpmMin = zone.min;
+                    bpmMax = zone.max;
+                    _invalidateVisibleCache();
+                  }),
                 ),
               ),
           ],
@@ -1055,7 +1150,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
           const Spacer(),
           IconButton(
-            onPressed: () => setState(() => sortAscending = !sortAscending),
+            onPressed: () => setState(() {
+              sortAscending = !sortAscending;
+              _invalidateVisibleCache();
+            }),
             tooltip: sortAscending ? 'Absteigend' : 'Aufsteigend',
             icon: Icon(sortAscending ? Icons.arrow_upward : Icons.arrow_downward),
           ),
