@@ -20,12 +20,13 @@ class Track {
   });
 
   Track copyWith({String? title, String? artist, String? album, int? year,
-      int? trackNumber, Duration? duration, double? bpm, double? bpmConfidence, Uint8List? artwork}) => Track(
+      int? trackNumber, Duration? duration, double? bpm, double? bpmConfidence,
+      Uint8List? artwork, bool clearArtwork = false}) => Track(
     id: id, path: path, title: title ?? this.title,
     artist: artist ?? this.artist, album: album ?? this.album,
     year: year ?? this.year, trackNumber: trackNumber ?? this.trackNumber,
     duration: duration ?? this.duration,
     bpm: bpm ?? this.bpm, bpmConfidence: bpmConfidence ?? this.bpmConfidence,
-    artwork: artwork ?? this.artwork,
+    artwork: clearArtwork ? null : (artwork ?? this.artwork),
   );
 }
