@@ -62,6 +62,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Track? _pendingBpmAnalysis;
   Timer? _librarySaveTimer;
   Timer? _backgroundUiRefreshTimer;
+  bool _backgroundUiDirty = false;
+  bool _libraryScrolling = false;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   bool _backgroundBpmWorkerRunning = false;
@@ -168,12 +170,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _scheduleBackgroundUiRefresh() {
     if (!mounted) return;
+    _backgroundUiDirty = true;
+    if (_libraryScrolling) return;
     if (_backgroundUiRefreshTimer?.isActive ?? false) return;
 
     _backgroundUiRefreshTimer = Timer(const Duration(seconds: 5), () {
       _backgroundUiRefreshTimer = null;
-      if (mounted) setState(() {});
+      if (!mounted || _libraryScrolling || !_backgroundUiDirty) return;
+      _backgroundUiDirty = false;
+      setState(() {});
     });
+  }
+
+  bool _onLibraryScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _libraryScrolling = true;
+      _backgroundUiRefreshTimer?.cancel();
+      _backgroundUiRefreshTimer = null;
+    } else if (notification is ScrollEndNotification) {
+      _libraryScrolling = false;
+      if (_backgroundUiDirty) {
+        _backgroundUiRefreshTimer?.cancel();
+        _backgroundUiRefreshTimer = Timer(
+          const Duration(milliseconds: 500),
+          () {
+            _backgroundUiRefreshTimer = null;
+            if (!mounted || _libraryScrolling || !_backgroundUiDirty) return;
+            _backgroundUiDirty = false;
+            setState(() {});
+          },
+        );
+      }
+    }
+    return false;
   }
 
   Future<void> _analyzeBpmInBackground() async {
@@ -1259,7 +1288,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ? const Center(
                       child: Text('Keine Titel in der Bibliothek'),
                     )
-                  : ListView.builder(
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: _onLibraryScroll,
+                      child: ListView.builder(
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
@@ -1334,6 +1365,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onTap: () => _playTrack(t),
                         );
                       },
+                    ),
                     ),
             ),
           ],
