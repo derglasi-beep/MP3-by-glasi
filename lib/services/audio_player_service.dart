@@ -28,6 +28,7 @@ class AudioPlayerService {
   List<double> _manualEqBands = const [];
   List<double> _savedEqBands = const [];
   bool _audioSettingsLoaded = false;
+  final SettingsService _settings = SettingsService();
 
   AudioPlayerService() {
     audio = AudioPlayer(
@@ -264,6 +265,7 @@ class AudioPlayerService {
 
     try {
       await audio.setFilePath(t.path);
+      unawaited(_settings.setLastTrackId(t.id));
       if (_audioSettingsLoaded) {
         await _restoreEqualizerIfAvailable();
       }
