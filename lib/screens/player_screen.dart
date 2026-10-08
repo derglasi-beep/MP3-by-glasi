@@ -241,6 +241,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         if (index < 0) continue;
         final current = tracks[index];
         _backgroundBpmDone++;
+        _scheduleBackgroundUiRefresh();
 
         // Already stable enough: no need to spend CPU on it again.
         if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
@@ -304,11 +305,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         await Future<void>.delayed(const Duration(seconds: 4));
       }
     } finally {
-      await bpmCache.flush();
-      if (pendingLibraryChanges > 0) {
-        await library.saveTrackMetadata(List<Track>.from(tracks));
-      }
       _backgroundBpmWorkerRunning = false;
+      try {
+        await bpmCache.flush();
+        if (pendingLibraryChanges > 0) {
+          await library.saveTrackMetadata(List<Track>.from(tracks));
+        }
+      } catch (_) {
+        // Persistence can be retried later; never leave the worker locked.
+      }
+      _scheduleBackgroundUiRefresh();
     }
 
     if (mounted) {
@@ -382,10 +388,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         await Future<void>.delayed(const Duration(seconds: 5));
       }
     } finally {
-      if (pendingOnlineLibraryChanges > 0) {
-        await library.saveTrackMetadata(List<Track>.from(tracks));
-      }
       _backgroundOnlineBpmWorkerRunning = false;
+      try {
+        if (pendingOnlineLibraryChanges > 0) {
+          await library.saveTrackMetadata(List<Track>.from(tracks));
+        }
+      } catch (_) {
+        // A transient storage error must not permanently block verification.
+      }
+      _scheduleBackgroundUiRefresh();
     }
   }
 
@@ -401,6 +412,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         if (currentIndex < 0) continue;
         final current = tracks[currentIndex];
         _backgroundArtworkDone++;
+        _scheduleBackgroundUiRefresh();
         if (current.artwork != null && current.artwork!.isNotEmpty) continue;
 
         await _ensureArtwork(
