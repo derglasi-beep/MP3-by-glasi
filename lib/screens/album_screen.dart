@@ -39,14 +39,14 @@ class AlbumScreen extends StatelessWidget {
 
   Future<void> _playAlbum() async {
     if (tracks.isEmpty) return;
-    await player.setQueue(_orderedTracks, startIndex: 0);
+    await player.setQueue(_orderedTracks, startIndex: 0, preserveCurrent: false);
     await player.play();
   }
 
   Future<void> _playTrack(int index) async {
     final ordered = _orderedTracks;
     if (index < 0 || index >= ordered.length) return;
-    await player.setQueue(ordered, startIndex: index);
+    await player.setQueue(ordered, startIndex: index, preserveCurrent: false);
     await player.play();
   }
 
