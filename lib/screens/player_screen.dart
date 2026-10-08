@@ -61,6 +61,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final StreamSubscription<Track?> _playerTrackSub;
   Track? _pendingBpmAnalysis;
   Timer? _librarySaveTimer;
+  Timer? _backgroundUiRefreshTimer;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   bool _backgroundBpmWorkerRunning = false;
@@ -121,6 +122,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _librarySaveTimer?.cancel();
+    _backgroundUiRefreshTimer?.cancel();
     if (_librarySaveTimer != null) {
       unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
     }
@@ -164,6 +166,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     unawaited(_analyzeBpmInBackground());
   }
 
+  void _scheduleBackgroundUiRefresh() {
+    if (!mounted) return;
+    if (_backgroundUiRefreshTimer?.isActive ?? false) return;
+
+    _backgroundUiRefreshTimer = Timer(const Duration(seconds: 5), () {
+      _backgroundUiRefreshTimer = null;
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _analyzeBpmInBackground() async {
     if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
     _backgroundBpmWorkerRunning = true;
@@ -199,16 +211,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final cached = await bpmCache.get(current.path);
         if (cached != null) {
           if (!mounted) return;
-          setState(() {
-            final freshIndex =
-                tracks.indexWhere((item) => item.id == current.id);
-            if (freshIndex >= 0) {
-              tracks[freshIndex] = tracks[freshIndex].copyWith(
-                bpm: cached.bpm,
-                bpmConfidence: cached.confidence,
-              );
-            }
-          });
+          final freshIndex =
+              tracks.indexWhere((item) => item.id == current.id);
+          if (freshIndex >= 0) {
+            tracks[freshIndex] = tracks[freshIndex].copyWith(
+              bpm: cached.bpm,
+              bpmConfidence: cached.confidence,
+            );
+            _scheduleBackgroundUiRefresh();
+          }
           pendingLibraryChanges++;
           if (pendingLibraryChanges >= 20) {
             await library.saveTrackMetadata(List<Track>.from(tracks));
@@ -228,16 +239,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           );
 
           if (!mounted) return;
-          setState(() {
-            final freshIndex =
-                tracks.indexWhere((item) => item.id == current.id);
-            if (freshIndex >= 0) {
-              tracks[freshIndex] = tracks[freshIndex].copyWith(
-                bpm: result.bpm,
-                bpmConfidence: result.confidence,
-              );
-            }
-          });
+          final freshIndex =
+              tracks.indexWhere((item) => item.id == current.id);
+          if (freshIndex >= 0) {
+            tracks[freshIndex] = tracks[freshIndex].copyWith(
+              bpm: result.bpm,
+              bpmConfidence: result.confidence,
+            );
+            _scheduleBackgroundUiRefresh();
+          }
           pendingLibraryChanges++;
           if (pendingLibraryChanges >= 20) {
             await library.saveTrackMetadata(List<Track>.from(tracks));
@@ -306,16 +316,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           );
 
           if (fusion.bpm > 0) {
-            setState(() {
-              final freshIndex =
-                  tracks.indexWhere((item) => item.id == current.id);
-              if (freshIndex >= 0) {
-                tracks[freshIndex] = tracks[freshIndex].copyWith(
-                  bpm: fusion.bpm,
-                  bpmConfidence: fusion.confidence,
-                );
-              }
-            });
+            final freshIndex =
+                tracks.indexWhere((item) => item.id == current.id);
+            if (freshIndex >= 0) {
+              tracks[freshIndex] = tracks[freshIndex].copyWith(
+                bpm: fusion.bpm,
+                bpmConfidence: fusion.confidence,
+              );
+              _scheduleBackgroundUiRefresh();
+            }
             pendingOnlineLibraryChanges++;
             if (pendingOnlineLibraryChanges >= 20) {
               await library.saveTrackMetadata(List<Track>.from(tracks));
@@ -412,8 +421,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (freshIndex < 0) return;
 
       final updated = tracks[freshIndex].copyWith(artwork: artwork);
-      setState(() => tracks[freshIndex] = updated);
+      tracks[freshIndex] = updated;
       widget.player.updateTrack(updated);
+      _scheduleBackgroundUiRefresh();
     } finally {
       _artworkLoads.remove(track.id);
     }
