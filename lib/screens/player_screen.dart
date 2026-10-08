@@ -565,6 +565,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await widget.player.setQueue(
       _orderedAlbumTracks(albumTracks),
       startIndex: 0,
+      preserveCurrent: false,
     );
     await widget.player.play();
     if (mounted) setState(() {});
@@ -907,7 +908,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             );
 
     if (!queueMatchesLibrary) {
-      await widget.player.setQueue(tracks, startIndex: n);
+      await widget.player.setQueue(tracks, startIndex: n, preserveCurrent: false);
       await widget.player.play();
     } else {
       await widget.player.playAt(n);
