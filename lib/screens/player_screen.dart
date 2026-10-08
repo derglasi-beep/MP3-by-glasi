@@ -14,6 +14,7 @@ import '../services/online_artwork_service.dart';
 import '../services/bpm_fusion_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
+import '../services/settings_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
@@ -40,6 +41,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final onlineArtwork = OnlineArtworkService();
   final bpmFusion = BpmFusionService();
   final library = LibraryService();
+  final settings = SettingsService();
   List<Track> tracks = [];
   final Map<String, int> _trackIndexById = <String, int>{};
   List<Track>? _visibleCache;
@@ -185,7 +187,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         _rebuildTrackIndex();
         _invalidateVisibleCache();
       });
-      await widget.player.setQueue(tracks, load: false);
+      final lastTrackId = await settings.lastTrackId;
+      final lastIndex = lastTrackId == null ? -1 : _trackIndex(lastTrackId);
+      await widget.player.setQueue(
+        tracks,
+        startIndex: lastIndex >= 0 ? lastIndex : 0,
+        load: false,
+        preserveCurrent: false,
+      );
       unawaited(_loadArtworkInBackground());
       unawaited(_analyzeBpmInBackground());
       return;
@@ -208,7 +217,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (valid.length != saved.length) {
       await library.saveTracks(valid);
     }
-    await widget.player.setQueue(tracks, load: false);
+    final lastTrackId = await settings.lastTrackId;
+    final lastIndex = lastTrackId == null ? -1 : _trackIndex(lastTrackId);
+    await widget.player.setQueue(
+      tracks,
+      startIndex: lastIndex >= 0 ? lastIndex : 0,
+      load: false,
+      preserveCurrent: false,
+    );
     unawaited(_analyzeBpmInBackground());
   }
 
