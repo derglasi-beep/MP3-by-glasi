@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
@@ -417,20 +418,45 @@ class AudioPlayerService {
     }
   }
 
-  Future<EqualizerInfo?> equalizerInfo() =>
-      EqualizerService(effect: equalizer).info;
+  Future<EqualizerInfo?> equalizerInfo() async {
+    final info = await EqualizerService(effect: equalizer).info;
+    debugPrint(
+      '[EQ] parameters: '
+      '${info == null ? 'nicht verfügbar' : '${info.bands.length} Bänder'} '
+      'session=${audio.androidAudioSessionId} '
+      'state=${audio.processingState.name} playing=${audio.playing}',
+    );
+    return info;
+  }
 
   Future<EqualizerInfo?> ensureEqualizerReady() async {
+    debugPrint(
+      '[EQ] ensure start: track=${currentTrack?.title ?? 'null'} '
+      'session=${audio.androidAudioSessionId} '
+      'state=${audio.processingState.name} playing=${audio.playing}',
+    );
+
     var info = await equalizerInfo();
-    if (info != null && info.bands.isNotEmpty) return info;
+    if (info != null && info.bands.isNotEmpty) {
+      debugPrint('[EQ] bereits verfügbar.');
+      return info;
+    }
 
     final track = currentTrack;
-    if (track == null) return null;
+    if (track == null) {
+      debugPrint('[EQ] Abbruch: kein aktueller Track.');
+      return null;
+    }
 
     try {
       if (audio.processingState == ProcessingState.idle ||
           audio.processingState == ProcessingState.completed) {
+        debugPrint('[EQ] lade Quelle: ${track.path}');
         await audio.setFilePath(track.path);
+        debugPrint(
+          '[EQ] Quelle geladen: session=${audio.androidAudioSessionId} '
+          'state=${audio.processingState.name}',
+        );
         _trackController.add(track);
       }
 
@@ -439,31 +465,48 @@ class AudioPlayerService {
         final wasPlaying = audio.playing;
 
         if (!wasPlaying) {
+          debugPrint('[EQ] prime playback stumm starten.');
           await audio.setVolume(0);
-          unawaited(audio.play());
+          unawaited(
+            audio.play().catchError((Object error, StackTrace stackTrace) {
+              debugPrint('[EQ] prime play Fehler: $error');
+            }),
+          );
         }
 
         try {
-          await audio.androidAudioSessionIdStream
+          final sessionId = await audio.androidAudioSessionIdStream
               .firstWhere((id) => id != null)
               .timeout(const Duration(seconds: 3));
+          debugPrint('[EQ] audioSessionId erhalten: $sessionId');
         } on TimeoutException {
-          // Some devices only publish the session after playback progresses.
+          debugPrint(
+            '[EQ] Timeout: keine audioSessionId nach 3 Sekunden. '
+            'state=${audio.processingState.name} playing=${audio.playing}',
+          );
           await Future<void>.delayed(const Duration(milliseconds: 500));
         }
 
         if (!wasPlaying) {
+          debugPrint('[EQ] prime playback pausieren/zurücksetzen.');
           await audio.pause();
           await audio.seek(oldPosition);
           await _applyEffectiveVolume();
         }
       }
 
-      if (audio.androidAudioSessionId == null) return null;
+      if (audio.androidAudioSessionId == null) {
+        debugPrint('[EQ] Abbruch: audioSessionId weiterhin null.');
+        return null;
+      }
 
       for (var attempt = 0; attempt < 6; attempt++) {
         info = await equalizerInfo();
         if (info != null && info.bands.isNotEmpty) {
+          debugPrint(
+            '[EQ] bereit nach Versuch ${attempt + 1}: '
+            '${info.bands.length} Bänder.',
+          );
           if (_audioSettingsLoaded) {
             await _restoreEqualizerIfAvailable(info: info);
           }
@@ -471,7 +514,10 @@ class AudioPlayerService {
         }
         await Future<void>.delayed(const Duration(milliseconds: 250));
       }
-    } catch (_) {
+      debugPrint('[EQ] Session vorhanden, aber Parameter bleiben leer.');
+    } catch (error, stackTrace) {
+      debugPrint('[EQ] Initialisierung fehlgeschlagen: $error');
+      debugPrintStack(stackTrace: stackTrace);
       try {
         await _applyEffectiveVolume();
       } catch (_) {}
