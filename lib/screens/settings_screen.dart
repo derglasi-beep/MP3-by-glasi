@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
@@ -12,6 +13,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final s = SettingsService();
   late final EqualizerService eq;
+  StreamSubscription? _trackSub;
+  bool _eqRefreshRunning = false;
   List<double> bands = const [];
   List<String> bandLabels = const [];
   double eqMin = -12;
@@ -23,7 +26,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     eq=EqualizerService(effect: widget.player.equalizer);
+    _trackSub = widget.player.currentTrackStream.listen((track) {
+      if (track != null && !eqAvailable) {
+        unawaited(_refreshEq());
+      }
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _trackSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshEq() async {
+    if (_eqRefreshRunning || eqAvailable) return;
+    _eqRefreshRunning = true;
+    try {
+      for (var attempt = 0; attempt < 8 && mounted && !eqAvailable; attempt++) {
+        final info = await widget.player.ensureEqualizerReady();
+        if (info != null && info.bands.isNotEmpty) {
+          final savedBands = await s.eqBands;
+          eqAvailable = true;
+          eqMin = info.minDecibels;
+          eqMax = info.maxDecibels;
+          bands = List.generate(
+            info.bands.length,
+            (i) => i < savedBands.length
+                ? savedBands[i].clamp(eqMin, eqMax).toDouble()
+                : 0,
+          );
+          bandLabels = info.bands.map((band) {
+            final hz = band.centerFrequency;
+            return hz >= 1000
+                ? '${(hz / 1000).toStringAsFixed(hz >= 10000 ? 0 : 1)}k'
+                : hz.round().toString();
+          }).toList();
+          if (mounted) setState(() {});
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 750));
+      }
+    } finally {
+      _eqRefreshRunning = false;
+    }
   }
 
   Future<void> _load() async {
@@ -102,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text('Android-Equalizer ist momentan nicht verfügbar.'),
               const SizedBox(height: 8),
               OutlinedButton.icon(
-                onPressed: _load,
+                onPressed: _refreshEq,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Erneut prüfen'),
               ),
