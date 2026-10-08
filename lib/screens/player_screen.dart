@@ -189,6 +189,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       });
       final lastTrackId = await settings.lastTrackId;
       final lastIndex = lastTrackId == null ? -1 : _trackIndex(lastTrackId);
+      debugPrint(
+        '[Restore] letzter Track: id=${lastTrackId ?? 'null'} '
+        'index=$lastIndex '
+        'title=${lastIndex >= 0 ? tracks[lastIndex].title : 'nicht gefunden'}',
+      );
       await widget.player.setQueue(
         tracks,
         startIndex: lastIndex >= 0 ? lastIndex : 0,
@@ -219,6 +224,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
     final lastTrackId = await settings.lastTrackId;
     final lastIndex = lastTrackId == null ? -1 : _trackIndex(lastTrackId);
+    debugPrint(
+      '[Restore] letzter Track: id=${lastTrackId ?? 'null'} '
+      'index=$lastIndex '
+      'title=${lastIndex >= 0 ? tracks[lastIndex].title : 'nicht gefunden'}',
+    );
     await widget.player.setQueue(
       tracks,
       startIndex: lastIndex >= 0 ? lastIndex : 0,
