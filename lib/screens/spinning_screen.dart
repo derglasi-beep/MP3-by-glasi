@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 
 class SpinningScreen extends StatefulWidget {
@@ -81,6 +82,7 @@ class _CurvePainter extends CustomPainter {
 
 class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
+  final library = LibraryService();
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   bool useSpinningLibrary = true;
@@ -115,6 +117,113 @@ class _SpinningScreenState extends State<SpinningScreen> {
         phaseTracks: manualPhaseTracks,
         duration: duration,
       );
+    });
+  }
+
+  Future<void> _manageSpinningLibrary() async {
+    var query = '';
+    final selected = Set<String>.from(widget.spinningTrackIds);
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final q = query.trim().toLowerCase();
+          final visible = widget.tracks.where((track) {
+            if (q.isEmpty) return true;
+            return track.title.toLowerCase().contains(q) ||
+                track.artist.toLowerCase().contains(q) ||
+                track.album.toLowerCase().contains(q);
+          }).toList(growable: false);
+
+          return AlertDialog(
+            title: const Text('Spinning-Auswahl verwalten'),
+            content: SizedBox(
+              width: 680,
+              height: 680,
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Titel, Interpret oder Album',
+                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => query = value),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${selected.length} Titel markiert · '
+                      '${visible.length} Treffer',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: visible.length,
+                      itemBuilder: (_, index) {
+                        final track = visible[index];
+                        return CheckboxListTile(
+                          dense: true,
+                          value: selected.contains(track.id),
+                          title: Text(
+                            track.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${track.artist} · ${track.album}'
+                            '${track.bpm == null ? '' : ' · ${_bpmText(track.bpm!)}'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onChanged: (value) => setDialogState(() {
+                            if (value == true) {
+                              selected.add(track.id);
+                            } else {
+                              selected.remove(track.id);
+                            }
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => setDialogState(selected.clear),
+                child: const Text('Alle entfernen'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Abbrechen'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Speichern'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (accepted != true || !mounted) return;
+
+    widget.spinningTrackIds
+      ..clear()
+      ..addAll(selected);
+    await library.saveSpinningTrackIds(widget.spinningTrackIds);
+
+    if (!mounted) return;
+    setState(() {
+      useSpinningLibrary = widget.spinningTrackIds.isNotEmpty;
+      plan = null;
     });
   }
 
@@ -381,6 +490,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
                   : '${widget.tracks.length} Titel aus der gesamten Bibliothek'),
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _manageSpinningLibrary,
+          icon: const Icon(Icons.checklist),
+          label: const Text('Spinning-Auswahl verwalten'),
         ),
         const SizedBox(height: 14),
         SwitchListTile.adaptive(
