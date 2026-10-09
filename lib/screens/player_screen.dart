@@ -362,17 +362,57 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
     _backgroundBpmWorkerRunning = true;
     _backgroundBpmDone = 0;
-    _backgroundBpmTotal = tracks.length;
     _backgroundBpmExisting = 0;
     _backgroundBpmCached = 0;
     _backgroundBpmNew = 0;
     var pendingLibraryChanges = 0;
 
     try {
-      // Let startup, library restore and the first frame settle first.
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(seconds: 2));
 
+      final cache = await bpmCache.snapshot();
+      final failures = await bpmCache.loadFailures();
+      final pending = <Track>[];
+
+      // Fast preparation pass: existing library BPM and cache hits never enter
+      // the expensive FFmpeg queue.
       for (final snapshot in List<Track>.from(tracks)) {
+        final index = _trackIndex(snapshot.id);
+        if (index < 0) continue;
+        final current = tracks[index];
+
+        if (current.bpm != null && current.bpm! > 0) {
+          _backgroundBpmExisting++;
+          continue;
+        }
+
+        final cached = cache[current.path];
+        if (cached != null && cached.bpm > 0) {
+          tracks[index] = current.copyWith(
+            bpm: cached.bpm,
+            bpmConfidence: cached.confidence,
+          );
+          _backgroundBpmCached++;
+          pendingLibraryChanges++;
+          continue;
+        }
+
+        if (failures.contains(current.path)) {
+          continue;
+        }
+
+        pending.add(current);
+      }
+
+      _backgroundBpmTotal = pending.length;
+      if (pendingLibraryChanges > 0) {
+        await library.saveTrackMetadata(List<Track>.from(tracks));
+        pendingLibraryChanges = 0;
+        _invalidateVisibleCache();
+        _scheduleBackgroundUiRefresh();
+      }
+
+      for (final snapshot in pending) {
         if (!mounted) return;
 
         try {
@@ -385,53 +425,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           if (index < 0) continue;
           final current = tracks[index];
 
-          // Already stable enough: no need to spend CPU on it again.
-          if (current.bpm != null && (current.bpmConfidence ?? 0) >= 0.65) {
-            _backgroundBpmExisting++;
-            continue;
-          }
+          if (current.bpm != null && current.bpm! > 0) continue;
 
-          // The foreground analysis has priority for the playing track.
           if (widget.player.currentTrack?.id == current.id) {
-            await Future<void>.delayed(const Duration(seconds: 3));
-            continue;
-          }
-
-          final cached = await bpmCache.get(current.path);
-          if (cached != null) {
-            _backgroundBpmCached++;
-            if (!mounted) return;
-            final freshIndex = _trackIndex(current.id);
-            if (freshIndex >= 0) {
-              tracks[freshIndex] = tracks[freshIndex].copyWith(
-                bpm: cached.bpm,
-                bpmConfidence: cached.confidence,
-              );
-              if (sortMode == _SortMode.bpm ||
-                  bpmMin != null ||
-                  bpmMax != null) {
-                _invalidateVisibleCache();
-              } else if (_visibleCache != null) {
-                final cachedIndex = _visibleCache!
-                    .indexWhere((item) => item.id == current.id);
-                if (cachedIndex >= 0) {
-                  _visibleCache![cachedIndex] = tracks[freshIndex];
-                }
-              }
-              _scheduleBackgroundUiRefresh();
-            }
-            pendingLibraryChanges++;
-            if (pendingLibraryChanges >= 20) {
-              await library.saveTrackMetadata(List<Track>.from(tracks));
-              pendingLibraryChanges = 0;
-            }
-            await Future<void>.delayed(const Duration(seconds: 2));
+            await Future<void>.delayed(const Duration(seconds: 1));
             continue;
           }
 
           final result = await bpm.analyzeFileResult(current.path);
           if (!mounted) return;
+
           if (result != null && result.bpm > 0) {
+            failures.remove(current.path);
             _backgroundBpmNew++;
             await bpmCache.putDeferred(
               current.path,
@@ -439,36 +444,34 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               confidence: result.confidence,
             );
 
-            if (!mounted) return;
             final freshIndex = _trackIndex(current.id);
             if (freshIndex >= 0) {
-              tracks[freshIndex] = tracks[freshIndex].copyWith(
+              final updated = tracks[freshIndex].copyWith(
                 bpm: result.bpm,
                 bpmConfidence: result.confidence,
               );
-              if (sortMode == _SortMode.bpm ||
-                  bpmMin != null ||
-                  bpmMax != null) {
+              tracks[freshIndex] = updated;
+              if (widget.player.currentTrack?.id == current.id) {
+                widget.player.updateTrack(updated);
+              }
+              if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
                 _invalidateVisibleCache();
-              } else if (_visibleCache != null) {
-                final cachedIndex = _visibleCache!
-                    .indexWhere((item) => item.id == current.id);
-                if (cachedIndex >= 0) {
-                  _visibleCache![cachedIndex] = tracks[freshIndex];
-                }
               }
               _scheduleBackgroundUiRefresh();
             }
+
             pendingLibraryChanges++;
             if (pendingLibraryChanges >= 20) {
               await library.saveTrackMetadata(List<Track>.from(tracks));
               pendingLibraryChanges = 0;
             }
+          } else {
+            failures.add(current.path);
           }
 
-          // Keep CPU/storage pressure low on large libraries.
-          await Future<void>.delayed(const Duration(seconds: 4));
+          await Future<void>.delayed(const Duration(milliseconds: 350));
         } catch (error) {
+          failures.add(snapshot.path);
           debugPrint(
             '[BPM] Hintergrundanalyse überspringt '
             '"${snapshot.artist} - ${snapshot.title}": $error',
@@ -478,6 +481,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           _scheduleBackgroundUiRefresh();
         }
       }
+
+      await bpmCache.saveFailures(failures);
     } finally {
       _backgroundBpmWorkerRunning = false;
       try {
@@ -592,66 +597,68 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _loadArtworkInBackground() async {
-    if (!Platform.isAndroid || _artworkWorkerRunning) return;
+    if (!Platform.isAndroid || _artworkWorkerRunning || tracks.isEmpty) return;
     _artworkWorkerRunning = true;
     _backgroundArtworkDone = 0;
-    _backgroundArtworkTotal = tracks.length;
     _backgroundArtworkCached = 0;
     _backgroundArtworkNew = 0;
     _backgroundArtworkMissSkipped = 0;
+
     try {
       await Future<void>.delayed(const Duration(seconds: 2));
-      for (final track in List<Track>.from(tracks)) {
+
+      // One representative track per album is enough. Existing album covers
+      // and known misses are removed before the real worker starts.
+      final representatives = <String, Track>{};
+      for (final track in tracks) {
+        representatives.putIfAbsent(_albumArtworkKey(track), () => track);
+      }
+
+      final pending = <Track>[];
+      for (final entry in representatives.entries) {
+        if (!mounted) return;
+        final albumKey = entry.key;
+        final track = entry.value;
+
+        if (await library.hasAlbumArtwork(albumKey)) {
+          _backgroundArtworkCached++;
+          continue;
+        }
+
+        if (_artworkMisses.contains(albumKey)) {
+          _backgroundArtworkMissSkipped++;
+          continue;
+        }
+
+        // Migrate one old per-track cache entry into the album cache.
+        if (await library.hasArtwork(track.id)) {
+          final legacyArtwork = await library.loadArtwork(track.id);
+          if (legacyArtwork != null && legacyArtwork.isNotEmpty) {
+            await library.saveAlbumArtwork(albumKey, legacyArtwork);
+            _backgroundArtworkCached++;
+            continue;
+          }
+        }
+
+        pending.add(track);
+      }
+
+      _backgroundArtworkTotal = pending.length;
+      _scheduleBackgroundUiRefresh();
+
+      for (final track in pending) {
         if (!mounted) return;
 
         try {
-          final currentIndex = _trackIndex(track.id);
-          if (currentIndex < 0) continue;
-          final current = tracks[currentIndex];
-
-          final albumKey = _albumArtworkKey(current);
-
-          if (current.artwork != null && current.artwork!.isNotEmpty) {
-            if (!await library.hasAlbumArtwork(albumKey)) {
-              await library.saveAlbumArtwork(albumKey, current.artwork!);
-            }
-            _backgroundArtworkCached++;
-            continue;
-          }
-
-          if (await library.hasAlbumArtwork(albumKey)) {
-            _backgroundArtworkCached++;
-            continue;
-          }
-
-          if (await library.hasArtwork(track.id)) {
-            final legacyArtwork = await library.loadArtwork(track.id);
-            if (legacyArtwork != null && legacyArtwork.isNotEmpty) {
-              await library.saveAlbumArtwork(albumKey, legacyArtwork);
-              _backgroundArtworkCached++;
-              continue;
-            }
-          }
-
-          if (_artworkMisses.contains(albumKey)) {
-            _backgroundArtworkMissSkipped++;
-            continue;
-          }
-
           await _ensureArtwork(
             track,
             allowMetadataRead: true,
             allowOnlineLookup: true,
           );
 
-          final freshIndex = _trackIndex(track.id);
-          if (freshIndex >= 0 &&
-              tracks[freshIndex].artwork != null &&
-              tracks[freshIndex].artwork!.isNotEmpty) {
+          if (await library.hasAlbumArtwork(_albumArtworkKey(track))) {
             _backgroundArtworkNew++;
           }
-
-          await Future<void>.delayed(const Duration(seconds: 2));
         } catch (error) {
           debugPrint(
             '[Artwork] Hintergrundlauf überspringt '
@@ -661,9 +668,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           _backgroundArtworkDone++;
           _scheduleBackgroundUiRefresh();
         }
+
+        await Future<void>.delayed(const Duration(milliseconds: 350));
       }
     } finally {
       _artworkWorkerRunning = false;
+      _scheduleBackgroundUiRefresh();
     }
   }
 
@@ -1390,12 +1400,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             child: Text(
               [
                 if (_backgroundBpmWorkerRunning)
-                  'BPM geprüft $_backgroundBpmDone/$_backgroundBpmTotal'
+                  'BPM offen $_backgroundBpmDone/$_backgroundBpmTotal'
                   ' · vorhanden $_backgroundBpmExisting'
                   ' · Cache $_backgroundBpmCached'
                   ' · neu $_backgroundBpmNew',
                 if (_artworkWorkerRunning)
-                  'Cover geprüft $_backgroundArtworkDone/$_backgroundArtworkTotal'
+                  'Cover offen $_backgroundArtworkDone/$_backgroundArtworkTotal'
                   ' · Cache $_backgroundArtworkCached'
                   ' · neu $_backgroundArtworkNew'
                   ' · ohne Treffer $_backgroundArtworkMissSkipped',
