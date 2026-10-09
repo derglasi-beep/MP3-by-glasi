@@ -316,7 +316,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
   Future<void> _start() async {
     final p = plan; if (p == null || p.tracks.isEmpty) return;
-    await widget.player.setQueue(p.tracks); await widget.player.play();
+    await widget.player.setQueue(
+      p.tracks,
+      preserveCurrent: false,
+    );
+    await widget.player.play();
     if (mounted) Navigator.pop(context);
   }
   @override Widget build(BuildContext context) {
