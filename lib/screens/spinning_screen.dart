@@ -25,16 +25,30 @@ class _CurveCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('BPM-Kurve', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text('Zielkurve über die gesamte Trainingsdauer', style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 12),
-        SizedBox(height: 150, child: CustomPaint(
-          painter: _CurvePainter(plan.curve, displayBpm),
-          child: const SizedBox.expand(),
-        )),
+        Text('BPM-Kurve', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 2),
+        Text(
+          'Farbe zeigt die Trainingsintensität',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 108,
+          child: CustomPaint(
+            painter: _CurvePainter(
+              plan.curve,
+              displayBpm,
+              gridColor: Theme.of(context)
+                  .colorScheme
+                  .outlineVariant
+                  .withValues(alpha: .45),
+              textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
       ]),
     ),
   );
@@ -43,41 +57,110 @@ class _CurveCard extends StatelessWidget {
 class _CurvePainter extends CustomPainter {
   final List<SpinningCurvePoint> curve;
   final double Function(double) displayBpm;
-  _CurvePainter(this.curve, this.displayBpm);
+  final Color gridColor;
+  final Color textColor;
+
+  _CurvePainter(
+    this.curve,
+    this.displayBpm, {
+    required this.gridColor,
+    required this.textColor,
+  });
+
+  Color _intensityColor(double targetBpm) {
+    if (targetBpm < 110) return const Color(0xFF29B6F6);
+    if (targetBpm < 130) return const Color(0xFF66BB6A);
+    if (targetBpm < 145) return const Color(0xFFFFCA28);
+    if (targetBpm < 155) return const Color(0xFFFF8A65);
+    return const Color(0xFFEF5350);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     if (curve.isEmpty) return;
+
     final values = curve.map((p) => displayBpm(p.targetBpm)).toList();
     final min = values.reduce((a, b) => a < b ? a : b) - 4;
     final max = values.reduce((a, b) => a > b ? a : b) + 4;
-    final span = max - min;
-    final paint = Paint()..strokeWidth = 3..style = PaintingStyle.stroke;
-    final path = Path();
-    for (var i = 0; i < curve.length; i++) {
-      final x = curve.length == 1 ? 0.0 : curve[i].position.inMilliseconds / curve.last.position.inMilliseconds * size.width;
-      final y = size.height - ((values[i] - min) / span) * size.height;
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+    final span = (max - min).abs() < .001 ? 1.0 : max - min;
+    final chartTop = 14.0;
+    final chartBottom = size.height - 18;
+    final chartHeight = chartBottom - chartTop;
+    final totalMs = curve.last.position.inMilliseconds;
+
+    double xAt(int index) => curve.length == 1 || totalMs <= 0
+        ? 0
+        : curve[index].position.inMilliseconds / totalMs * size.width;
+
+    double yAt(int index) =>
+        chartBottom - ((values[index] - min) / span) * chartHeight;
+
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+
+    for (var i = 1; i <= 2; i++) {
+      final y = chartTop + chartHeight * i / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
-    canvas.drawPath(path, paint);
-    final dotPaint = Paint()..style = PaintingStyle.fill;
-    for (var i = 0; i < curve.length; i++) {
-      final x = curve.length == 1 ? 0.0 : curve[i].position.inMilliseconds / curve.last.position.inMilliseconds * size.width;
-      final y = size.height - ((values[i] - min) / span) * size.height;
-      canvas.drawCircle(Offset(x, y), 3.5, dotPaint);
+
+    if (curve.length == 1) {
+      final color = _intensityColor(curve.first.targetBpm);
+      canvas.drawCircle(
+        Offset(0, yAt(0)),
+        4,
+        Paint()..color = color,
+      );
+    } else {
+      for (var i = 1; i < curve.length; i++) {
+        final color = _intensityColor(curve[i].targetBpm);
+        final linePaint = Paint()
+          ..color = color
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          Offset(xAt(i - 1), yAt(i - 1)),
+          Offset(xAt(i), yAt(i)),
+          linePaint,
+        );
+      }
+
+      for (var i = 0; i < curve.length; i++) {
+        final color = _intensityColor(curve[i].targetBpm);
+        canvas.drawCircle(
+          Offset(xAt(i), yAt(i)),
+          3.5,
+          Paint()..color = color,
+        );
+      }
     }
+
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    for (final label in [values.first, values.last]) {
-      textPainter.text = TextSpan(text: '${label.round()} BPM', style: const TextStyle(fontSize: 11));
+    for (final entry in <MapEntry<double, Alignment>>[
+      MapEntry(values.first, Alignment.bottomLeft),
+      MapEntry(values.last, Alignment.topRight),
+    ]) {
+      textPainter.text = TextSpan(
+        text: '${entry.key.round()} BPM',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
+      );
       textPainter.layout();
-      final x = label == values.first ? 0.0 : size.width - textPainter.width;
-      final y = label == values.first ? size.height - textPainter.height : 0.0;
+      final isFirst = entry.value == Alignment.bottomLeft;
+      final x = isFirst ? 0.0 : size.width - textPainter.width;
+      final y = isFirst ? size.height - textPainter.height : 0.0;
       textPainter.paint(canvas, Offset(x, y));
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CurvePainter oldDelegate) => true;
+  bool shouldRepaint(covariant _CurvePainter oldDelegate) =>
+      oldDelegate.curve != curve ||
+      oldDelegate.gridColor != gridColor ||
+      oldDelegate.textColor != textColor;
 }
 
 class _SpinningScreenState extends State<SpinningScreen> {
@@ -496,7 +579,14 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
   @override Widget build(BuildContext context) {
     final p = plan;
-    return Scaffold(appBar: AppBar(title: const Text('Spinning DJ')), body: ListView(padding: const EdgeInsets.all(18), children: [
+    return Scaffold(
+      appBar: AppBar(title: const Text('Spinning DJ')),
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          children: [
       Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(children: [
         const Icon(Icons.directions_bike, size: 54),
         const SizedBox(height: 8),
@@ -627,7 +717,18 @@ class _SpinningScreenState extends State<SpinningScreen> {
         ),
         FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
       ],
-      if (_activeLibrary.every((t) => t.bpm == null)) const Padding(padding: EdgeInsets.only(top: 20), child: Text('Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.', textAlign: TextAlign.center)),
-    ]));
+      if (_activeLibrary.every((t) => t.bpm == null))
+        const Padding(
+          padding: EdgeInsets.only(top: 20),
+          child: Text(
+            'Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 }
