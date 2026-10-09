@@ -157,13 +157,50 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _touchArtworkInMemory(track.id);
       return;
     }
-    unawaited(
-      _ensureArtwork(
-        track,
-        allowMetadataRead: false,
-        allowOnlineLookup: false,
-      ),
-    );
+    unawaited(_loadArtworkForVisibleTrack(track));
+  }
+
+  Future<void> _loadArtworkForVisibleTrack(Track track) async {
+    if (_artworkLoads.contains(track.id)) return;
+
+    final index = _trackIndex(track.id);
+    if (index < 0) return;
+    final current = tracks[index];
+    if (current.artwork != null && current.artwork!.isNotEmpty) return;
+
+    _artworkLoads.add(track.id);
+    try {
+      final albumKey = _albumArtworkKey(current);
+      Uint8List? artwork = await library.loadAlbumArtwork(albumKey);
+      artwork ??= await library.loadArtwork(current.id);
+
+      if (!mounted || artwork == null || artwork.isEmpty) return;
+
+      final freshIndex = _trackIndex(current.id);
+      if (freshIndex < 0) return;
+
+      final updated = tracks[freshIndex].copyWith(artwork: artwork);
+      tracks[freshIndex] = updated;
+      _touchArtworkInMemory(current.id);
+
+      if (_visibleCache != null) {
+        final visibleIndex =
+            _visibleCache!.indexWhere((item) => item.id == current.id);
+        if (visibleIndex >= 0) {
+          _visibleCache![visibleIndex] = updated;
+        }
+      }
+
+      if (widget.player.currentTrack?.id == current.id) {
+        widget.player.updateTrack(updated);
+      }
+
+      // Visible artwork should appear immediately instead of waiting for the
+      // throttled five-second background refresh.
+      if (mounted) setState(() {});
+    } finally {
+      _artworkLoads.remove(track.id);
+    }
   }
 
   void _scheduleArtworkMissSave() {
@@ -196,13 +233,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     // The currently playing track always gets artwork priority, regardless
     // of whether playback was started from the library, queue, notification,
     // lock screen or automatic next-track handling.
-    unawaited(
-      _ensureArtwork(
-        track,
-        allowMetadataRead: true,
-        allowOnlineLookup: true,
-      ),
-    );
+    unawaited(() async {
+      await _loadArtworkForVisibleTrack(track);
+      final currentIndex = _trackIndex(track.id);
+      if (currentIndex < 0) return;
+      final current = tracks[currentIndex];
+      if (current.artwork == null || current.artwork!.isEmpty) {
+        await _ensureArtwork(
+          current,
+          allowMetadataRead: true,
+          allowOnlineLookup: true,
+        );
+      }
+    }());
     if (widget.player.audio.processingState != ProcessingState.idle ||
         widget.player.audio.playing) {
       unawaited(_analyzeTrack(track));
