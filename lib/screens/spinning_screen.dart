@@ -6,7 +6,13 @@ import '../services/spinning_playlist_service.dart';
 class SpinningScreen extends StatefulWidget {
   final AudioPlayerService player;
   final List<Track> tracks;
-  const SpinningScreen({super.key, required this.player, required this.tracks});
+  final Set<String> spinningTrackIds;
+  const SpinningScreen({
+    super.key,
+    required this.player,
+    required this.tracks,
+    required this.spinningTrackIds,
+  });
   @override State<SpinningScreen> createState() => _SpinningScreenState();
 }
 
@@ -77,6 +83,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
+  bool useSpinningLibrary = true;
   SpinningPlan? plan;
   final Map<SpinningPhase, List<Track>> manualPhaseTracks = {
     for (final phase in SpinningPhase.values) phase: <Track>[],
@@ -85,9 +92,19 @@ class _SpinningScreenState extends State<SpinningScreen> {
   double _displayBpm(double bpm) => sprintMode ? bpm : bpm / 2;
   String _bpmText(double bpm) => '${_displayBpm(bpm).round()} BPM${sprintMode ? ' · Sprint' : ''}';
 
+  List<Track> get _spinningTracks => widget.tracks
+      .where((track) => widget.spinningTrackIds.contains(track.id))
+      .toList(growable: false);
+
+  List<Track> get _activeLibrary {
+    final spinning = _spinningTracks;
+    if (useSpinningLibrary && spinning.isNotEmpty) return spinning;
+    return widget.tracks;
+  }
+
   void _buildPlan() => setState(
         () => plan = planner.build(
-          library: widget.tracks,
+          library: _activeLibrary,
           duration: duration,
         ),
       );
@@ -156,7 +173,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   Future<void> _chooseManualTracks() async {
-    final libraryTracks = List<Track>.from(widget.tracks);
+    final libraryTracks = List<Track>.from(_activeLibrary);
 
     var activePhase = SpinningPhase.warmup;
     var query = '';
@@ -336,6 +353,36 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ButtonSegment(value: 60, label: Text('60 min')), ButtonSegment(value: 90, label: Text('90 min'))],
           selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); plan = null; })),
         const SizedBox(height: 14),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment<bool>(
+              value: true,
+              icon: Icon(Icons.directions_bike),
+              label: Text('Spinning-Auswahl'),
+            ),
+            ButtonSegment<bool>(
+              value: false,
+              icon: Icon(Icons.library_music),
+              label: Text('Alle Titel'),
+            ),
+          ],
+          selected: {useSpinningLibrary && _spinningTracks.isNotEmpty},
+          onSelectionChanged: (values) => setState(() {
+            useSpinningLibrary = values.first;
+            plan = null;
+          }),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _spinningTracks.isEmpty
+              ? 'Noch keine Titel für Spinning markiert – aktuell werden alle Titel verwendet.'
+              : (useSpinningLibrary
+                  ? '${_spinningTracks.length} markierte Spinning-Titel'
+                  : '${widget.tracks.length} Titel aus der gesamten Bibliothek'),
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 14),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           value: sprintMode,
@@ -411,7 +458,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         ),
         FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
       ],
-      if (widget.tracks.every((t) => t.bpm == null)) const Padding(padding: EdgeInsets.only(top: 20), child: Text('Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.', textAlign: TextAlign.center)),
+      if (_activeLibrary.every((t) => t.bpm == null)) const Padding(padding: EdgeInsets.only(top: 20), child: Text('Bitte zuerst die BPM-Werte deiner Bibliothek analysieren.', textAlign: TextAlign.center)),
     ]));
   }
 }
