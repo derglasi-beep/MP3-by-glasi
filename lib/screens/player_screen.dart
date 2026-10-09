@@ -110,7 +110,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (album.isEmpty || album == 'unbekannt' || album == 'unknown') {
       return 'track:${track.id}';
     }
-    return 'album:$album|${track.year ?? 0}';
+
+    // Album title + year alone collides for common names such as
+    // "Greatest Hits". The containing folder separates unrelated albums
+    // while still allowing compilations with multiple artists to share art.
+    final normalizedPath = track.path.replaceAll('\\', '/');
+    final slash = normalizedPath.lastIndexOf('/');
+    final folder = slash > 0
+        ? normalizedPath.substring(0, slash).toLowerCase()
+        : '';
+    return 'album:$album|${track.year ?? 0}|$folder';
   }
 
   void _touchArtworkInMemory(String id) {
@@ -1164,24 +1173,30 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   void _setBpm(String id, double value, double? confidence) {
     if (!mounted) return;
+    Track? updated;
     setState(() {
       final i = _trackIndex(id);
       if (i >= 0) {
-        tracks[i] = tracks[i].copyWith(
+        updated = tracks[i].copyWith(
           bpm: value,
           bpmConfidence: confidence,
         );
+        tracks[i] = updated!;
         if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
           _invalidateVisibleCache();
         } else if (_visibleCache != null) {
           final cachedIndex =
               _visibleCache!.indexWhere((track) => track.id == id);
           if (cachedIndex >= 0) {
-            _visibleCache![cachedIndex] = tracks[i];
+            _visibleCache![cachedIndex] = updated!;
           }
         }
       }
     });
+
+    if (updated != null && widget.player.currentTrack?.id == id) {
+      widget.player.updateTrack(updated!);
+    }
     _scheduleLibrarySave();
   }
 
