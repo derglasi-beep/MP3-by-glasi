@@ -64,6 +64,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   BpmFusionResult? bpmFusionResult;
   late final StreamSubscription<String> _playerErrorSub;
   late final StreamSubscription<Track?> _playerTrackSub;
+  late final StreamSubscription<PlayerState> _playerStateSub;
   Track? _pendingBpmAnalysis;
   Timer? _librarySaveTimer;
   Timer? _backgroundUiRefreshTimer;
@@ -241,6 +242,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _playerErrorSub = widget.player.errorStream.listen(_showPlayerError);
     _playerTrackSub = widget.player.currentTrackStream.listen(_onCurrentTrackChanged);
+    _playerStateSub = widget.player.playerStateStream.listen((state) {
+      if (state.playing) {
+        unawaited(bpm.cancelActive());
+      } else if (_appResumed && tracks.isNotEmpty) {
+        unawaited(_analyzeBpmInBackground());
+      }
+    });
     _restoreLibrary();
   }
 
@@ -329,6 +337,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
     _playerErrorSub.cancel();
     _playerTrackSub.cancel();
+    _playerStateSub.cancel();
     onlineBpm.dispose();
     onlineArtwork.dispose();
     super.dispose();
@@ -601,7 +610,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _verifyBpmOnlineInBackground() async {
-    if (_backgroundOnlineBpmWorkerRunning || tracks.isEmpty) return;
+    if (_backgroundOnlineBpmWorkerRunning ||
+        tracks.isEmpty ||
+        !_appResumed ||
+        widget.player.audio.playing) {
+      return;
+    }
 
     final pending = <Track>[];
     for (final track in tracks) {
@@ -622,7 +636,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       await Future<void>.delayed(const Duration(seconds: 3));
 
       for (final snapshot in pending) {
-        if (!mounted) return;
+        if (!mounted || !_appResumed || widget.player.audio.playing) return;
 
         try {
           while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
