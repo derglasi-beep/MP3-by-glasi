@@ -504,83 +504,77 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _verifyBpmOnlineInBackground() async {
     if (_backgroundOnlineBpmWorkerRunning || tracks.isEmpty) return;
 
-    // This method is only called after the local pass has finished.
-    // Tracks that could not be analyzed locally are allowed to fall back
-    // to a catalogue BPM result during this second, network-based pass.
+    final pending = <Track>[];
+    for (final track in tracks) {
+      final artist = track.artist.trim().toLowerCase();
+      if (track.bpm != null && track.bpm! > 0) continue;
+      if (artist.isEmpty || artist == 'unbekannt' || artist == 'unknown') {
+        continue;
+      }
+      pending.add(track);
+    }
+
+    if (pending.isEmpty) return;
+
     _backgroundOnlineBpmWorkerRunning = true;
     var pendingOnlineLibraryChanges = 0;
-    try {
-      await Future<void>.delayed(const Duration(seconds: 5));
 
-      for (final snapshot in List<Track>.from(tracks)) {
+    try {
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      for (final snapshot in pending) {
         if (!mounted) return;
 
         try {
           while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
-          await Future<void>.delayed(const Duration(seconds: 3));
-        }
-        if (!mounted) return;
+            await Future<void>.delayed(const Duration(seconds: 2));
+          }
+          if (!mounted) return;
 
-        final index = _trackIndex(snapshot.id);
-        if (index < 0) continue;
-        final current = tracks[index];
-        final localValue =
-            current.bpm != null && current.bpm! > 0 ? current.bpm : null;
+          final index = _trackIndex(snapshot.id);
+          if (index < 0) continue;
+          final current = tracks[index];
 
-        // High-confidence fused values do not need another background lookup.
-        if (localValue != null && (current.bpmConfidence ?? 0) >= 0.85) {
-          continue;
-        }
+          // A BPM may have been filled while this pass was waiting.
+          if (current.bpm != null && current.bpm! > 0) continue;
 
-        final online = await onlineBpm.lookup(
-          title: current.title,
-          artist: current.artist,
-          duration: current.duration,
-        );
-        if (!mounted) return;
-
-        if (online != null) {
-          final fusion = bpmFusion.fuse(
-            localBpm: localValue,
-            localConfidence: current.bpmConfidence,
-            online: online,
+          final online = await onlineBpm.lookup(
+            title: current.title,
+            artist: current.artist,
+            duration: current.duration,
           );
+          if (!mounted) return;
 
-          if (fusion.bpm > 0) {
-            final freshIndex =
-                _trackIndex(current.id);
+          if (online != null && online.bpm > 0) {
+            final freshIndex = _trackIndex(current.id);
             if (freshIndex >= 0) {
-              tracks[freshIndex] = tracks[freshIndex].copyWith(
-                bpm: fusion.bpm,
-                bpmConfidence: fusion.confidence,
+              final updated = tracks[freshIndex].copyWith(
+                bpm: online.bpm,
+                bpmConfidence: online.matchScore,
               );
+              tracks[freshIndex] = updated;
+              if (widget.player.currentTrack?.id == current.id) {
+                widget.player.updateTrack(updated);
+              }
               if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
                 _invalidateVisibleCache();
-              } else if (_visibleCache != null) {
-                final cachedIndex = _visibleCache!
-                    .indexWhere((item) => item.id == current.id);
-                if (cachedIndex >= 0) {
-                  _visibleCache![cachedIndex] = tracks[freshIndex];
-                }
               }
               _scheduleBackgroundUiRefresh();
             }
+
             pendingOnlineLibraryChanges++;
             if (pendingOnlineLibraryChanges >= 20) {
               await library.saveTrackMetadata(List<Track>.from(tracks));
               pendingOnlineLibraryChanges = 0;
             }
           }
-        }
 
-          // Be deliberately gentle with the network/API.
-          await Future<void>.delayed(const Duration(seconds: 5));
+          await Future<void>.delayed(const Duration(milliseconds: 500));
         } catch (error) {
           debugPrint(
             '[BPM] Online-Prüfung überspringt '
             '"${snapshot.artist} - ${snapshot.title}": $error',
           );
-          await Future<void>.delayed(const Duration(seconds: 2));
         }
       }
     } finally {
