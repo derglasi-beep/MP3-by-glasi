@@ -44,10 +44,17 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
 
   Future<void> _open(String name) async {
     final ids = playlists[name] ?? [];
-    final selected = widget.tracks.where((t) => ids.contains(t.id)).toList();
+    final byId = {for (final track in widget.tracks) track.id: track};
+    final selected = <Track>[
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
     if (!mounted) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => _PlaylistDetail(
-      name: name, tracks: selected, player: widget.player,
+      name: name,
+      tracks: selected,
+      libraryTracks: widget.tracks,
+      player: widget.player,
       onChanged: (next) async {
         playlists[name] = next.map((t) => t.id).toList();
         await library.savePlaylists(playlists);
@@ -84,9 +91,16 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
 class _PlaylistDetail extends StatefulWidget {
   final String name;
   final List<Track> tracks;
+  final List<Track> libraryTracks;
   final AudioPlayerService player;
   final Future<void> Function(List<Track>) onChanged;
-  const _PlaylistDetail({required this.name, required this.tracks, required this.player, required this.onChanged});
+  const _PlaylistDetail({
+    required this.name,
+    required this.tracks,
+    required this.libraryTracks,
+    required this.player,
+    required this.onChanged,
+  });
   @override State<_PlaylistDetail> createState() => _PlaylistDetailState();
 }
 
@@ -95,7 +109,14 @@ class _PlaylistDetailState extends State<_PlaylistDetail> {
   @override void initState() { super.initState(); tracks = [...widget.tracks]; }
 
   Future<void> _add() async {
-    final available = widget.player.queue.where((t) => !tracks.any((x) => x.id == t.id)).toList();
+    final available = widget.libraryTracks
+        .where((t) => !tracks.any((x) => x.id == t.id))
+        .toList()
+      ..sort((a, b) {
+        final artist = a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
+        if (artist != 0) return artist;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
     if (available.isEmpty) return;
     final selected = <String>{};
     final result = await showDialog<List<Track>>(
@@ -137,7 +158,7 @@ class _PlaylistDetailState extends State<_PlaylistDetail> {
       IconButton(onPressed: _add, icon: const Icon(Icons.add), tooltip: 'Titel hinzufügen'),
     ]),
     body: tracks.isEmpty
-        ? const Center(child: Text('Playlist ist leer. + öffnet die aktuelle Bibliothek.'))
+        ? const Center(child: Text('Playlist ist leer. + öffnet die Bibliothek.'))
         : ListView.builder(
             itemCount: tracks.length,
             itemBuilder: (_, i) {
