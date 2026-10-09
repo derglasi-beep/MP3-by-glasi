@@ -15,6 +15,7 @@ import '../services/bpm_fusion_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../services/settings_service.dart';
+import '../services/spinning_playlist_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
@@ -76,6 +77,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
   final Set<String> _spinningTrackIds = <String>{};
+  SpinningPlan? _spinningPlan;
   static const int _maxArtworkInMemory = 80;
   final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
@@ -1412,6 +1414,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 player: widget.player,
                 tracks: tracks,
                 spinningTrackIds: _spinningTrackIds,
+                initialPlan: _spinningPlan,
+                onPlanChanged: (plan) => _spinningPlan = plan,
               ),
             ),
           );
@@ -1944,7 +1948,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       : () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => NowPlayingScreen(player: widget.player),
+                              builder: (_) => NowPlayingScreen(
+                                player: widget.player,
+                                spinningTrackIds: _spinningTrackIds,
+                                onToggleSpinning: _toggleSpinningTrack,
+                              ),
                             ),
                           ),
                   child: Hero(
