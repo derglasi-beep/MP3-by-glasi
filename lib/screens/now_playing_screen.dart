@@ -6,10 +6,24 @@ import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'queue_screen.dart';
 
-class NowPlayingScreen extends StatelessWidget {
+class NowPlayingScreen extends StatefulWidget {
   final AudioPlayerService player;
+  final Set<String> spinningTrackIds;
+  final Future<void> Function(Track track) onToggleSpinning;
 
-  const NowPlayingScreen({super.key, required this.player});
+  const NowPlayingScreen({
+    super.key,
+    required this.player,
+    required this.spinningTrackIds,
+    required this.onToggleSpinning,
+  });
+
+  @override
+  State<NowPlayingScreen> createState() => _NowPlayingScreenState();
+}
+
+class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  AudioPlayerService get player => widget.player;
 
   String _time(Duration d) =>
       '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
@@ -128,6 +142,60 @@ class NowPlayingScreen extends StatelessWidget {
                         Row(
                           children: [
                             BpmBadge(bpm: track?.bpm),
+                            if (track != null) ...[
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: widget.spinningTrackIds.contains(track.id)
+                                    ? 'Aus Spinning entfernen'
+                                    : 'Für Spinning markieren',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(999),
+                                  onTap: () async {
+                                    await widget.onToggleSpinning(track);
+                                    if (mounted) setState(() {});
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(999),
+                                      color: widget.spinningTrackIds.contains(track.id)
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primaryContainer
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHighest,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.directions_bike,
+                                          size: 16,
+                                          color: widget.spinningTrackIds.contains(track.id)
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimaryContainer
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          widget.spinningTrackIds.contains(track.id)
+                                              ? 'Spinning'
+                                              : 'Markieren',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelMedium,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
