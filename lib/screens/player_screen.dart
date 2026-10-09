@@ -75,6 +75,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
+  final Set<String> _spinningTrackIds = <String>{};
   static const int _maxArtworkInMemory = 80;
   final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
@@ -347,13 +348,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final results = await Future.wait([
       library.loadTracks(),
       library.loadArtworkMisses(),
+      library.loadSpinningTrackIds(),
     ]);
     final saved = results[0] as List<Track>;
     final artworkMisses = results[1] as Set<String>;
+    final spinningTrackIds = results[2] as Set<String>;
     if (!mounted || saved.isEmpty) return;
     _artworkMisses
       ..clear()
       ..addAll(artworkMisses);
+    _spinningTrackIds
+      ..clear()
+      ..addAll(spinningTrackIds);
 
     // Android tracks are restored from our persisted MediaStore snapshot.
     // File.exists() is not a reliable validity check for scoped-storage
@@ -1319,6 +1325,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
+  Future<void> _toggleSpinningTrack(Track track) async {
+    setState(() {
+      if (!_spinningTrackIds.add(track.id)) {
+        _spinningTrackIds.remove(track.id);
+      }
+    });
+    await library.saveSpinningTrackIds(_spinningTrackIds);
+  }
+
   void _setSort(_SortMode mode) {
     setState(() {
       if (sortMode == mode) {
@@ -1388,7 +1403,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
-      IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SpinningScreen(player: widget.player, tracks: tracks))), icon: const Icon(Icons.directions_bike), tooltip: 'Spinning DJ'),
+      IconButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SpinningScreen(
+              player: widget.player,
+              tracks: tracks,
+              spinningTrackIds: Set<String>.from(_spinningTrackIds),
+            ),
+          ),
+        ),
+        icon: const Icon(Icons.directions_bike),
+        tooltip: 'Spinning DJ',
+      ),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Ordner scannen'),
     ]),
@@ -1820,8 +1848,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                         .labelLarge,
                                   ),
                                 ),
+                              if (_spinningTrackIds.contains(t.id))
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 2),
+                                  child: Icon(
+                                    Icons.directions_bike,
+                                    size: 18,
+                                  ),
+                                ),
                               PopupMenuButton<String>(
-                                tooltip: 'Queue-Aktion',
+                                tooltip: 'Titel-Aktion',
                                 onSelected: (action) async {
                                   if (action == 'next') {
                                     await widget.player.playNext(t);
@@ -1829,17 +1865,38 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                   if (action == 'queue') {
                                     await widget.player.addToQueue(t);
                                   }
+                                  if (action == 'spinning') {
+                                    await _toggleSpinningTrack(t);
+                                  }
                                 },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(
                                     value: 'next',
                                     child: Text(
                                       'Als Nächstes abspielen',
                                     ),
                                   ),
-                                  PopupMenuItem(
+                                  const PopupMenuItem(
                                     value: 'queue',
                                     child: Text('An Queue anhängen'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'spinning',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          _spinningTrackIds.contains(t.id)
+                                              ? Icons.remove_circle_outline
+                                              : Icons.directions_bike,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          _spinningTrackIds.contains(t.id)
+                                              ? 'Aus Spinning entfernen'
+                                              : 'Für Spinning markieren',
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                                 icon: const Icon(Icons.more_vert),
