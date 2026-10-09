@@ -1088,14 +1088,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             scanTotal = found.length;
           });
         }
-        await _add(found);
+        final removed = await _replaceAndroidLibrary(found);
         if (mounted) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(
               SnackBar(
                 behavior: SnackBarBehavior.floating,
-                content: Text('${found.length} Musikdateien eingelesen.'),
+                content: Text(
+                  removed == 0
+                      ? '${found.length} Musikdateien synchronisiert.'
+                      : '${found.length} Musikdateien synchronisiert · '
+                          '$removed entfernte Einträge bereinigt.',
+                ),
               ),
             );
         }
@@ -1127,6 +1132,60 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       dialogTitle: 'Musikordner auswählen',
     );
     if (p != null) await _add(await scanner.scanDirectory(p));
+  }
+
+  Future<int> _replaceAndroidLibrary(List<Track> found) async {
+    final previous = {for (final track in tracks) track.id: track};
+    final liveIds = found.map((track) => track.id).toSet();
+    final removedCount =
+        previous.keys.where((id) => !liveIds.contains(id)).length;
+    final cache = await bpmCache.snapshot();
+
+    final refreshed = <Track>[];
+    for (final incoming in found) {
+      final existing = previous[incoming.id];
+      final cached = cache[incoming.path];
+
+      refreshed.add(
+        incoming.copyWith(
+          bpm: existing?.bpm ?? cached?.bpm,
+          bpmConfidence:
+              existing?.bpmConfidence ?? cached?.confidence,
+          artwork: existing?.artwork,
+        ),
+      );
+    }
+
+    final beforeSpinningCount = _spinningTrackIds.length;
+    _spinningTrackIds.removeWhere((id) => !liveIds.contains(id));
+
+    if (!mounted) return removedCount;
+    setState(() {
+      tracks = refreshed;
+      _artworkLru.removeWhere((id) => !liveIds.contains(id));
+      _rebuildTrackIndex();
+      _invalidateVisibleCache();
+
+      final plan = _spinningPlan;
+      if (plan != null &&
+          plan.tracks.any((track) => !liveIds.contains(track.id))) {
+        _spinningPlan = null;
+      }
+    });
+
+    await library.saveTracks(tracks);
+    if (_spinningTrackIds.length != beforeSpinningCount) {
+      await library.saveSpinningTrackIds(_spinningTrackIds);
+    }
+
+    await widget.player.setQueue(
+      tracks,
+      load: false,
+      preserveCurrent: true,
+    );
+    unawaited(_loadArtworkInBackground());
+    unawaited(_analyzeBpmInBackground());
+    return removedCount;
   }
 
   Future<void> _add(List<Track> found) async {
