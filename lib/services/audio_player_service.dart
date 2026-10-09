@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -445,6 +446,8 @@ class AudioPlayerService {
   }
 
   Future<EqualizerInfo?> ensureEqualizerReady() async {
+    if (!Platform.isAndroid) return null;
+
     debugPrint(
       '[EQ] ensure start: track=${currentTrack?.title ?? 'null'} '
       'session=${audio.androidAudioSessionId} '
