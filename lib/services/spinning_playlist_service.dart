@@ -126,7 +126,7 @@ class SpinningPlaylistService {
       ));
       used.add(chosen.id);
       previous = chosen;
-      elapsed += chosen.duration ?? const Duration(minutes: 4);
+      elapsed += _planningDuration(chosen);
     }
 
     return SpinningPlan(
@@ -158,7 +158,7 @@ class SpinningPlaylistService {
           score: _score(track, point, selections.isEmpty ? null : selections.last.track, duration - elapsed),
         ),
       );
-      elapsed += track.duration ?? const Duration(minutes: 4);
+      elapsed += _planningDuration(track);
     }
 
     return SpinningPlan(
@@ -203,7 +203,7 @@ class SpinningPlaylistService {
               track,
               point,
               previous,
-              track.duration ?? const Duration(minutes: 4),
+              _planningDuration(track),
             ),
           ),
         );
@@ -251,6 +251,20 @@ class SpinningPlaylistService {
     return points;
   }
 
+  Duration _planningDuration(Track track) {
+    final duration = track.duration;
+    if (duration == null || duration <= Duration.zero) {
+      return const Duration(minutes: 4);
+    }
+
+    // Bad metadata must not make a 45-minute session stop after one title.
+    // For planning purposes, clamp implausibly long single-track durations.
+    if (duration > const Duration(minutes: 15)) {
+      return const Duration(minutes: 5);
+    }
+    return duration;
+  }
+
   double _score(
     Track track,
     SpinningCurvePoint point,
@@ -265,7 +279,7 @@ class SpinningPlaylistService {
         ? 1
         : 1 - (transitionDistance / (point.targetBpm * .08)).clamp(0, 1);
     final confidenceScore = track.bpmConfidence ?? .55;
-    final length = (track.duration ?? const Duration(minutes: 4)).inSeconds;
+    final length = _planningDuration(track).inSeconds;
     final desired = remaining.inSeconds.clamp(120, 360);
     final lengthScore = 1 - ((length - desired).abs() / 360).clamp(0, 1);
     return targetScore * .40 +
