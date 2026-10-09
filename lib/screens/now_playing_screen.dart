@@ -179,54 +179,60 @@ class NowPlayingScreen extends StatelessWidget {
                           bpm: track?.bpm,
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            IconButton(
-                              tooltip: 'Shuffle',
-                              onPressed: player.toggleShuffle,
-                              color: player.shuffle
-                                  ? Theme.of(context).colorScheme.primary
-                                  : null,
-                              icon: const Icon(Icons.shuffle),
-                            ),
-                            IconButton(
-                              tooltip: 'Zurück',
-                              onPressed:
-                                  player.canGoPrevious ? player.previous : null,
-                              icon: const Icon(Icons.skip_previous),
-                              iconSize: 42,
-                            ),
-                            IconButton.filled(
-                              tooltip: playing ? 'Pause' : 'Wiedergabe',
-                              onPressed: track == null
-                                  ? null
-                                  : (playing ? player.pause : player.play),
-                              icon: Icon(
-                                playing ? Icons.pause : Icons.play_arrow,
+                        StreamBuilder<List<Track>>(
+                          stream: player.queueStream,
+                          initialData: player.queue,
+                          builder: (_, __) => Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              IconButton(
+                                tooltip: 'Shuffle',
+                                onPressed: player.toggleShuffle,
+                                color: player.shuffle
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                                icon: const Icon(Icons.shuffle),
                               ),
-                              iconSize: 58,
-                              padding: const EdgeInsets.all(18),
-                            ),
-                            IconButton(
-                              tooltip: 'Weiter',
-                              onPressed: player.canGoNext ? player.next : null,
-                              icon: const Icon(Icons.skip_next),
-                              iconSize: 42,
-                            ),
-                            IconButton(
-                              tooltip: 'Wiederholung',
-                              onPressed: player.toggleRepeat,
-                              color: player.loopMode != LoopMode.off
-                                  ? Theme.of(context).colorScheme.primary
-                                  : null,
-                              icon: Icon(
-                                player.loopMode == LoopMode.one
-                                    ? Icons.repeat_one
-                                    : Icons.repeat,
+                              IconButton(
+                                tooltip: 'Zurück',
+                                onPressed: player.canGoPrevious
+                                    ? player.previous
+                                    : null,
+                                icon: const Icon(Icons.skip_previous),
+                                iconSize: 42,
                               ),
-                            ),
-                          ],
+                              IconButton.filled(
+                                tooltip: playing ? 'Pause' : 'Wiedergabe',
+                                onPressed: track == null
+                                    ? null
+                                    : (playing ? player.pause : player.play),
+                                icon: Icon(
+                                  playing ? Icons.pause : Icons.play_arrow,
+                                ),
+                                iconSize: 58,
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              IconButton(
+                                tooltip: 'Weiter',
+                                onPressed:
+                                    player.canGoNext ? player.next : null,
+                                icon: const Icon(Icons.skip_next),
+                                iconSize: 42,
+                              ),
+                              IconButton(
+                                tooltip: 'Wiederholung',
+                                onPressed: player.toggleRepeat,
+                                color: player.loopMode != LoopMode.off
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                                icon: Icon(
+                                  player.loopMode == LoopMode.one
+                                      ? Icons.repeat_one
+                                      : Icons.repeat,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
