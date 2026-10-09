@@ -57,5 +57,13 @@ class BpmService {
   Future<double?> analyzeFile(String inputPath) async =>
       (await analyzeFileResult(inputPath))?.bpm;
 
+  Future<void> cancelActive() async {
+    try {
+      await FFmpegKit.cancel();
+    } catch (_) {
+      // Cancellation is best-effort; lifecycle changes must never crash.
+    }
+  }
+
   String _quote(String value) => '"' + value.replaceAll('"', '\\"') + '"';
 }
