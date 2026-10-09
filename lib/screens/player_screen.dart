@@ -70,6 +70,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Timer? _artworkMissSaveTimer;
   bool _backgroundUiDirty = false;
   bool _libraryScrolling = false;
+  bool _appResumed = true;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
@@ -245,9 +246,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || tracks.isEmpty) return;
+    _appResumed = state == AppLifecycleState.resumed;
+
+    if (!_appResumed) {
+      _backgroundUiRefreshTimer?.cancel();
+      _backgroundUiRefreshTimer = null;
+      unawaited(bpm.cancelActive());
+      return;
+    }
+
+    if (tracks.isEmpty) return;
     unawaited(_loadArtworkInBackground());
-    unawaited(_analyzeBpmInBackground());
+    if (!widget.player.audio.playing) {
+      unawaited(_analyzeBpmInBackground());
+    }
   }
 
   void _onCurrentTrackChanged(Track? track) {
@@ -269,10 +281,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         );
       }
     }());
-    if (widget.player.audio.processingState != ProcessingState.idle ||
-        widget.player.audio.playing) {
-      unawaited(_analyzeTrack(track));
-    }
+    // BPM analysis is intentionally not started from a playback change.
+    // FFmpeg competes with the Android audio pipeline and can flood the
+    // platform channel on large libraries. Missing BPM is handled by the
+    // background worker while playback is idle, or manually via the BPM button.
   }
 
   void _showPlayerError(String message) {
@@ -434,7 +446,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _analyzeBpmInBackground() async {
-    if (_backgroundBpmWorkerRunning || tracks.isEmpty) return;
+    if (_backgroundBpmWorkerRunning ||
+        tracks.isEmpty ||
+        !_appResumed ||
+        widget.player.audio.playing) {
+      return;
+    }
     _backgroundBpmWorkerRunning = true;
     _backgroundBpmDone = 0;
     _backgroundBpmExisting = 0;
@@ -488,13 +505,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       }
 
       for (final snapshot in pending) {
-        if (!mounted) return;
+        if (!mounted || !_appResumed) return;
 
         try {
-          while (mounted && analyzing) {
+          while (mounted &&
+              _appResumed &&
+              (analyzing || widget.player.audio.playing)) {
+            if (widget.player.audio.playing) {
+              await bpm.cancelActive();
+            }
             await Future<void>.delayed(const Duration(seconds: 2));
           }
-          if (!mounted) return;
+          if (!mounted || !_appResumed) return;
 
           final index = _trackIndex(snapshot.id);
           if (index < 0) continue;
@@ -507,8 +529,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             continue;
           }
 
+          if (!_appResumed || widget.player.audio.playing) continue;
+
           final result = await bpm.analyzeFileResult(current.path);
-          if (!mounted) return;
+          if (!mounted || !_appResumed) return;
 
           if (result != null && result.bpm > 0) {
             failures.remove(current.path);
@@ -666,7 +690,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _loadArtworkInBackground() async {
-    if (!Platform.isAndroid || _artworkWorkerRunning || tracks.isEmpty) return;
+    if (!Platform.isAndroid ||
+        _artworkWorkerRunning ||
+        tracks.isEmpty ||
+        !_appResumed) {
+      return;
+    }
     _artworkWorkerRunning = true;
     _backgroundArtworkDone = 0;
     _backgroundArtworkCached = 0;
@@ -718,7 +747,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _scheduleBackgroundUiRefresh();
 
       for (final track in pending) {
-        if (!mounted) return;
+        if (!mounted || !_appResumed) return;
 
         try {
           await _ensureArtwork(
