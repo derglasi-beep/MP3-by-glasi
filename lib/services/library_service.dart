@@ -57,6 +57,7 @@ class LibraryService {
   static const _playlistsKey = 'library_playlists_v1';
   static const _libraryFileName = 'library_tracks_v2.json';
   static const _artworkMissesFileName = 'artwork_misses_v1.json';
+  static const _spinningTrackIdsKey = 'spinning_track_ids_v1';
 
   Future<void> _trackSaveTail = Future.value();
 
@@ -367,6 +368,17 @@ class LibraryService {
   Future<void> savePlaylists(Map<String, List<String>> playlists) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_playlistsKey, jsonEncode(playlists));
+  }
+
+  Future<Set<String>> loadSpinningTrackIds() async {
+    final p = await SharedPreferences.getInstance();
+    return (p.getStringList(_spinningTrackIdsKey) ?? const <String>[]).toSet();
+  }
+
+  Future<void> saveSpinningTrackIds(Set<String> ids) async {
+    final p = await SharedPreferences.getInstance();
+    final sorted = ids.toList(growable: false)..sort();
+    await p.setStringList(_spinningTrackIdsKey, sorted);
   }
 
   Map<String, dynamic> _trackToJson(Track t) => _trackToJsonStatic(t);
