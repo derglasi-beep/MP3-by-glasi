@@ -104,12 +104,32 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return widget.tracks;
   }
 
-  void _buildPlan() => setState(
-        () => plan = planner.build(
-          library: _activeLibrary,
-          duration: duration,
-        ),
+  void _buildPlan() {
+    final active = _activeLibrary;
+    final usable =
+        active.where((track) => track.bpm != null && track.bpm! > 0).toList();
+
+    if (usable.length < 2) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              usable.isEmpty
+                  ? 'In dieser Auswahl hat noch kein Titel einen BPM-Wert.'
+                  : 'In dieser Auswahl ist aktuell nur 1 Titel mit BPM planbar.',
+            ),
+          ),
+        );
+    }
+
+    setState(() {
+      plan = planner.build(
+        library: active,
+        duration: duration,
       );
+    });
+  }
 
   void _buildManualPlan() {
     setState(() {
@@ -282,8 +302,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   Future<void> _chooseManualTracks() async {
-    final libraryTracks = List<Track>.from(_activeLibrary);
-
+    var useSpinningSource =
+        useSpinningLibrary && _spinningTracks.isNotEmpty;
     var activePhase = SpinningPhase.warmup;
     var query = '';
 
@@ -296,8 +316,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final sourceTracks =
+              useSpinningSource && _spinningTracks.isNotEmpty
+                  ? _spinningTracks
+                  : widget.tracks;
           final q = query.trim().toLowerCase();
-          final visible = libraryTracks.where((track) {
+          final visible = sourceTracks.where((track) {
             if (q.isEmpty) return true;
             return track.title.toLowerCase().contains(q) ||
                 track.artist.toLowerCase().contains(q) ||
@@ -324,6 +348,27 @@ class _SpinningScreenState extends State<SpinningScreen> {
               height: 660,
               child: Column(
                 children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: true,
+                        icon: Icon(Icons.directions_bike),
+                        label: Text('Spinning-Auswahl'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: false,
+                        icon: Icon(Icons.library_music),
+                        label: Text('Alle Titel'),
+                      ),
+                    ],
+                    selected: {
+                      useSpinningSource && _spinningTracks.isNotEmpty,
+                    },
+                    onSelectionChanged: (values) => setDialogState(() {
+                      useSpinningSource = values.first;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
@@ -482,14 +527,23 @@ class _SpinningScreenState extends State<SpinningScreen> {
           }),
         ),
         const SizedBox(height: 6),
-        Text(
-          _spinningTracks.isEmpty
-              ? 'Noch keine Titel für Spinning markiert – aktuell werden alle Titel verwendet.'
-              : (useSpinningLibrary
-                  ? '${_spinningTracks.length} markierte Spinning-Titel'
-                  : '${widget.tracks.length} Titel aus der gesamten Bibliothek'),
-          style: Theme.of(context).textTheme.bodySmall,
-          textAlign: TextAlign.center,
+        Builder(
+          builder: (_) {
+            final active = _activeLibrary;
+            final usable = active
+                .where((track) => track.bpm != null && track.bpm! > 0)
+                .length;
+            final sourceLabel = _spinningTracks.isEmpty
+                ? 'Noch keine Titel für Spinning markiert – aktuell werden alle Titel verwendet.'
+                : (useSpinningLibrary
+                    ? '${_spinningTracks.length} markierte Spinning-Titel'
+                    : '${widget.tracks.length} Titel aus der gesamten Bibliothek');
+            return Text(
+              '$sourceLabel · $usable mit BPM planbar',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            );
+          },
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
