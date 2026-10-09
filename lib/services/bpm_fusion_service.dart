@@ -72,9 +72,6 @@ class BpmFusionService {
 
     double chosen;
     double agreement;
-    final canonicalLocal = _canonical(localBpm);
-    final canonicalOnline = _canonical(online.bpm);
-
     switch (relation) {
       case BpmRelation.exact:
         chosen = _weighted(localBpm, localWeight, online.bpm, onlineWeight);
@@ -82,10 +79,10 @@ class BpmFusionService {
         break;
       case BpmRelation.halfTempo:
       case BpmRelation.doubleTempo:
-        // First bring harmonic equivalents such as 64/128 or 128/256 to
-        // the same canonical tempo before weighting them. This avoids
-        // producing an artificial midpoint such as 96 BPM.
-        chosen = _weighted(canonicalLocal, localWeight, canonicalOnline, onlineWeight);
+        // Harmonic equivalents are considered an agreement, but the stored
+        // BPM must remain a real source value. Never fold 174 BPM to 87 BPM
+        // just to fit an arbitrary range.
+        chosen = localWeight >= onlineWeight ? localBpm : online.bpm;
         agreement = 0.72;
         break;
       case BpmRelation.close:
@@ -113,7 +110,7 @@ class BpmFusionService {
         (localConfidence ?? 0) >= 0.65;
 
     return BpmFusionResult(
-      bpm: double.parse(_normalize(chosen).toStringAsFixed(1)),
+      bpm: double.parse(chosen.toStringAsFixed(1)),
       confidence: double.parse(confidence.toStringAsFixed(2)),
       localBpm: localBpm,
       onlineBpm: online.bpm,
@@ -142,14 +139,4 @@ class BpmFusionService {
   double _weighted(double a, double wa, double b, double wb) =>
       (a * wa + b * wb) / (wa + wb);
 
-  double _normalize(double bpm) {
-    if (bpm <= 0) return 0;
-    var value = bpm;
-    // Fold harmonic equivalents into one musical octave: [80, 160).
-    while (value >= 160) value /= 2;
-    while (value < 80) value *= 2;
-    return value;
-  }
-
-  double _canonical(double bpm) => _normalize(bpm);
 }
