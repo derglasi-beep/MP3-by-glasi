@@ -2,17 +2,59 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/library_service.dart';
 import '../screens/now_playing_screen.dart';
 
-class MiniPlayer extends StatelessWidget {
+class MiniPlayer extends StatefulWidget {
   final AudioPlayerService player;
 
   const MiniPlayer({super.key, required this.player});
 
+  @override
+  State<MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends State<MiniPlayer> {
+  final LibraryService library = LibraryService();
+  final Set<String> _spinningTrackIds = <String>{};
+
+  AudioPlayerService get player => widget.player;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSpinningSelection();
+  }
+
+  Future<void> _loadSpinningSelection() async {
+    final ids = await library.loadSpinningTrackIds();
+    if (!mounted) return;
+    setState(() {
+      _spinningTrackIds
+        ..clear()
+        ..addAll(ids);
+    });
+  }
+
+  Future<void> _toggleSpinningTrack(Track track) async {
+    setState(() {
+      if (!_spinningTrackIds.add(track.id)) {
+        _spinningTrackIds.remove(track.id);
+      }
+    });
+    await library.saveSpinningTrackIds(_spinningTrackIds);
+  }
+
   void _openNowPlaying(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => NowPlayingScreen(player: player)),
+      MaterialPageRoute(
+        builder: (_) => NowPlayingScreen(
+          player: player,
+          spinningTrackIds: _spinningTrackIds,
+          onToggleSpinning: _toggleSpinningTrack,
+        ),
+      ),
     );
   }
 
