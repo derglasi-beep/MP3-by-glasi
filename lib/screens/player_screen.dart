@@ -1407,6 +1407,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(
         onPressed: () async {
+          final persistedSpinningIds = await library.loadSpinningTrackIds();
+          _spinningTrackIds
+            ..clear()
+            ..addAll(persistedSpinningIds);
+          if (!mounted) return;
+
           await Navigator.push(
             context,
             MaterialPageRoute(
