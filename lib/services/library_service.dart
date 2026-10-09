@@ -274,13 +274,17 @@ class LibraryService {
 
   Future<void> saveTracks(List<Track> tracks) {
     final snapshot = List<Track>.from(tracks);
-    _trackSaveTail = _trackSaveTail.then((_) => _saveTracksNow(snapshot));
+    _trackSaveTail = _trackSaveTail
+        .catchError((_) {})
+        .then((_) => _saveTracksNow(snapshot));
     return _trackSaveTail;
   }
 
   Future<void> saveTrackMetadata(List<Track> tracks) {
     final snapshot = List<Track>.from(tracks);
-    _trackSaveTail = _trackSaveTail.then((_) => _saveTrackMetadataNow(snapshot));
+    _trackSaveTail = _trackSaveTail
+        .catchError((_) {})
+        .then((_) => _saveTrackMetadataNow(snapshot));
     return _trackSaveTail;
   }
 
