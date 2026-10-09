@@ -8,11 +8,15 @@ class SpinningScreen extends StatefulWidget {
   final AudioPlayerService player;
   final List<Track> tracks;
   final Set<String> spinningTrackIds;
+  final SpinningPlan? initialPlan;
+  final ValueChanged<SpinningPlan?> onPlanChanged;
   const SpinningScreen({
     super.key,
     required this.player,
     required this.tracks,
     required this.spinningTrackIds,
+    required this.initialPlan,
+    required this.onPlanChanged,
   });
   @override State<SpinningScreen> createState() => _SpinningScreenState();
 }
@@ -170,6 +174,17 @@ class _SpinningScreenState extends State<SpinningScreen> {
   bool sprintMode = false;
   bool useSpinningLibrary = true;
   SpinningPlan? plan;
+
+  @override
+  void initState() {
+    super.initState();
+    plan = widget.initialPlan;
+  }
+
+  void _setPlan(SpinningPlan? next) {
+    plan = next;
+    widget.onPlanChanged(next);
+  }
   final Map<SpinningPhase, List<Track>> manualPhaseTracks = {
     for (final phase in SpinningPhase.values) phase: <Track>[],
   };
@@ -207,18 +222,22 @@ class _SpinningScreenState extends State<SpinningScreen> {
     }
 
     setState(() {
-      plan = planner.build(
-        library: active,
-        duration: duration,
+      _setPlan(
+        planner.build(
+          library: active,
+          duration: duration,
+        ),
       );
     });
   }
 
   void _buildManualPlan() {
     setState(() {
-      plan = planner.buildFromPhaseTracks(
-        phaseTracks: manualPhaseTracks,
-        duration: duration,
+      _setPlan(
+        planner.buildFromPhaseTracks(
+          phaseTracks: manualPhaseTracks,
+          duration: duration,
+        ),
       );
     });
   }
@@ -283,6 +302,15 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          secondary: selected.contains(track.id)
+                              ? IconButton(
+                                  tooltip: 'Aus Spinning entfernen',
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: () => setDialogState(
+                                    () => selected.remove(track.id),
+                                  ),
+                                )
+                              : null,
                           onChanged: (value) => setDialogState(() {
                             if (value == true) {
                               selected.add(track.id);
@@ -326,7 +354,43 @@ class _SpinningScreenState extends State<SpinningScreen> {
     if (!mounted) return;
     setState(() {
       useSpinningLibrary = widget.spinningTrackIds.isNotEmpty;
-      plan = null;
+      _setPlan(null);
+    });
+  }
+
+  Future<void> _clearSpinningLibrary() async {
+    if (widget.spinningTrackIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Spinning-Auswahl leeren?'),
+        content: const Text(
+          'Alle Markierungen für Spinning werden entfernt. '
+          'Die Titel selbst bleiben natürlich in der Musikbibliothek.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Alle entfernen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    widget.spinningTrackIds.clear();
+    await library.saveSpinningTrackIds(widget.spinningTrackIds);
+
+    if (!mounted) return;
+    setState(() {
+      useSpinningLibrary = false;
+      _setPlan(null);
     });
   }
 
@@ -564,7 +628,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ..clear()
           ..addAll(working[phase]!);
       }
-      plan = null;
+      _setPlan(null);
     });
   }
 
@@ -595,7 +659,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         SegmentedButton<int>(segments: const [
           ButtonSegment(value: 30, label: Text('30 min')), ButtonSegment(value: 45, label: Text('45 min')),
           ButtonSegment(value: 60, label: Text('60 min')), ButtonSegment(value: 90, label: Text('90 min'))],
-          selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); plan = null; })),
+          selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); _setPlan(null); })),
         const SizedBox(height: 14),
         SegmentedButton<bool>(
           segments: const [
@@ -613,7 +677,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           selected: {useSpinningLibrary && _spinningTracks.isNotEmpty},
           onSelectionChanged: (values) => setState(() {
             useSpinningLibrary = values.first;
-            plan = null;
+            _setPlan(null);
           }),
         ),
         const SizedBox(height: 6),
@@ -636,10 +700,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
           },
         ),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _manageSpinningLibrary,
-          icon: const Icon(Icons.checklist),
-          label: const Text('Spinning-Auswahl verwalten'),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _manageSpinningLibrary,
+                icon: const Icon(Icons.checklist),
+                label: const Text('Spinning-Auswahl verwalten'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              onPressed: widget.spinningTrackIds.isEmpty
+                  ? null
+                  : _clearSpinningLibrary,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Spinning-Auswahl leeren',
+            ),
+          ],
         ),
         const SizedBox(height: 14),
         SwitchListTile.adaptive(
