@@ -23,7 +23,9 @@ class OnlineBpmResult {
 class OnlineBpmService {
   static const _source = 'Deezer';
   static const _cachePrefix = 'online_bpm_v1:';
+  static const _missPrefix = 'online_bpm_miss_v1:';
   static const _cacheTtl = Duration(days: 30);
+  static const _missTtl = Duration(days: 14);
   final HttpClient _client;
 
   OnlineBpmService({HttpClient? client}) : _client = client ?? HttpClient();
@@ -40,6 +42,7 @@ class OnlineBpmService {
     final cacheKey = _cacheKey(cleanTitle, cleanArtist, duration);
     final cached = await _readCache(cacheKey);
     if (cached != null) return cached;
+    if (await _isRecentMiss(cacheKey)) return null;
 
     try {
       final query = 'artist:"$cleanArtist" track:"$cleanTitle"';
@@ -50,7 +53,10 @@ class OnlineBpmService {
 
       final search = await _getJson(searchUri);
       final items = search?['data'];
-      if (items is! List || items.isEmpty) return null;
+      if (items is! List || items.isEmpty) {
+        await _writeMiss(cacheKey);
+        return null;
+      }
 
       Map<String, dynamic>? best;
       var bestScore = 0.0;
@@ -64,17 +70,29 @@ class OnlineBpmService {
         }
       }
 
-      if (best == null || bestScore < 0.82) return null;
+      if (best == null || bestScore < 0.82) {
+        await _writeMiss(cacheKey);
+        return null;
+      }
       final id = best['id'];
-      if (id == null) return null;
+      if (id == null) {
+        await _writeMiss(cacheKey);
+        return null;
+      }
 
       final details = await _getJson(
         Uri.https('api.deezer.com', '/track/$id'),
       );
-      if (details == null) return null;
+      if (details == null) {
+        await _writeMiss(cacheKey);
+        return null;
+      }
 
       final bpm = (details['bpm'] as num?)?.toDouble();
-      if (bpm == null || bpm < 40 || bpm > 240) return null;
+      if (bpm == null || bpm < 40 || bpm > 240) {
+        await _writeMiss(cacheKey);
+        return null;
+      }
 
       final result = OnlineBpmResult(
         bpm: double.parse(bpm.toStringAsFixed(1)),
@@ -83,6 +101,7 @@ class OnlineBpmService {
         matchScore: double.parse(bestScore.toStringAsFixed(2)),
       );
       await _writeCache(cacheKey, result);
+      await _clearMiss(cacheKey);
       return result;
     } catch (_) {
       return null;
@@ -204,6 +223,39 @@ class OnlineBpmService {
         result.isrc ?? '',
         result.matchScore.toString(),
       ].join('|'));
+    } catch (_) {}
+  }
+
+  Future<bool> _isRecentMiss(String cacheKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_missPrefix$cacheKey');
+      if (raw == null) return false;
+      final savedAt = DateTime.tryParse(raw);
+      if (savedAt == null || DateTime.now().difference(savedAt) > _missTtl) {
+        await prefs.remove('$_missPrefix$cacheKey');
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _writeMiss(String cacheKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        '$_missPrefix$cacheKey',
+        DateTime.now().toIso8601String(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _clearMiss(String cacheKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_missPrefix$cacheKey');
     } catch (_) {}
   }
 
