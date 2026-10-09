@@ -14,6 +14,7 @@ class BpmCache {
   static const _key = 'bpm_cache_v3';
   static const _legacyKey = 'bpm_cache_v2';
   static const _legacyKeyV1 = 'bpm_cache_v1';
+  static const _failuresKey = 'bpm_analysis_failures_v1';
 
   Future<Map<String, BpmCacheEntry>>? _dataFuture;
   Future<void> _writeTail = Future.value();
@@ -51,6 +52,20 @@ class BpmCache {
   }
 
   Future<BpmCacheEntry?> get(String path) async => (await _data())[path];
+
+  Future<Map<String, BpmCacheEntry>> snapshot() async =>
+      Map<String, BpmCacheEntry>.from(await _data());
+
+  Future<Set<String>> loadFailures() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getStringList(_failuresKey);
+    return raw == null ? <String>{} : raw.toSet();
+  }
+
+  Future<void> saveFailures(Set<String> paths) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(_failuresKey, paths.toList(growable: false));
+  }
 
   Future<void> put(
     String path,
@@ -103,17 +118,22 @@ class BpmCache {
     final data = await _data();
     data.clear();
 
-    _writeTail = _writeTail.then((_) async {
-      final p = await SharedPreferences.getInstance();
-      await p.remove(_key);
-      await p.remove(_legacyKey);
-      await p.remove(_legacyKeyV1);
-    });
+    _writeTail = _writeTail
+        .catchError((_) {})
+        .then((_) async {
+          final p = await SharedPreferences.getInstance();
+          await p.remove(_key);
+          await p.remove(_legacyKey);
+          await p.remove(_legacyKeyV1);
+          await p.remove(_failuresKey);
+        });
     await _writeTail;
   }
 
   Future<void> _queueWrite(Map<String, BpmCacheEntry> snapshot) {
-    _writeTail = _writeTail.then((_) async {
+    _writeTail = _writeTail
+        .catchError((_) {})
+        .then((_) async {
       final p = await SharedPreferences.getInstance();
       await p.setString(
         _key,
