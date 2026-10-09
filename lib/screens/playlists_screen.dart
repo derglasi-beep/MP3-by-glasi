@@ -123,7 +123,11 @@ class _PlaylistDetailState extends State<_PlaylistDetail> {
   }
 
   Future<void> _play(int index) async {
-    await widget.player.setQueue(tracks, startIndex: index);
+    await widget.player.setQueue(
+      tracks,
+      startIndex: index,
+      preserveCurrent: false,
+    );
     await widget.player.play();
   }
 
