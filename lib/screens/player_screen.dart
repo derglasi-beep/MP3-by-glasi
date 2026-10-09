@@ -1404,16 +1404,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SpinningScreen(
-              player: widget.player,
-              tracks: tracks,
-              spinningTrackIds: Set<String>.from(_spinningTrackIds),
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SpinningScreen(
+                player: widget.player,
+                tracks: tracks,
+                spinningTrackIds: _spinningTrackIds,
+              ),
             ),
-          ),
-        ),
+          );
+          if (mounted) setState(() {});
+        },
         icon: const Icon(Icons.directions_bike),
         tooltip: 'Spinning DJ',
       ),
