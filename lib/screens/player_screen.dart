@@ -122,6 +122,30 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     return 'album:$album|${track.year ?? 0}|$folder';
   }
 
+  String _legacyAlbumArtworkKey(Track track) {
+    final album = track.album.trim().toLowerCase();
+    if (album.isEmpty || album == 'unbekannt' || album == 'unknown') {
+      return 'track:${track.id}';
+    }
+    return 'album:$album|${track.year ?? 0}';
+  }
+
+  Future<Uint8List?> _loadAlbumArtworkWithMigration(Track track) async {
+    final albumKey = _albumArtworkKey(track);
+    var artwork = await library.loadAlbumArtwork(albumKey);
+    if (artwork != null && artwork.isNotEmpty) return artwork;
+
+    final legacyKey = _legacyAlbumArtworkKey(track);
+    if (legacyKey == albumKey) return null;
+
+    artwork = await library.loadAlbumArtwork(legacyKey);
+    if (artwork != null && artwork.isNotEmpty) {
+      await library.saveAlbumArtwork(albumKey, artwork);
+      return artwork;
+    }
+    return null;
+  }
+
   void _touchArtworkInMemory(String id) {
     _artworkLru.remove(id);
     _artworkLru.add(id);
@@ -170,8 +194,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
     _artworkLoads.add(track.id);
     try {
-      final albumKey = _albumArtworkKey(current);
-      Uint8List? artwork = await library.loadAlbumArtwork(albumKey);
+      Uint8List? artwork = await _loadAlbumArtworkWithMigration(current);
       artwork ??= await library.loadArtwork(current.id);
 
       if (!mounted || artwork == null || artwork.isEmpty) return;
@@ -666,7 +689,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         final albumKey = entry.key;
         final track = entry.value;
 
-        if (await library.hasAlbumArtwork(albumKey)) {
+        final migratedArtwork =
+            await _loadAlbumArtworkWithMigration(track);
+        if (migratedArtwork != null && migratedArtwork.isNotEmpty) {
           _backgroundArtworkCached++;
           continue;
         }
@@ -738,7 +763,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _artworkLoads.add(track.id);
     final albumKey = _albumArtworkKey(track);
     try {
-      var artwork = await library.loadAlbumArtwork(albumKey);
+      var artwork = await _loadAlbumArtworkWithMigration(track);
 
       if (artwork == null || artwork.isEmpty) {
         artwork = await library.loadArtwork(track.id);
