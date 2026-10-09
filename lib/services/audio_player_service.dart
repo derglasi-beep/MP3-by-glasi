@@ -54,7 +54,6 @@ class AudioPlayerService {
 
   bool get canGoNext {
     if (queue.isEmpty || currentIndex < 0) return false;
-    if (loopMode == LoopMode.one) return true;
     if (queue.length > 1 && shuffle) return true;
     if (currentIndex < queue.length - 1) return true;
     return loopMode == LoopMode.all;
@@ -667,6 +666,7 @@ class AudioPlayerService {
     shuffle = !shuffle;
     if (!shuffle) _history.clear();
     await audio.setShuffleModeEnabled(false);
+    _publishQueue();
   }
 
   Future<void> toggleRepeat() async {
@@ -676,6 +676,7 @@ class AudioPlayerService {
       LoopMode.one => LoopMode.off,
     };
     await audio.setLoopMode(LoopMode.off);
+    _publishQueue();
   }
 
   Future<void> dispose() async {
