@@ -249,8 +249,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _playerStateSub = widget.player.playerStateStream.listen((state) {
       if (state.playing) {
         unawaited(bpm.cancelActive());
-      } else if (_appResumed && tracks.isNotEmpty) {
+      } else if (tracks.isNotEmpty) {
         unawaited(_analyzeBpmInBackground());
+        unawaited(_loadArtworkInBackground());
       }
     });
     _restoreLibrary();
@@ -260,14 +261,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appResumed = state == AppLifecycleState.resumed;
 
-    if (!_appResumed) {
-      _backgroundUiRefreshTimer?.cancel();
-      _backgroundUiRefreshTimer = null;
+    if (state == AppLifecycleState.detached) {
       unawaited(bpm.cancelActive());
       return;
     }
 
     if (tracks.isEmpty) return;
+
+    // Background work is allowed while the app stays alive. Playback still
+    // always wins: the BPM worker stops as soon as audio starts.
     unawaited(_loadArtworkInBackground());
     if (!widget.player.audio.playing) {
       unawaited(_analyzeBpmInBackground());
@@ -466,7 +468,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _analyzeBpmInBackground() async {
     if (_backgroundBpmWorkerRunning ||
         tracks.isEmpty ||
-        !_appResumed ||
         widget.player.audio.playing) {
       return;
     }
@@ -523,18 +524,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       }
 
       for (final snapshot in pending) {
-        if (!mounted || !_appResumed) return;
+        if (!mounted) return;
 
         try {
           while (mounted &&
-              _appResumed &&
               (analyzing || widget.player.audio.playing)) {
             if (widget.player.audio.playing) {
               await bpm.cancelActive();
             }
             await Future<void>.delayed(const Duration(seconds: 2));
           }
-          if (!mounted || !_appResumed) return;
+          if (!mounted) return;
 
           final index = _trackIndex(snapshot.id);
           if (index < 0) continue;
@@ -547,10 +547,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             continue;
           }
 
-          if (!_appResumed || widget.player.audio.playing) continue;
+          if (widget.player.audio.playing) continue;
 
           final result = await bpm.analyzeFileResult(current.path);
-          if (!mounted || !_appResumed) return;
+          if (!mounted) return;
 
           if (result != null && result.bpm > 0) {
             failures.remove(current.path);
@@ -582,7 +582,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               await library.saveTrackMetadata(List<Track>.from(tracks));
               pendingLibraryChanges = 0;
             }
-          } else if (!widget.player.audio.playing && _appResumed) {
+          } else if (!widget.player.audio.playing) {
             failures.add(current.path);
           } else {
             debugPrint(
@@ -593,7 +593,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
           await Future<void>.delayed(const Duration(milliseconds: 350));
         } catch (error) {
-          failures.add(snapshot.path);
+          if (!widget.player.audio.playing) {
+            failures.add(snapshot.path);
+          }
           debugPrint(
             '[BPM] Hintergrundanalyse überspringt '
             '"${snapshot.artist} - ${snapshot.title}": $error',
@@ -626,7 +628,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _verifyBpmOnlineInBackground() async {
     if (_backgroundOnlineBpmWorkerRunning ||
         tracks.isEmpty ||
-        !_appResumed ||
         widget.player.audio.playing) {
       return;
     }
@@ -650,7 +651,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       await Future<void>.delayed(const Duration(seconds: 3));
 
       for (final snapshot in pending) {
-        if (!mounted || !_appResumed || widget.player.audio.playing) return;
+        if (!mounted || widget.player.audio.playing) return;
 
         try {
           while (mounted && (analyzing || _backgroundBpmWorkerRunning)) {
@@ -720,8 +721,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _loadArtworkInBackground() async {
     if (!Platform.isAndroid ||
         _artworkWorkerRunning ||
-        tracks.isEmpty ||
-        !_appResumed) {
+        tracks.isEmpty) {
       return;
     }
     _artworkWorkerRunning = true;
@@ -775,7 +775,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _scheduleBackgroundUiRefresh();
 
       for (final track in pending) {
-        if (!mounted || !_appResumed) return;
+        if (!mounted) return;
 
         try {
           await _ensureArtwork(
