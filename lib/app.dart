@@ -37,13 +37,20 @@ class _Shell extends StatefulWidget {
 
 class _ShellState extends State<_Shell> {
   int index = 0;
+  bool _playerShowsLibrary = false;
   late final PlayerScreen _playerPage;
   SettingsScreen? _settingsPage;
 
   @override
   void initState() {
     super.initState();
-    _playerPage = PlayerScreen(player: widget.player);
+    _playerPage = PlayerScreen(
+      player: widget.player,
+      onLibraryVisibilityChanged: (visible) {
+        if (!mounted || _playerShowsLibrary == visible) return;
+        setState(() => _playerShowsLibrary = visible);
+      },
+    );
   }
 
   void _selectPage(int value) {
@@ -71,7 +78,8 @@ class _ShellState extends State<_Shell> {
               children: pages,
             ),
           ),
-          MiniPlayer(player: widget.player),
+          if (index != 0 || _playerShowsLibrary)
+            MiniPlayer(player: widget.player),
         ],
       ),
       bottomNavigationBar: NavigationBar(
