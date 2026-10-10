@@ -2019,9 +2019,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             final max = d.inMilliseconds > 0 ? d.inMilliseconds.toDouble() : 1.0;
             final value = p.inMilliseconds.clamp(0, max.toInt()).toDouble();
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(18),
-              child: Column(children: [
+            return SafeArea(
+              minimum: const EdgeInsets.only(bottom: 12),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+                child: Column(children: [
                 GestureDetector(
                   onTap: t == null
                       ? null
@@ -2124,6 +2126,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   const Icon(Icons.volume_up),
                 ])
               ]),
+            ),
             );
           },
         ),
