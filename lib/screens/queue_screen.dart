@@ -7,7 +7,13 @@ import '../widgets/bpm_badge.dart';
 
 class QueueScreen extends StatefulWidget {
   final AudioPlayerService player;
-  const QueueScreen({super.key, required this.player});
+  final VoidCallback? onOpenCurrent;
+
+  const QueueScreen({
+    super.key,
+    required this.player,
+    this.onOpenCurrent,
+  });
 
   @override
   State<QueueScreen> createState() => _QueueScreenState();
@@ -81,7 +87,10 @@ class _QueueScreenState extends State<QueueScreen> {
             children: [
               _NowPlaying(
                 player: widget.player,
-                onOpenCurrent: () => Navigator.maybePop(context),
+                onOpenCurrent: () {
+                  widget.onOpenCurrent?.call();
+                  Navigator.maybePop(context);
+                },
               ),
               _QueueSummary(queue: queue, player: widget.player),
               const Divider(height: 1),
