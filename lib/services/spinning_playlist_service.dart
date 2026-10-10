@@ -78,6 +78,7 @@ class SpinningPlaylistService {
     required List<Track> library,
     required Duration duration,
     List<SpinningPhaseSpec> phases = defaultPhases,
+    Map<String, Set<SpinningPhase>> phaseEligibility = const {},
   }) {
     final usable = library.where((t) => t.bpm != null && t.bpm! > 0).toList();
     if (usable.isEmpty || duration <= Duration.zero) {
@@ -93,7 +94,22 @@ class SpinningPlaylistService {
 
     while (elapsed < duration && selected.length < usable.length) {
       final point = _curveAt(curve, elapsed);
-      final candidates = usable.where((t) => !used.contains(t.id)).toList();
+      var candidates = usable.where((track) {
+        if (used.contains(track.id)) return false;
+        final allowed = phaseEligibility[track.id];
+        return allowed == null || allowed.isEmpty || allowed.contains(point.phase);
+      }).toList();
+
+      // Compatibility fallback: old spinning selections have no phase tags yet.
+      // If a phase has no classified candidates, unclassified tracks may still
+      // fill the gap instead of producing an unexpectedly short session.
+      if (candidates.isEmpty) {
+        candidates = usable.where((track) {
+          if (used.contains(track.id)) return false;
+          final allowed = phaseEligibility[track.id];
+          return allowed == null || allowed.isEmpty;
+        }).toList();
+      }
       if (candidates.isEmpty) break;
 
       candidates.sort((a, b) => _score(b, point, previous, duration - elapsed)
