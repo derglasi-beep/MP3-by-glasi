@@ -58,6 +58,7 @@ class LibraryService {
   static const _libraryFileName = 'library_tracks_v2.json';
   static const _artworkMissesFileName = 'artwork_misses_v1.json';
   static const _spinningTrackIdsKey = 'spinning_track_ids_v1';
+  static const _spinningTrackPhasesKey = 'spinning_track_phases_v1';
 
   Future<void> _trackSaveTail = Future.value();
 
@@ -379,6 +380,39 @@ class LibraryService {
     final p = await SharedPreferences.getInstance();
     final sorted = ids.toList(growable: false)..sort();
     await p.setStringList(_spinningTrackIdsKey, sorted);
+  }
+
+  Future<Map<String, Set<String>>> loadSpinningTrackPhases() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString(_spinningTrackPhasesKey);
+    if (raw == null || raw.isEmpty) return <String, Set<String>>{};
+
+    try {
+      final decoded = Map<String, dynamic>.from(jsonDecode(raw));
+      return decoded.map(
+        (trackId, value) => MapEntry(
+          trackId,
+          (value as List).map((phase) => phase.toString()).toSet(),
+        ),
+      );
+    } catch (_) {
+      return <String, Set<String>>{};
+    }
+  }
+
+  Future<void> saveSpinningTrackPhases(
+    Map<String, Set<String>> phasesByTrackId,
+  ) async {
+    final p = await SharedPreferences.getInstance();
+    final cleaned = <String, List<String>>{};
+
+    for (final entry in phasesByTrackId.entries) {
+      if (entry.value.isEmpty) continue;
+      final phases = entry.value.toList(growable: false)..sort();
+      cleaned[entry.key] = phases;
+    }
+
+    await p.setString(_spinningTrackPhasesKey, jsonEncode(cleaned));
   }
 
   Map<String, dynamic> _trackToJson(Track t) => _trackToJsonStatic(t);
