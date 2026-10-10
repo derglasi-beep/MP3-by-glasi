@@ -79,7 +79,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Timer? _artworkMissSaveTimer;
   bool _backgroundUiDirty = false;
   bool _libraryScrolling = false;
-  bool _appResumed = true;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
@@ -265,8 +264,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _appResumed = state == AppLifecycleState.resumed;
-
     if (state == AppLifecycleState.detached) {
       unawaited(bpm.cancelActive());
       return;
