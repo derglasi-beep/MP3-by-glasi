@@ -768,6 +768,133 @@ class _SpinningScreenState extends State<SpinningScreen> {
     });
   }
 
+  void _replacePlanTracks(List<Track> nextTracks) {
+    setState(() {
+      _setPlan(
+        planner.buildFromTracks(
+          tracks: nextTracks,
+          duration: duration,
+        ),
+      );
+    });
+  }
+
+  void _removePlanTrack(int index) {
+    final current = plan;
+    if (current == null || index < 0 || index >= current.tracks.length) return;
+    final next = List<Track>.from(current.tracks)..removeAt(index);
+    _replacePlanTracks(next);
+  }
+
+  void _movePlanTrack(int oldIndex, int newIndex) {
+    final current = plan;
+    if (current == null) return;
+
+    final next = List<Track>.from(current.tracks);
+    if (newIndex > oldIndex) newIndex--;
+    if (oldIndex < 0 ||
+        oldIndex >= next.length ||
+        newIndex < 0 ||
+        newIndex >= next.length) {
+      return;
+    }
+
+    final track = next.removeAt(oldIndex);
+    next.insert(newIndex, track);
+    _replacePlanTracks(next);
+  }
+
+  Future<void> _addPlanTrack() async {
+    final current = plan;
+    if (current == null) return;
+
+    var query = '';
+    final used = current.tracks.map((track) => track.id).toSet();
+
+    final selected = await showDialog<Track>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final q = query.trim().toLowerCase();
+          final available = _activeLibrary.where((track) {
+            if (used.contains(track.id)) return false;
+            if (track.bpm == null || track.bpm! <= 0) return false;
+            if (q.isEmpty) return true;
+            return track.title.toLowerCase().contains(q) ||
+                track.artist.toLowerCase().contains(q) ||
+                track.album.toLowerCase().contains(q);
+          }).toList(growable: true)
+            ..sort((a, b) {
+              final artist = a.artist.toLowerCase().compareTo(
+                    b.artist.toLowerCase(),
+                  );
+              if (artist != 0) return artist;
+              return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+            });
+
+          return AlertDialog(
+            title: const Text('Titel zur Session hinzufügen'),
+            content: SizedBox(
+              width: 620,
+              height: 600,
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Titel, Interpret oder Album',
+                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => query = value),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('${available.length} passende Titel'),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: available.length,
+                      itemBuilder: (_, index) {
+                        final track = available[index];
+                        return ListTile(
+                          leading: const Icon(Icons.add_circle_outline),
+                          title: Text(
+                            track.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${track.artist} · ${_bpmText(track.bpm!)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () => Navigator.pop(dialogContext, track),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Abbrechen'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+    final next = List<Track>.from(current.tracks)..add(selected);
+    _replacePlanTracks(next);
+  }
+
   Future<void> _start() async {
     final p = plan; if (p == null || p.tracks.isEmpty) return;
     await widget.player.setQueue(
@@ -912,24 +1039,90 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ),
         ]))),
         const SizedBox(height: 14),
-        for (var i = 0; i < p.tracks.length; i++) ListTile(
-          leading: CircleAvatar(child: Text('${i + 1}')),
-          title: Text(p.tracks[i].title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${p.tracks[i].artist} · Ziel ${_displayBpm(p.selections[i].targetBpm).round()} BPM'),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(_bpmText(p.tracks[i].bpm!)),
-              if ((p.selections[i].targetBpm - p.tracks[i].bpm!).abs() >= 4)
-                Text(
-                  'Zielabweichung ${_displayBpm((p.selections[i].targetBpm - p.tracks[i].bpm!).abs()).round()} BPM',
-                  style: Theme.of(context).textTheme.bodySmall,
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Session bearbeiten',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _addPlanTrack,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Titel'),
+                    ),
+                  ],
                 ),
-            ],
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  itemCount: p.tracks.length,
+                  onReorder: _movePlanTrack,
+                  itemBuilder: (_, i) {
+                    final track = p.tracks[i];
+                    final selection = i < p.selections.length
+                        ? p.selections[i]
+                        : null;
+                    return ListTile(
+                      key: ValueKey('session-${track.id}-$i'),
+                      leading: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(Icons.drag_handle),
+                            ),
+                          ),
+                          CircleAvatar(child: Text('${i + 1}')),
+                        ],
+                      ),
+                      title: Text(
+                        track.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        selection == null
+                            ? track.artist
+                            : '${track.artist} · ${_phaseLabel(selection.phase)} · '
+                                'Ziel ${_displayBpm(selection.targetBpm).round()} BPM',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_bpmText(track.bpm!)),
+                          IconButton(
+                            tooltip: 'Aus Session entfernen',
+                            onPressed: () => _removePlanTrack(i),
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ),
-        FilledButton.icon(onPressed: p.tracks.isEmpty ? null : _start, icon: const Icon(Icons.play_arrow), label: const Text('Session starten')),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: p.tracks.isEmpty ? null : _start,
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Session starten'),
+        ),
       ],
       if (_activeLibrary.every((t) => t.bpm == null))
         const Padding(
