@@ -174,11 +174,36 @@ class _SpinningScreenState extends State<SpinningScreen> {
   bool sprintMode = false;
   bool useSpinningLibrary = true;
   SpinningPlan? plan;
+  final Map<String, Set<SpinningPhase>> _phaseEligibility =
+      <String, Set<SpinningPhase>>{};
 
   @override
   void initState() {
     super.initState();
     plan = widget.initialPlan;
+    _loadSpinningPhases();
+  }
+
+  Future<void> _loadSpinningPhases() async {
+    final stored = await library.loadSpinningTrackPhases();
+    if (!mounted) return;
+
+    final parsed = <String, Set<SpinningPhase>>{};
+    for (final entry in stored.entries) {
+      final phases = <SpinningPhase>{};
+      for (final name in entry.value) {
+        for (final phase in SpinningPhase.values) {
+          if (phase.name == name) phases.add(phase);
+        }
+      }
+      if (phases.isNotEmpty) parsed[entry.key] = phases;
+    }
+
+    setState(() {
+      _phaseEligibility
+        ..clear()
+        ..addAll(parsed);
+    });
   }
 
   void _setPlan(SpinningPlan? next) {
@@ -226,6 +251,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         planner.build(
           library: active,
           duration: duration,
+          phaseEligibility: _phaseEligibility,
         ),
       );
     });
@@ -242,9 +268,85 @@ class _SpinningScreenState extends State<SpinningScreen> {
     });
   }
 
+  Future<Set<SpinningPhase>?> _pickSpinningPhases(
+    Set<SpinningPhase> initial,
+  ) async {
+    final selected = Set<SpinningPhase>.from(initial);
+
+    return showDialog<Set<SpinningPhase>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Geeignete Trainingsphasen'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Mehrfachauswahl ist möglich. Ohne Auswahl bleibt der Titel '
+                  'für alle Phasen verwendbar.',
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final phase in SpinningPhase.values)
+                      FilterChip(
+                        label: Text(_phaseLabel(phase)),
+                        selected: selected.contains(phase),
+                        onSelected: (value) => setDialogState(() {
+                          if (value) {
+                            selected.add(phase);
+                          } else {
+                            selected.remove(phase);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => setDialogState(selected.clear),
+              child: const Text('Alle Phasen'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                Set<SpinningPhase>.from(selected),
+              ),
+              child: const Text('Übernehmen'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _phaseSummary(Set<SpinningPhase>? phases) {
+    if (phases == null || phases.isEmpty) return 'Alle Phasen';
+    return SpinningPhase.values
+        .where(phases.contains)
+        .map(_phaseLabel)
+        .join(', ');
+  }
+
   Future<void> _manageSpinningLibrary() async {
     var query = '';
     final selected = Set<String>.from(widget.spinningTrackIds);
+    final workingPhases = <String, Set<SpinningPhase>>{
+      for (final entry in _phaseEligibility.entries)
+        entry.key: Set<SpinningPhase>.from(entry.value),
+    };
 
     final accepted = await showDialog<bool>(
       context: context,
@@ -261,8 +363,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
           return AlertDialog(
             title: const Text('Spinning-Auswahl verwalten'),
             content: SizedBox(
-              width: 680,
-              height: 680,
+              width: 720,
+              height: 700,
               child: Column(
                 children: [
                   TextField(
@@ -288,9 +390,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       itemCount: visible.length,
                       itemBuilder: (_, index) {
                         final track = visible[index];
+                        final isSelected = selected.contains(track.id);
+                        final phases = workingPhases[track.id];
+
                         return CheckboxListTile(
                           dense: true,
-                          value: selected.contains(track.id),
+                          value: isSelected,
                           title: Text(
                             track.title,
                             maxLines: 1,
@@ -298,17 +403,29 @@ class _SpinningScreenState extends State<SpinningScreen> {
                           ),
                           subtitle: Text(
                             '${track.artist} · ${track.album}'
-                            '${track.bpm == null ? '' : ' · ${_bpmText(track.bpm!)}'}',
-                            maxLines: 1,
+                            '${track.bpm == null ? '' : ' · ${_bpmText(track.bpm!)}'}'
+                            '${isSelected ? ' · ${_phaseSummary(phases)}' : ''}',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          secondary: selected.contains(track.id)
+                          secondary: isSelected
                               ? IconButton(
-                                  tooltip: 'Aus Spinning entfernen',
-                                  icon: const Icon(Icons.remove_circle_outline),
-                                  onPressed: () => setDialogState(
-                                    () => selected.remove(track.id),
-                                  ),
+                                  tooltip: 'Trainingsphasen auswählen',
+                                  icon: const Icon(Icons.tune),
+                                  onPressed: () async {
+                                    final next = await _pickSpinningPhases(
+                                      phases ?? const <SpinningPhase>{},
+                                    );
+                                    if (next == null) return;
+                                    setDialogState(() {
+                                      selected.add(track.id);
+                                      if (next.isEmpty) {
+                                        workingPhases.remove(track.id);
+                                      } else {
+                                        workingPhases[track.id] = next;
+                                      }
+                                    });
+                                  },
                                 )
                               : null,
                           onChanged: (value) => setDialogState(() {
@@ -316,6 +433,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                               selected.add(track.id);
                             } else {
                               selected.remove(track.id);
+                              workingPhases.remove(track.id);
                             }
                           }),
                         );
@@ -327,7 +445,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => setDialogState(selected.clear),
+                onPressed: () => setDialogState(() {
+                  selected.clear();
+                  workingPhases.clear();
+                }),
                 child: const Text('Alle entfernen'),
               ),
               TextButton(
@@ -349,7 +470,20 @@ class _SpinningScreenState extends State<SpinningScreen> {
     widget.spinningTrackIds
       ..clear()
       ..addAll(selected);
+
+    _phaseEligibility
+      ..clear()
+      ..addEntries(
+        workingPhases.entries.where(
+          (entry) => selected.contains(entry.key) && entry.value.isNotEmpty,
+        ),
+      );
+
     await library.saveSpinningTrackIds(widget.spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final entry in _phaseEligibility.entries)
+        entry.key: entry.value.map((phase) => phase.name).toSet(),
+    });
 
     if (!mounted) return;
     setState(() {
@@ -385,7 +519,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
     if (confirmed != true || !mounted) return;
 
     widget.spinningTrackIds.clear();
+    _phaseEligibility.clear();
     await library.saveSpinningTrackIds(widget.spinningTrackIds);
+    await library.saveSpinningTrackPhases(const <String, Set<String>>{});
 
     if (!mounted) return;
     setState(() {
