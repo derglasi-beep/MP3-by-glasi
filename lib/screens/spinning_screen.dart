@@ -173,6 +173,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   bool useSpinningLibrary = true;
+  SpinningTrainingProfile trainingProfile = SpinningTrainingProfile.cadence;
   SpinningPlan? plan;
   final Map<String, Set<SpinningPhase>> _phaseEligibility =
       <String, Set<SpinningPhase>>{};
@@ -182,6 +183,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
     super.initState();
     plan = widget.initialPlan;
     _loadSpinningPhases();
+    _loadTrainingProfile();
   }
 
   Future<void> _loadSpinningPhases() async {
@@ -205,6 +207,36 @@ class _SpinningScreenState extends State<SpinningScreen> {
         ..addAll(parsed);
     });
   }
+
+  Future<void> _loadTrainingProfile() async {
+    final stored = await library.loadSpinningTrainingProfile();
+    if (!mounted || stored == null) return;
+
+    for (final profile in SpinningTrainingProfile.values) {
+      if (profile.name != stored) continue;
+      setState(() => trainingProfile = profile);
+      return;
+    }
+  }
+
+  List<SpinningPhaseSpec> get _activePhases =>
+      SpinningPlaylistService.phasesForProfile(trainingProfile);
+
+  String _trainingProfileLabel(SpinningTrainingProfile profile) =>
+      switch (profile) {
+        SpinningTrainingProfile.cadence => 'BPM',
+        SpinningTrainingProfile.heartRate => 'Herz',
+        SpinningTrainingProfile.power => 'Watt',
+      };
+
+  String _trainingProfileDescription() => switch (trainingProfile) {
+        SpinningTrainingProfile.cadence =>
+          'Ausgewogene Cadence-/BPM-Kurve mit klassischem Aufbau und Peak.',
+        SpinningTrainingProfile.heartRate =>
+          'Ruhigerer Ausdaueraufbau mit längerer Belastungsphase und kürzerem Peak.',
+        SpinningTrainingProfile.power =>
+          'Kräftigeres Intervallprofil mit mehr Belastungs- und Peak-Anteil.',
+      };
 
   void _setPlan(SpinningPlan? next) {
     plan = next;
@@ -251,6 +283,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         planner.build(
           library: active,
           duration: duration,
+          phases: _activePhases,
           phaseEligibility: _phaseEligibility,
         ),
       );
@@ -263,6 +296,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         planner.buildFromPhaseTracks(
           phaseTracks: manualPhaseTracks,
           duration: duration,
+          phases: _activePhases,
         ),
       );
     });
@@ -541,14 +575,13 @@ class _SpinningScreenState extends State<SpinningScreen> {
   int get _manualTrackCount =>
       manualPhaseTracks.values.fold(0, (sum, tracks) => sum + tracks.length);
   SpinningPhaseSpec _phaseSpec(SpinningPhase phase) =>
-      SpinningPlaylistService.defaultPhases
-          .firstWhere((spec) => spec.phase == phase);
+      _activePhases.firstWhere((spec) => spec.phase == phase);
 
   SpinningPhase _suggestedPhase(double bpm) {
     SpinningPhase best = SpinningPhase.warmup;
     var bestDistance = double.infinity;
 
-    for (final spec in SpinningPlaylistService.defaultPhases) {
+    for (final spec in _activePhases) {
       final distance = bpm < spec.minBpm
           ? spec.minBpm - bpm
           : bpm > spec.maxBpm
@@ -774,6 +807,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
         planner.buildFromTracks(
           tracks: nextTracks,
           duration: duration,
+          phases: _activePhases,
         ),
       );
     });
@@ -981,6 +1015,49 @@ class _SpinningScreenState extends State<SpinningScreen> {
               tooltip: 'Spinning-Auswahl leeren',
             ),
           ],
+        ),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Trainingsprofil',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<SpinningTrainingProfile>(
+          segments: const [
+            ButtonSegment<SpinningTrainingProfile>(
+              value: SpinningTrainingProfile.cadence,
+              icon: Icon(Icons.speed),
+              label: Text('BPM'),
+            ),
+            ButtonSegment<SpinningTrainingProfile>(
+              value: SpinningTrainingProfile.heartRate,
+              icon: Icon(Icons.favorite_outline),
+              label: Text('Herz'),
+            ),
+            ButtonSegment<SpinningTrainingProfile>(
+              value: SpinningTrainingProfile.power,
+              icon: Icon(Icons.bolt),
+              label: Text('Watt'),
+            ),
+          ],
+          selected: {trainingProfile},
+          onSelectionChanged: (values) {
+            final next = values.first;
+            setState(() {
+              trainingProfile = next;
+              _setPlan(null);
+            });
+            library.saveSpinningTrainingProfile(next.name);
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _trainingProfileDescription(),
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 14),
         SwitchListTile.adaptive(
