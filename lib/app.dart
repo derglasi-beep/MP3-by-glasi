@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'services/audio_player_service.dart';
 import 'screens/player_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/streaming_screen.dart';
 import 'theme/glasi_theme.dart';
 import 'widgets/mini_player.dart';
 
@@ -40,6 +41,7 @@ class _ShellState extends State<_Shell> {
   bool _playerShowsLibrary = false;
   late final PlayerScreen _playerPage;
   SettingsScreen? _settingsPage;
+  late final StreamingScreen _streamingPage;
 
   @override
   void initState() {
@@ -51,10 +53,11 @@ class _ShellState extends State<_Shell> {
         setState(() => _playerShowsLibrary = visible);
       },
     );
+    _streamingPage = const StreamingScreen();
   }
 
   void _selectPage(int value) {
-    if (value == 1) {
+    if (value == 2) {
       // Recreate the audio page so a temporarily unavailable Android
       // equalizer gets a fresh availability check when the user returns.
       _settingsPage = SettingsScreen(player: widget.player);
@@ -66,6 +69,7 @@ class _ShellState extends State<_Shell> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _playerPage,
+      _streamingPage,
       _settingsPage ?? const SizedBox.shrink(),
     ];
 
@@ -89,6 +93,10 @@ class _ShellState extends State<_Shell> {
           NavigationDestination(
             icon: Icon(Icons.library_music),
             label: 'Player',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.cloud_outlined),
+            label: 'Streaming',
           ),
           NavigationDestination(
             icon: Icon(Icons.tune),
