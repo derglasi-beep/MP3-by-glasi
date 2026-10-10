@@ -669,12 +669,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       ButtonSegment<bool>(
                         value: true,
                         icon: Icon(Icons.directions_bike),
-                        label: Text('Spinning-Auswahl'),
+                        label: Text('Spinning Songs'),
                       ),
                       ButtonSegment<bool>(
                         value: false,
                         icon: Icon(Icons.library_music),
-                        label: Text('Alle Titel'),
+                        label: Text('Alle'),
                       ),
                     ],
                     selected: {
@@ -963,12 +963,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
             ButtonSegment<bool>(
               value: true,
               icon: Icon(Icons.directions_bike),
-              label: Text('Spinning-Auswahl'),
+              label: Text('Spinning Songs'),
             ),
             ButtonSegment<bool>(
               value: false,
               icon: Icon(Icons.library_music),
-              label: Text('Alle Titel'),
+              label: Text('Alle'),
             ),
           ],
           selected: {useSpinningLibrary && _spinningTracks.isNotEmpty},
