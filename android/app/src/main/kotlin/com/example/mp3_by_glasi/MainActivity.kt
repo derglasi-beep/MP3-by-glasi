@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
     companion object {
         private const val CHANNEL = "de.glasi.mp3byglasi/storage"
+        private const val APPLE_MUSIC_CHANNEL = "de.glasi.mp3byglasi/apple_music"
         private const val AUDIO_PERMISSION_REQUEST = 4107
     }
 
@@ -27,6 +28,26 @@ class MainActivity : AudioServiceActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getMusicTracks" -> resolveMusicTracks(result)
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APPLE_MUSIC_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "signIn",
+                "signOut",
+                "play",
+                "pause",
+                "resume",
+                "next",
+                "previous" -> result.error(
+                    "musickit_sdk_missing",
+                    "Apple Music benötigt noch das offizielle MusicKit SDK für Android.",
+                    null
+                )
                 else -> result.notImplemented()
             }
         }
