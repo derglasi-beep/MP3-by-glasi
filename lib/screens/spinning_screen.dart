@@ -1209,19 +1209,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         : null;
                     return ListTile(
                       key: ValueKey('session-${track.id}-$i'),
-                      leading: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ReorderableDragStartListener(
-                            index: i,
-                            child: const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: Icon(Icons.drag_handle),
-                            ),
-                          ),
-                          CircleAvatar(child: Text('${i + 1}')),
-                        ],
-                      ),
+                      leading: CircleAvatar(child: Text('${i + 1}')),
                       title: Text(
                         track.title,
                         maxLines: 1,
@@ -1240,6 +1228,22 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: Tooltip(
+                              message: 'Ziehen zum Verschieben',
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
+                                ),
+                                child: const Icon(Icons.drag_indicator),
+                              ),
+                            ),
+                          ),
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             tooltip: 'Nach oben',
