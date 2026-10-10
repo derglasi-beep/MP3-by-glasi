@@ -6,6 +6,14 @@ enum SpinningPhase { warmup, build, load, peak, cooldown }
 
 enum SpinningTrainingProfile { cadence, heartRate, power }
 
+class _SpinningCurveBlock {
+  final SpinningPhase phase;
+  final double share;
+  final List<double> pattern;
+
+  const _SpinningCurveBlock(this.phase, this.share, this.pattern);
+}
+
 class SpinningPhaseSpec {
   final SpinningPhase phase;
   final String label;
@@ -281,180 +289,260 @@ class SpinningPlaylistService {
     }
 
     final variant = _random.nextInt(3);
+    final specs = {for (final spec in phases) spec.phase: spec};
+    final blocks = _curveBlocks(profile, variant);
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
     double? previousTarget;
     var globalSample = 0;
 
-    for (final phase in phases) {
-      final phaseDuration = Duration(
-        milliseconds: (duration.inMilliseconds * phase.share).round(),
-      );
-      final pattern = _phasePattern(profile, phase.phase, variant);
-      final min = phase.minBpm.toDouble();
-      final max = phase.maxBpm.toDouble();
+    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      final block = blocks[blockIndex];
+      final spec = specs[block.phase];
+      if (spec == null) continue;
+
+      final blockDuration = blockIndex == blocks.length - 1
+          ? duration - elapsed
+          : Duration(
+              milliseconds:
+                  (duration.inMilliseconds * block.share).round(),
+            );
+      if (blockDuration <= Duration.zero) continue;
+
+      final min = spec.minBpm.toDouble();
+      final max = spec.maxBpm.toDouble();
       final span = max - min;
-
-      if (profile == SpinningTrainingProfile.power) {
-        for (var i = 0; i < pattern.length; i++) {
-          final fraction =
-              pattern.length == 1 ? 0.0 : i / (pattern.length - 1);
-          final target = min + span * pattern[i].clamp(0.0, 1.0);
-
-          points.add(
-            SpinningCurvePoint(
-              position: elapsed +
-                  Duration(
-                    milliseconds:
-                        (phaseDuration.inMilliseconds * fraction).round(),
-                  ),
-              targetBpm: target,
-              phase: phase.phase,
-              tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
-            ),
-          );
-        }
-        previousTarget = points.isEmpty ? previousTarget : points.last.targetBpm;
-        elapsed += phaseDuration;
-        continue;
-      }
-
-      final samplesPerSegment =
-          profile == SpinningTrainingProfile.heartRate ? 6 : 4;
-      final anchorTargets = <double>[
-        for (final value in pattern)
+      final anchors = <double>[
+        for (final value in block.pattern)
           min + span * value.clamp(0.0, 1.0),
       ];
+      if (anchors.isEmpty) continue;
 
-      if (previousTarget != null && anchorTargets.isNotEmpty) {
-        anchorTargets[0] = (
-          previousTarget! * .65 + anchorTargets.first * .35
+      if (previousTarget != null) {
+        final blend = profile == SpinningTrainingProfile.heartRate ? .72 : .45;
+        anchors[0] = (
+          previousTarget! * blend + anchors.first * (1 - blend)
         ).clamp(min, max).toDouble();
       }
 
-      for (var segment = 0;
-          segment < anchorTargets.length - 1;
-          segment++) {
-        final startTarget = anchorTargets[segment];
-        final endTarget = anchorTargets[segment + 1];
-
-        for (var sample = 0; sample < samplesPerSegment; sample++) {
-          if (segment > 0 && sample == 0) continue;
-
-          final local = sample / samplesPerSegment;
-          final eased = local * local * (3 - 2 * local);
-          var target =
-              startTarget + (endTarget - startTarget) * eased;
-
-          final waveStrength =
-              profile == SpinningTrainingProfile.heartRate ? .035 : .018;
-          final wave = sin((globalSample + variant * 2) * .72) *
-              span *
-              waveStrength;
-          target = (target + wave).clamp(min, max).toDouble();
-
-          final phaseFraction =
-              (segment + local) / (anchorTargets.length - 1);
+      if (profile == SpinningTrainingProfile.power) {
+        for (var i = 0; i < anchors.length; i++) {
+          final fraction =
+              anchors.length == 1 ? 0.0 : i / (anchors.length - 1);
           points.add(
             SpinningCurvePoint(
               position: elapsed +
                   Duration(
                     milliseconds:
-                        (phaseDuration.inMilliseconds * phaseFraction).round(),
+                        (blockDuration.inMilliseconds * fraction).round(),
                   ),
-              targetBpm: target,
-              phase: phase.phase,
-              tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+              targetBpm: anchors[i],
+              phase: block.phase,
+              tolerance: block.phase == SpinningPhase.peak ? 5 : 7,
             ),
           );
-          globalSample++;
+        }
+      } else {
+        final samplesPerSegment =
+            profile == SpinningTrainingProfile.heartRate ? 7 : 4;
+
+        if (anchors.length == 1) {
+          points.add(
+            SpinningCurvePoint(
+              position: elapsed,
+              targetBpm: anchors.first,
+              phase: block.phase,
+              tolerance: block.phase == SpinningPhase.peak ? 5 : 7,
+            ),
+          );
+        } else {
+          for (var segment = 0; segment < anchors.length - 1; segment++) {
+            final startTarget = anchors[segment];
+            final endTarget = anchors[segment + 1];
+
+            for (var sample = 0; sample < samplesPerSegment; sample++) {
+              if (segment > 0 && sample == 0) continue;
+
+              final local = sample / samplesPerSegment;
+              final eased = local * local * (3 - 2 * local);
+              var target =
+                  startTarget + (endTarget - startTarget) * eased;
+
+              final waveStrength =
+                  profile == SpinningTrainingProfile.heartRate ? .045 : .02;
+              target += sin((globalSample + variant * 3) * .68) *
+                  span *
+                  waveStrength;
+              target = target.clamp(min, max).toDouble();
+
+              final blockFraction =
+                  (segment + local) / (anchors.length - 1);
+              points.add(
+                SpinningCurvePoint(
+                  position: elapsed +
+                      Duration(
+                        milliseconds: (blockDuration.inMilliseconds *
+                                blockFraction)
+                            .round(),
+                      ),
+                  targetBpm: target,
+                  phase: block.phase,
+                  tolerance: block.phase == SpinningPhase.peak ? 5 : 7,
+                ),
+              );
+              globalSample++;
+            }
+          }
+
+          points.add(
+            SpinningCurvePoint(
+              position: elapsed + blockDuration,
+              targetBpm: anchors.last,
+              phase: block.phase,
+              tolerance: block.phase == SpinningPhase.peak ? 5 : 7,
+            ),
+          );
         }
       }
 
-      final finalTarget = anchorTargets.last.clamp(min, max).toDouble();
+      previousTarget = anchors.last;
+      elapsed += blockDuration;
+    }
+
+    if (points.isNotEmpty && points.last.position != duration) {
+      final last = points.last;
       points.add(
         SpinningCurvePoint(
-          position: elapsed + phaseDuration,
-          targetBpm: finalTarget,
-          phase: phase.phase,
-          tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+          position: duration,
+          targetBpm: last.targetBpm,
+          phase: last.phase,
+          tolerance: last.tolerance,
         ),
       );
-      previousTarget = finalTarget;
-      elapsed += phaseDuration;
     }
 
     return points;
   }
 
-  List<double> _phasePattern(
+  List<_SpinningCurveBlock> _curveBlocks(
     SpinningTrainingProfile profile,
-    SpinningPhase phase,
     int variant,
   ) {
     if (profile == SpinningTrainingProfile.heartRate) {
-      return switch (phase) {
-        SpinningPhase.warmup =>
-          const [0.08, 0.20, 0.34, 0.48, 0.62, 0.72],
-        SpinningPhase.build => switch (variant) {
-          0 => const [0.18, 0.34, 0.50, 0.42, 0.62, 0.74, 0.82],
-          1 => const [0.15, 0.30, 0.46, 0.60, 0.50, 0.70, 0.84],
-          _ => const [0.20, 0.42, 0.32, 0.56, 0.46, 0.68, 0.86],
-        },
-        SpinningPhase.load => switch (variant) {
-          0 => const [0.34, 0.52, 0.46, 0.68, 0.52, 0.76, 0.60, 0.82],
-          1 => const [0.30, 0.48, 0.66, 0.44, 0.72, 0.56, 0.84, 0.64],
-          _ => const [0.38, 0.60, 0.46, 0.74, 0.52, 0.80, 0.60, 0.76],
-        },
-        SpinningPhase.peak => switch (variant) {
-          0 => const [0.52, 0.80, 0.64, 0.94, 0.72, 0.88],
-          1 => const [0.58, 0.88, 0.70, 0.98, 0.76, 0.90],
-          _ => const [0.50, 0.76, 0.62, 0.90, 0.70, 0.96],
-        },
-        SpinningPhase.cooldown =>
-          const [0.82, 0.68, 0.54, 0.40, 0.28, 0.16, 0.08],
+      return switch (variant) {
+        0 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .16, [.05, .28, .52, .68]),
+            _SpinningCurveBlock(SpinningPhase.build, .11, [.30, .58, .78]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.42, .74, .58, .82]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.58, .34]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.44, .70, .88]),
+            _SpinningCurveBlock(SpinningPhase.peak, .10, [.52, .84, .68, .96]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.62, .38]),
+            _SpinningCurveBlock(SpinningPhase.peak, .09, [.58, .90, .72, .98]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .12, [.72, .48, .26, .08]),
+          ],
+        1 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .15, [.05, .24, .46, .66]),
+            _SpinningCurveBlock(SpinningPhase.build, .10, [.28, .56, .76]),
+            _SpinningCurveBlock(SpinningPhase.load, .12, [.46, .68, .52, .78]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.54, .32]),
+            _SpinningCurveBlock(SpinningPhase.load, .11, [.48, .76, .60, .84]),
+            _SpinningCurveBlock(SpinningPhase.peak, .08, [.60, .88, .70]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.56, .36]),
+            _SpinningCurveBlock(SpinningPhase.load, .10, [.50, .80, .64]),
+            _SpinningCurveBlock(SpinningPhase.peak, .09, [.62, .94, .76, .98]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .11, [.74, .50, .28, .08]),
+          ],
+        _ => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .17, [.04, .22, .44, .64]),
+            _SpinningCurveBlock(SpinningPhase.build, .09, [.30, .52, .72]),
+            _SpinningCurveBlock(SpinningPhase.load, .11, [.40, .66, .52, .76]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.52, .30]),
+            _SpinningCurveBlock(SpinningPhase.peak, .08, [.56, .82, .66]),
+            _SpinningCurveBlock(SpinningPhase.load, .12, [.48, .72, .88]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.58, .34]),
+            _SpinningCurveBlock(SpinningPhase.peak, .10, [.60, .90, .72, .98]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .19, [.76, .60, .42, .24, .08]),
+          ],
       };
     }
 
     if (profile == SpinningTrainingProfile.power) {
-      return switch (phase) {
-        SpinningPhase.warmup =>
-          const [0.10, 0.28, 0.46, 0.64, 0.76],
-        SpinningPhase.build => switch (variant) {
-          0 => const [0.22, 0.52, 0.30, 0.68, 0.38, 0.78],
-          1 => const [0.18, 0.58, 0.26, 0.72, 0.34, 0.82],
-          _ => const [0.24, 0.48, 0.32, 0.66, 0.42, 0.84],
-        },
-        SpinningPhase.load => switch (variant) {
-          0 => const [0.30, 0.82, 0.34, 0.88, 0.38, 0.92, 0.44, 0.84],
-          1 => const [0.34, 0.74, 0.42, 0.90, 0.36, 0.86, 0.46, 0.94],
-          _ => const [0.28, 0.78, 0.40, 0.86, 0.32, 0.96, 0.48, 0.88],
-        },
-        SpinningPhase.peak => switch (variant) {
-          0 => const [0.62, 0.96, 0.66, 1.00, 0.70, 0.94],
-          1 => const [0.58, 0.92, 0.64, 1.00, 0.72, 0.98],
-          _ => const [0.66, 1.00, 0.60, 0.94, 0.74, 0.98],
-        },
-        SpinningPhase.cooldown =>
-          const [0.78, 0.58, 0.42, 0.28, 0.14, 0.06],
+      return switch (variant) {
+        0 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .14, [.10, .38, .66]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.28, .62]),
+            _SpinningCurveBlock(SpinningPhase.peak, .08, [.62, .96]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.54, .26]),
+            _SpinningCurveBlock(SpinningPhase.load, .10, [.38, .86]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.52, .24]),
+            _SpinningCurveBlock(SpinningPhase.peak, .09, [.64, 1.00]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.56, .28]),
+            _SpinningCurveBlock(SpinningPhase.load, .10, [.42, .90]),
+            _SpinningCurveBlock(SpinningPhase.peak, .09, [.70, .98]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .13, [.72, .38, .08]),
+          ],
+        1 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .34, .62]),
+            _SpinningCurveBlock(SpinningPhase.load, .09, [.38, .80]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.48, .24]),
+            _SpinningCurveBlock(SpinningPhase.peak, .08, [.62, .94]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.load, .09, [.40, .86]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.52, .28]),
+            _SpinningCurveBlock(SpinningPhase.peak, .10, [.66, 1.00]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.54, .26]),
+            _SpinningCurveBlock(SpinningPhase.peak, .10, [.68, .96]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.74, .40, .08]),
+          ],
+        _ => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .13, [.10, .40, .68]),
+            _SpinningCurveBlock(SpinningPhase.peak, .07, [.60, .92]),
+            _SpinningCurveBlock(SpinningPhase.build, .07, [.50, .24]),
+            _SpinningCurveBlock(SpinningPhase.load, .10, [.40, .84]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.48, .22]),
+            _SpinningCurveBlock(SpinningPhase.peak, .09, [.64, 1.00]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.52, .26]),
+            _SpinningCurveBlock(SpinningPhase.load, .09, [.42, .88]),
+            _SpinningCurveBlock(SpinningPhase.build, .06, [.50, .24]),
+            _SpinningCurveBlock(SpinningPhase.peak, .11, [.66, .98]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .16, [.72, .36, .08]),
+          ],
       };
     }
 
-    return switch (phase) {
-      SpinningPhase.warmup => const [0.10, 0.28, 0.46, 0.64, 0.78],
-      SpinningPhase.build => switch (variant) {
-        0 => const [0.18, 0.40, 0.58, 0.46, 0.70, 0.84],
-        1 => const [0.20, 0.34, 0.54, 0.72, 0.56, 0.86],
-        _ => const [0.16, 0.44, 0.36, 0.62, 0.52, 0.82],
-      },
-      SpinningPhase.load => switch (variant) {
-        0 => const [0.34, 0.58, 0.46, 0.72, 0.54, 0.82],
-        1 => const [0.30, 0.50, 0.68, 0.48, 0.76, 0.60],
-        _ => const [0.38, 0.62, 0.44, 0.74, 0.56, 0.84],
-      },
-      SpinningPhase.peak => const [0.58, 0.82, 0.68, 0.96, 0.74, 0.90],
-      SpinningPhase.cooldown =>
-        const [0.80, 0.62, 0.46, 0.32, 0.18, 0.08],
+    return switch (variant) {
+      0 => const [
+          _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .30, .56, .72]),
+          _SpinningCurveBlock(SpinningPhase.build, .12, [.30, .58, .76]),
+          _SpinningCurveBlock(SpinningPhase.load, .13, [.42, .72, .54, .82]),
+          _SpinningCurveBlock(SpinningPhase.build, .08, [.54, .30]),
+          _SpinningCurveBlock(SpinningPhase.peak, .10, [.58, .88, .70]),
+          _SpinningCurveBlock(SpinningPhase.load, .12, [.46, .78, .60]),
+          _SpinningCurveBlock(SpinningPhase.peak, .10, [.62, .94, .74]),
+          _SpinningCurveBlock(SpinningPhase.cooldown, .20, [.72, .50, .28, .08]),
+        ],
+      1 => const [
+          _SpinningCurveBlock(SpinningPhase.warmup, .16, [.08, .28, .52, .70]),
+          _SpinningCurveBlock(SpinningPhase.load, .12, [.38, .68, .52]),
+          _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .28]),
+          _SpinningCurveBlock(SpinningPhase.load, .12, [.42, .76, .58]),
+          _SpinningCurveBlock(SpinningPhase.peak, .10, [.58, .90, .70]),
+          _SpinningCurveBlock(SpinningPhase.build, .08, [.54, .30]),
+          _SpinningCurveBlock(SpinningPhase.peak, .11, [.62, .96, .76]),
+          _SpinningCurveBlock(SpinningPhase.cooldown, .23, [.74, .54, .34, .16, .06]),
+        ],
+      _ => const [
+          _SpinningCurveBlock(SpinningPhase.warmup, .14, [.06, .26, .50, .68]),
+          _SpinningCurveBlock(SpinningPhase.build, .10, [.30, .54, .72]),
+          _SpinningCurveBlock(SpinningPhase.peak, .08, [.56, .84]),
+          _SpinningCurveBlock(SpinningPhase.build, .07, [.50, .26]),
+          _SpinningCurveBlock(SpinningPhase.load, .13, [.40, .72, .56, .82]),
+          _SpinningCurveBlock(SpinningPhase.build, .07, [.52, .28]),
+          _SpinningCurveBlock(SpinningPhase.peak, .10, [.60, .92, .72]),
+          _SpinningCurveBlock(SpinningPhase.load, .11, [.48, .78, .62]),
+          _SpinningCurveBlock(SpinningPhase.cooldown, .20, [.72, .48, .26, .06]),
+        ],
     };
   }
 
