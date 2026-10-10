@@ -105,6 +105,7 @@ class SpinningPlaylistService {
     required List<Track> library,
     required Duration duration,
     List<SpinningPhaseSpec> phases = defaultPhases,
+    SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
     Map<String, Set<SpinningPhase>> phaseEligibility = const {},
   }) {
     final usable = library.where((t) => t.bpm != null && t.bpm! > 0).toList();
@@ -112,7 +113,7 @@ class SpinningPlaylistService {
       return SpinningPlan(duration: duration, tracks: const [], phases: phases);
     }
 
-    final curve = buildCurve(duration, phases);
+    final curve = buildCurve(duration, phases, profile: profile);
     final selected = <Track>[];
     final selections = <SpinningSelection>[];
     final used = <String>{};
@@ -185,9 +186,12 @@ class SpinningPlaylistService {
     required List<Track> tracks,
     required Duration duration,
     List<SpinningPhaseSpec> phases = defaultPhases,
+    SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
+    List<SpinningCurvePoint>? curveOverride,
   }) {
     final usable = tracks.where((t) => t.bpm != null && t.bpm! > 0).toList();
-    final curve = buildCurve(duration, phases);
+    final curve = curveOverride ??
+        buildCurve(duration, phases, profile: profile);
     final selections = <SpinningSelection>[];
     var elapsed = Duration.zero;
 
@@ -217,8 +221,9 @@ class SpinningPlaylistService {
     required Map<SpinningPhase, List<Track>> phaseTracks,
     required Duration duration,
     List<SpinningPhaseSpec> phases = defaultPhases,
+    SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
   }) {
-    final curve = buildCurve(duration, phases);
+    final curve = buildCurve(duration, phases, profile: profile);
     final selections = <SpinningSelection>[];
     final tracks = <Track>[];
     final used = <String>{};
@@ -269,66 +274,121 @@ class SpinningPlaylistService {
   List<SpinningCurvePoint> buildCurve(
     Duration duration, [
     List<SpinningPhaseSpec> phases = defaultPhases,
-  ]) {
+  ], {
+    SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
+  }) {
+    if (duration <= Duration.zero || phases.isEmpty) {
+      return const <SpinningCurvePoint>[];
+    }
+
+    // A fresh plan gets one of several related shapes. The profile defines
+    // the character: heart-rate curves are smoother and wave-like, power
+    // curves are more interval-driven, cadence sits between both.
+    final variant = _random.nextInt(3);
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
+
     for (final phase in phases) {
       final phaseDuration = Duration(
         milliseconds: (duration.inMilliseconds * phase.share).round(),
       );
+      final pattern = _phasePattern(profile, phase.phase, variant);
       final min = phase.minBpm.toDouble();
-      final max = phase.maxBpm.toDouble();
-      final span = max - min;
-      final targets = switch (phase.phase) {
-        SpinningPhase.warmup => [
-            min + span * .25,
-            min + span * .5,
-            min + span * .75,
-            max,
-          ],
-        SpinningPhase.build => [
-            min,
-            min + span * .25,
-            min + span * .55,
-            min + span * .8,
-            max,
-          ],
-        SpinningPhase.load => [
-            min,
-            min + span * .25,
-            min + span * .5,
-            min + span * .75,
-            max,
-          ],
-        SpinningPhase.peak => [
-            min,
-            min + span * .45,
-            max,
-            max - span * .15,
-            min + span * .55,
-          ],
-        SpinningPhase.cooldown => [
-            max,
-            max - span * .2,
-            max - span * .4,
-            max - span * .6,
-            max - span * .75,
-            min + span * .1,
-            min,
-          ],
-      };
-      for (var i = 0; i < targets.length; i++) {
-        final fraction = targets.length == 1 ? 0.0 : i / (targets.length - 1);
-        points.add(SpinningCurvePoint(
-          position: elapsed + Duration(milliseconds: (phaseDuration.inMilliseconds * fraction).round()),
-          targetBpm: targets[i],
-          phase: phase.phase,
-          tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
-        ));
+      final span = (phase.maxBpm - phase.minBpm).toDouble();
+
+      for (var i = 0; i < pattern.length; i++) {
+        final fraction =
+            pattern.length == 1 ? 0.0 : i / (pattern.length - 1);
+        final target = min + span * pattern[i].clamp(0.0, 1.0);
+
+        points.add(
+          SpinningCurvePoint(
+            position: elapsed +
+                Duration(
+                  milliseconds:
+                      (phaseDuration.inMilliseconds * fraction).round(),
+                ),
+            targetBpm: target,
+            phase: phase.phase,
+            tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+          ),
+        );
       }
       elapsed += phaseDuration;
     }
+
     return points;
+  }
+
+  List<double> _phasePattern(
+    SpinningTrainingProfile profile,
+    SpinningPhase phase,
+    int variant,
+  ) {
+    if (profile == SpinningTrainingProfile.heartRate) {
+      return switch (phase) {
+        SpinningPhase.warmup =>
+          const [0.08, 0.20, 0.34, 0.48, 0.62, 0.72],
+        SpinningPhase.build => switch (variant) {
+          0 => const [0.18, 0.34, 0.50, 0.42, 0.62, 0.74, 0.82],
+          1 => const [0.15, 0.30, 0.46, 0.60, 0.50, 0.70, 0.84],
+          _ => const [0.20, 0.42, 0.32, 0.56, 0.46, 0.68, 0.86],
+        },
+        SpinningPhase.load => switch (variant) {
+          0 => const [0.34, 0.52, 0.46, 0.68, 0.52, 0.76, 0.60, 0.82],
+          1 => const [0.30, 0.48, 0.66, 0.44, 0.72, 0.56, 0.84, 0.64],
+          _ => const [0.38, 0.60, 0.46, 0.74, 0.52, 0.80, 0.60, 0.76],
+        },
+        SpinningPhase.peak => switch (variant) {
+          0 => const [0.52, 0.80, 0.64, 0.94, 0.72, 0.88],
+          1 => const [0.58, 0.88, 0.70, 0.98, 0.76, 0.90],
+          _ => const [0.50, 0.76, 0.62, 0.90, 0.70, 0.96],
+        },
+        SpinningPhase.cooldown =>
+          const [0.82, 0.68, 0.54, 0.40, 0.28, 0.16, 0.08],
+      };
+    }
+
+    if (profile == SpinningTrainingProfile.power) {
+      return switch (phase) {
+        SpinningPhase.warmup =>
+          const [0.10, 0.28, 0.46, 0.64, 0.76],
+        SpinningPhase.build => switch (variant) {
+          0 => const [0.22, 0.52, 0.30, 0.68, 0.38, 0.78],
+          1 => const [0.18, 0.58, 0.26, 0.72, 0.34, 0.82],
+          _ => const [0.24, 0.48, 0.32, 0.66, 0.42, 0.84],
+        },
+        SpinningPhase.load => switch (variant) {
+          0 => const [0.30, 0.82, 0.34, 0.88, 0.38, 0.92, 0.44, 0.84],
+          1 => const [0.34, 0.74, 0.42, 0.90, 0.36, 0.86, 0.46, 0.94],
+          _ => const [0.28, 0.78, 0.40, 0.86, 0.32, 0.96, 0.48, 0.88],
+        },
+        SpinningPhase.peak => switch (variant) {
+          0 => const [0.62, 0.96, 0.66, 1.00, 0.70, 0.94],
+          1 => const [0.58, 0.92, 0.64, 1.00, 0.72, 0.98],
+          _ => const [0.66, 1.00, 0.60, 0.94, 0.74, 0.98],
+        },
+        SpinningPhase.cooldown =>
+          const [0.78, 0.58, 0.42, 0.28, 0.14, 0.06],
+      };
+    }
+
+    return switch (phase) {
+      SpinningPhase.warmup => const [0.10, 0.28, 0.46, 0.64, 0.78],
+      SpinningPhase.build => switch (variant) {
+        0 => const [0.18, 0.40, 0.58, 0.46, 0.70, 0.84],
+        1 => const [0.20, 0.34, 0.54, 0.72, 0.56, 0.86],
+        _ => const [0.16, 0.44, 0.36, 0.62, 0.52, 0.82],
+      },
+      SpinningPhase.load => switch (variant) {
+        0 => const [0.34, 0.58, 0.46, 0.72, 0.54, 0.82],
+        1 => const [0.30, 0.50, 0.68, 0.48, 0.76, 0.60],
+        _ => const [0.38, 0.62, 0.44, 0.74, 0.56, 0.84],
+      },
+      SpinningPhase.peak => const [0.58, 0.82, 0.68, 0.96, 0.74, 0.90],
+      SpinningPhase.cooldown =>
+        const [0.80, 0.62, 0.46, 0.32, 0.18, 0.08],
+    };
   }
 
   Duration _planningDuration(Track track) {
