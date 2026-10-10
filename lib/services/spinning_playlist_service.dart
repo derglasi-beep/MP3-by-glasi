@@ -280,12 +280,11 @@ class SpinningPlaylistService {
       return const <SpinningCurvePoint>[];
     }
 
-    // A fresh plan gets one of several related shapes. The profile defines
-    // the character: heart-rate curves are smoother and wave-like, power
-    // curves are more interval-driven, cadence sits between both.
     final variant = _random.nextInt(3);
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
+    double? previousTarget;
+    var globalSample = 0;
 
     for (final phase in phases) {
       final phaseDuration = Duration(
@@ -293,26 +292,95 @@ class SpinningPlaylistService {
       );
       final pattern = _phasePattern(profile, phase.phase, variant);
       final min = phase.minBpm.toDouble();
-      final span = (phase.maxBpm - phase.minBpm).toDouble();
+      final max = phase.maxBpm.toDouble();
+      final span = max - min;
 
-      for (var i = 0; i < pattern.length; i++) {
-        final fraction =
-            pattern.length == 1 ? 0.0 : i / (pattern.length - 1);
-        final target = min + span * pattern[i].clamp(0.0, 1.0);
+      if (profile == SpinningTrainingProfile.power) {
+        for (var i = 0; i < pattern.length; i++) {
+          final fraction =
+              pattern.length == 1 ? 0.0 : i / (pattern.length - 1);
+          final target = min + span * pattern[i].clamp(0.0, 1.0);
 
-        points.add(
-          SpinningCurvePoint(
-            position: elapsed +
-                Duration(
-                  milliseconds:
-                      (phaseDuration.inMilliseconds * fraction).round(),
-                ),
-            targetBpm: target,
-            phase: phase.phase,
-            tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
-          ),
-        );
+          points.add(
+            SpinningCurvePoint(
+              position: elapsed +
+                  Duration(
+                    milliseconds:
+                        (phaseDuration.inMilliseconds * fraction).round(),
+                  ),
+              targetBpm: target,
+              phase: phase.phase,
+              tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+            ),
+          );
+        }
+        previousTarget = points.isEmpty ? previousTarget : points.last.targetBpm;
+        elapsed += phaseDuration;
+        continue;
       }
+
+      final samplesPerSegment =
+          profile == SpinningTrainingProfile.heartRate ? 6 : 4;
+      final anchorTargets = <double>[
+        for (final value in pattern)
+          min + span * value.clamp(0.0, 1.0),
+      ];
+
+      if (previousTarget != null && anchorTargets.isNotEmpty) {
+        anchorTargets[0] = (
+          previousTarget! * .65 + anchorTargets.first * .35
+        ).clamp(min, max).toDouble();
+      }
+
+      for (var segment = 0;
+          segment < anchorTargets.length - 1;
+          segment++) {
+        final startTarget = anchorTargets[segment];
+        final endTarget = anchorTargets[segment + 1];
+
+        for (var sample = 0; sample < samplesPerSegment; sample++) {
+          if (segment > 0 && sample == 0) continue;
+
+          final local = sample / samplesPerSegment;
+          final eased = local * local * (3 - 2 * local);
+          var target =
+              startTarget + (endTarget - startTarget) * eased;
+
+          final waveStrength =
+              profile == SpinningTrainingProfile.heartRate ? .035 : .018;
+          final wave = sin((globalSample + variant * 2) * .72) *
+              span *
+              waveStrength;
+          target = (target + wave).clamp(min, max).toDouble();
+
+          final phaseFraction =
+              (segment + local) / (anchorTargets.length - 1);
+          points.add(
+            SpinningCurvePoint(
+              position: elapsed +
+                  Duration(
+                    milliseconds:
+                        (phaseDuration.inMilliseconds * phaseFraction).round(),
+                  ),
+              targetBpm: target,
+              phase: phase.phase,
+              tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+            ),
+          );
+          globalSample++;
+        }
+      }
+
+      final finalTarget = anchorTargets.last.clamp(min, max).toDouble();
+      points.add(
+        SpinningCurvePoint(
+          position: elapsed + phaseDuration,
+          targetBpm: finalTarget,
+          phase: phase.phase,
+          tolerance: phase.phase == SpinningPhase.peak ? 5 : 7,
+        ),
+      );
+      previousTarget = finalTarget;
       elapsed += phaseDuration;
     }
 
