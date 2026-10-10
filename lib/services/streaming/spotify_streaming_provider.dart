@@ -4,7 +4,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'streaming_provider.dart';
 
@@ -27,10 +27,14 @@ class SpotifyStreamingProvider implements StreamingProvider {
     'user-modify-playback-state',
   ];
 
+  static const _secureStorage = FlutterSecureStorage();
+
   String? _accessToken;
   String? _refreshToken;
   DateTime? _expiresAt;
   bool _tokensLoaded = false;
+
+  bool get isConfigured => _clientId.trim().isNotEmpty;
 
   @override
   StreamingProviderId get id => StreamingProviderId.spotify;
@@ -64,14 +68,25 @@ class SpotifyStreamingProvider implements StreamingProvider {
 
   Future<void> _loadTokens() async {
     if (_tokensLoaded) return;
-    final prefs = await SharedPreferences.getInstance();
-    _accessToken = prefs.getString(_accessTokenKey);
-    _refreshToken = prefs.getString(_refreshTokenKey);
-    final expiresAtMs = prefs.getInt(_expiresAtKey);
+    _accessToken = await _secureStorage.read(key: _accessTokenKey);
+    _refreshToken = await _secureStorage.read(key: _refreshTokenKey);
+    final expiresAtMs = int.tryParse(
+      await _secureStorage.read(key: _expiresAtKey) ?? '',
+    );
     _expiresAt = expiresAtMs == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(expiresAtMs);
     _tokensLoaded = true;
+  }
+
+  Future<bool> restoreSession() async {
+    if (!isConfigured) return false;
+    try {
+      await _validAccessToken();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _storeTokens({
@@ -85,12 +100,14 @@ class SpotifyStreamingProvider implements StreamingProvider {
     }
     _expiresAt = DateTime.now().add(Duration(seconds: expiresIn));
 
-    final prefs = await SharedPreferences.getInstance();
     await Future.wait([
-      prefs.setString(_accessTokenKey, accessToken),
+      _secureStorage.write(key: _accessTokenKey, value: accessToken),
       if (_refreshToken != null)
-        prefs.setString(_refreshTokenKey, _refreshToken!),
-      prefs.setInt(_expiresAtKey, _expiresAt!.millisecondsSinceEpoch),
+        _secureStorage.write(key: _refreshTokenKey, value: _refreshToken!),
+      _secureStorage.write(
+        key: _expiresAtKey,
+        value: _expiresAt!.millisecondsSinceEpoch.toString(),
+      ),
     ]);
   }
 
@@ -188,11 +205,10 @@ class SpotifyStreamingProvider implements StreamingProvider {
     _expiresAt = null;
     _tokensLoaded = true;
 
-    final prefs = await SharedPreferences.getInstance();
     await Future.wait([
-      prefs.remove(_accessTokenKey),
-      prefs.remove(_refreshTokenKey),
-      prefs.remove(_expiresAtKey),
+      _secureStorage.delete(key: _accessTokenKey),
+      _secureStorage.delete(key: _refreshTokenKey),
+      _secureStorage.delete(key: _expiresAtKey),
     ]);
   }
 
