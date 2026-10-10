@@ -255,7 +255,7 @@ class _StreamingScreenState extends State<StreamingScreen> {
             _providerCard(
               name: amazonMusic.displayName,
               icon: Icons.shopping_bag_outlined,
-              text: 'Provider vorbereitet; Anbindung folgt nach Spotify/Apple Music.',
+              text: amazonMusic.integrationStatus,
             ),
             if (connected && (tracks.isNotEmpty || playlists.isNotEmpty)) ...[
               const SizedBox(height: 18),
