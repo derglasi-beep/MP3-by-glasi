@@ -21,6 +21,7 @@ dependencies:
   flutter_web_auth_2: ^5.1.0
   http: ^1.6.0
   crypto: ^3.0.7
+  flutter_secure_storage: ^11.2.0
   audio_service: ^0.18.19
   audio_session: ^0.2.4
   cupertino_icons: ^1.0.8
