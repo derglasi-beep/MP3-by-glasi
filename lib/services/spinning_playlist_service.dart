@@ -273,12 +273,46 @@ class SpinningPlaylistService {
       final phaseDuration = Duration(
         milliseconds: (duration.inMilliseconds * phase.share).round(),
       );
+      final min = phase.minBpm.toDouble();
+      final max = phase.maxBpm.toDouble();
+      final span = max - min;
       final targets = switch (phase.phase) {
-        SpinningPhase.warmup => const [95.0, 100.0, 105.0, 110.0],
-        SpinningPhase.build => const [110.0, 116.0, 122.0, 128.0, 130.0],
-        SpinningPhase.load => const [130.0, 134.0, 138.0, 142.0, 145.0],
-        SpinningPhase.peak => const [145.0, 150.0, 155.0, 158.0, 155.0],
-        SpinningPhase.cooldown => const [155.0, 148.0, 140.0, 130.0, 120.0, 110.0, 100.0],
+        SpinningPhase.warmup => [
+            min + span * .25,
+            min + span * .5,
+            min + span * .75,
+            max,
+          ],
+        SpinningPhase.build => [
+            min,
+            min + span * .25,
+            min + span * .55,
+            min + span * .8,
+            max,
+          ],
+        SpinningPhase.load => [
+            min,
+            min + span * .25,
+            min + span * .5,
+            min + span * .75,
+            max,
+          ],
+        SpinningPhase.peak => [
+            min,
+            min + span * .45,
+            max,
+            max - span * .15,
+            min + span * .55,
+          ],
+        SpinningPhase.cooldown => [
+            max,
+            max - span * .2,
+            max - span * .4,
+            max - span * .6,
+            max - span * .75,
+            min + span * .1,
+            min,
+          ],
       };
       for (var i = 0; i < targets.length; i++) {
         final fraction = targets.length == 1 ? 0.0 : i / (targets.length - 1);
