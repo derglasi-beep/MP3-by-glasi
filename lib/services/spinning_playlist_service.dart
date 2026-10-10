@@ -4,6 +4,8 @@ import '../models/track.dart';
 
 enum SpinningPhase { warmup, build, load, peak, cooldown }
 
+enum SpinningTrainingProfile { cadence, heartRate, power }
+
 class SpinningPhaseSpec {
   final SpinningPhase phase;
   final String label;
@@ -73,6 +75,31 @@ class SpinningPlaylistService {
     SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Peak', minBpm: 140, maxBpm: 160, share: .20),
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 110, share: .15),
   ];
+
+  static const heartRatePhases = <SpinningPhaseSpec>[
+    SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 108, share: .20),
+    SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aufbau', minBpm: 105, maxBpm: 125, share: .25),
+    SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Belastung', minBpm: 120, maxBpm: 140, share: .30),
+    SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Peak', minBpm: 135, maxBpm: 150, share: .10),
+    SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 110, share: .15),
+  ];
+
+  static const powerPhases = <SpinningPhaseSpec>[
+    SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
+    SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aufbau', minBpm: 110, maxBpm: 135, share: .15),
+    SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Belastung', minBpm: 125, maxBpm: 150, share: .25),
+    SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Peak', minBpm: 145, maxBpm: 165, share: .30),
+    SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 110, share: .15),
+  ];
+
+  static List<SpinningPhaseSpec> phasesForProfile(
+    SpinningTrainingProfile profile,
+  ) =>
+      switch (profile) {
+        SpinningTrainingProfile.cadence => defaultPhases,
+        SpinningTrainingProfile.heartRate => heartRatePhases,
+        SpinningTrainingProfile.power => powerPhases,
+      };
 
   SpinningPlan build({
     required List<Track> library,
