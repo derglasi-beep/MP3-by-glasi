@@ -1457,7 +1457,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _openQueue() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => QueueScreen(player: widget.player)));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QueueScreen(
+          player: widget.player,
+          onOpenCurrent: () {
+            if (!mounted) return;
+            setState(() => _showLibrary = false);
+            widget.onLibraryVisibilityChanged?.call(false);
+          },
+        ),
+      ),
+    );
     if (mounted) setState(() {});
   }
 
