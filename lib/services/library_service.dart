@@ -59,6 +59,7 @@ class LibraryService {
   static const _artworkMissesFileName = 'artwork_misses_v1.json';
   static const _spinningTrackIdsKey = 'spinning_track_ids_v1';
   static const _spinningTrackPhasesKey = 'spinning_track_phases_v1';
+  static const _spinningTrainingProfileKey = 'spinning_training_profile_v1';
 
   Future<void> _trackSaveTail = Future.value();
 
@@ -413,6 +414,16 @@ class LibraryService {
     }
 
     await p.setString(_spinningTrackPhasesKey, jsonEncode(cleaned));
+  }
+
+  Future<String?> loadSpinningTrainingProfile() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_spinningTrainingProfileKey);
+  }
+
+  Future<void> saveSpinningTrainingProfile(String profile) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_spinningTrainingProfileKey, profile);
   }
 
   Map<String, dynamic> _trackToJson(Track t) => _trackToJsonStatic(t);
