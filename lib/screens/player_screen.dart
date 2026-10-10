@@ -582,8 +582,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               await library.saveTrackMetadata(List<Track>.from(tracks));
               pendingLibraryChanges = 0;
             }
-          } else {
+          } else if (!widget.player.audio.playing && _appResumed) {
             failures.add(current.path);
+          } else {
+            debugPrint(
+              '[BPM] Analyse abgebrochen, kein Fehlercache: '
+              '${current.artist} - ${current.title}',
+            );
           }
 
           await Future<void>.delayed(const Duration(milliseconds: 350));
