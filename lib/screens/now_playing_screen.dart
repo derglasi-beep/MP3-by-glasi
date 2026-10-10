@@ -65,8 +65,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 final playing = state.data?.playing ?? false;
 
                 return SafeArea(
+                  minimum: const EdgeInsets.only(bottom: 12),
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
+                    padding: const EdgeInsets.fromLTRB(18, 2, 18, 30),
                     child: Column(
                       children: [
                         ConstrainedBox(
