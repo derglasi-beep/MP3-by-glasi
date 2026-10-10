@@ -882,6 +882,23 @@ class _SpinningScreenState extends State<SpinningScreen> {
     _replacePlanTracks(next);
   }
 
+  void _movePlanTrackBy(int index, int offset) {
+    final current = plan;
+    if (current == null) return;
+    final target = index + offset;
+    if (index < 0 ||
+        index >= current.tracks.length ||
+        target < 0 ||
+        target >= current.tracks.length) {
+      return;
+    }
+
+    final next = List<Track>.from(current.tracks);
+    final track = next.removeAt(index);
+    next.insert(target, track);
+    _replacePlanTracks(next);
+  }
+
   Future<void> _addPlanTrack() async {
     final current = plan;
     if (current == null) return;
@@ -1213,7 +1230,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       subtitle: Text(
                         selection == null
                             ? track.artist
-                            : '${track.artist} · ${_phaseLabel(selection.phase)} · '
+                            : '${track.artist} · ${_bpmText(track.bpm!)} · '
+                                '${_phaseLabel(selection.phase)} · '
                                 'Ziel ${_displayBpm(selection.targetBpm).round()} BPM'
                                 '${_isEligibleForPhase(track, selection.phase) ? '' : ' · ⚠ nicht für diese Phase markiert'}',
                         maxLines: 2,
@@ -1222,8 +1240,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_bpmText(track.bpm!)),
                           IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Nach oben',
+                            onPressed: i == 0
+                                ? null
+                                : () => _movePlanTrackBy(i, -1),
+                            icon: const Icon(Icons.arrow_upward),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Nach unten',
+                            onPressed: i == p.tracks.length - 1
+                                ? null
+                                : () => _movePlanTrackBy(i, 1),
+                            icon: const Icon(Icons.arrow_downward),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
                             tooltip: 'Aus Session entfernen',
                             onPressed: () => _removePlanTrack(i),
                             icon: const Icon(Icons.remove_circle_outline),
