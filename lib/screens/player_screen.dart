@@ -29,7 +29,13 @@ enum _SortMode { title, artist, album, bpm, year }
 
 class PlayerScreen extends StatefulWidget {
   final AudioPlayerService player;
-  const PlayerScreen({super.key, required this.player});
+  final ValueChanged<bool>? onLibraryVisibilityChanged;
+
+  const PlayerScreen({
+    super.key,
+    required this.player,
+    this.onLibraryVisibilityChanged,
+  });
   @override State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
@@ -1471,7 +1477,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       title: Text(_showLibrary ? 'Bibliothek' : 'MP3 by Glasi'),
       actions: [
       IconButton(
-        onPressed: () => setState(() => _showLibrary = !_showLibrary),
+        onPressed: () {
+          setState(() => _showLibrary = !_showLibrary);
+          widget.onLibraryVisibilityChanged?.call(_showLibrary);
+        },
         icon: Icon(
           _showLibrary ? Icons.play_circle_outline : Icons.library_music,
         ),
