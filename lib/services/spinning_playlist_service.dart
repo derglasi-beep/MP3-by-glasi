@@ -221,12 +221,15 @@ class SpinningPlaylistService {
     final curve = buildCurve(duration, phases);
     final selections = <SpinningSelection>[];
     final tracks = <Track>[];
+    final used = <String>{};
     Track? previous;
 
     for (final spec in phases) {
       final selectedForPhase = phaseTracks[spec.phase] ?? const <Track>[];
       for (final track in selectedForPhase) {
-        if (track.bpm == null || track.bpm! <= 0) continue;
+        if (track.bpm == null || track.bpm! <= 0 || !used.add(track.id)) {
+          continue;
+        }
 
         final targetBpm = (spec.minBpm + spec.maxBpm) / 2;
         final point = SpinningCurvePoint(
@@ -342,16 +345,39 @@ class SpinningPlaylistService {
     return duration;
   }
 
+  double _tempoForTarget(double bpm, double targetBpm) {
+    final candidates = <double>[
+      bpm,
+      if (bpm >= 120) bpm / 2,
+      if (bpm <= 100) bpm * 2,
+    ];
+
+    var best = candidates.first;
+    var bestDistance = (best - targetBpm).abs();
+    for (final candidate in candidates.skip(1)) {
+      final distance = (candidate - targetBpm).abs();
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
   double _score(
     Track track,
     SpinningCurvePoint point,
     Track? previous,
     Duration remaining,
   ) {
-    final bpm = track.bpm!;
+    final bpm = _tempoForTarget(track.bpm!, point.targetBpm);
     final targetDistance = (bpm - point.targetBpm).abs();
     final targetScore = 1 - (targetDistance / 35).clamp(0, 1);
-    final transitionDistance = previous == null ? 0 : (bpm - previous.bpm!).abs();
+    final previousBpm = previous == null
+        ? null
+        : _tempoForTarget(previous.bpm!, point.targetBpm);
+    final transitionDistance =
+        previousBpm == null ? 0 : (bpm - previousBpm).abs();
     final transitionScore = previous == null
         ? 1
         : 1 - (transitionDistance / (point.targetBpm * .08)).clamp(0, 1);
