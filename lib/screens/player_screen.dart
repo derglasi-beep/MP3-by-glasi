@@ -2085,6 +2085,53 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 GlasiVisualizer(playing: ps.data?.playing ?? false, bpm: t?.bpm),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   BpmBadge(bpm: t?.bpm, loading: analyzing && t != null && t.bpm == null),
+                  if (t != null) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: _spinningTrackIds.contains(t.id)
+                          ? 'Aus Spinning entfernen'
+                          : 'Für Spinning markieren',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => _toggleSpinningTrack(t),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            color: _spinningTrackIds.contains(t.id)
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.directions_bike,
+                                size: 16,
+                                color: _spinningTrackIds.contains(t.id)
+                                    ? Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer
+                                    : null,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _spinningTrackIds.contains(t.id)
+                                    ? 'Spinning'
+                                    : 'Markieren',
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     onPressed: t == null ? null : () => _analyzeTrack(t),
