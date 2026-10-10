@@ -79,7 +79,10 @@ class _QueueScreenState extends State<QueueScreen> {
 
           return Column(
             children: [
-              _NowPlaying(player: widget.player),
+              _NowPlaying(
+                player: widget.player,
+                onOpenCurrent: () => Navigator.maybePop(context),
+              ),
               _QueueSummary(queue: queue, player: widget.player),
               const Divider(height: 1),
               Expanded(
@@ -216,7 +219,12 @@ class _QueueSummary extends StatelessWidget {
 
 class _NowPlaying extends StatelessWidget {
   final AudioPlayerService player;
-  const _NowPlaying({required this.player});
+  final VoidCallback onOpenCurrent;
+
+  const _NowPlaying({
+    required this.player,
+    required this.onOpenCurrent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -229,10 +237,12 @@ class _NowPlaying extends StatelessWidget {
 
         return Material(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-            child: Row(
-              children: [
+          child: InkWell(
+            onTap: onOpenCurrent,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Row(
+                children: [
                 SizedBox(
                   width: 54,
                   height: 54,
@@ -268,8 +278,10 @@ class _NowPlaying extends StatelessWidget {
                     );
                   },
                 ),
+                const Icon(Icons.chevron_right),
               ],
             ),
+          ),
           ),
         );
       },
