@@ -23,18 +23,37 @@ class SpinningScreen extends StatefulWidget {
 
 class _CurveCard extends StatelessWidget {
   final SpinningPlan plan;
+  final SpinningTrainingProfile profile;
   final double Function(double) displayBpm;
-  const _CurveCard({required this.plan, required this.displayBpm});
+  const _CurveCard({
+    required this.plan,
+    required this.profile,
+    required this.displayBpm,
+  });
 
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('BPM-Kurve', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          switch (profile) {
+            SpinningTrainingProfile.heartRate => 'Herz-Trainingskurve',
+            SpinningTrainingProfile.power => 'Watt-Trainingskurve',
+            SpinningTrainingProfile.cadence => 'BPM-/Cadence-Kurve',
+          },
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 2),
         Text(
-          'Farbe zeigt die Trainingsintensität',
+          switch (profile) {
+            SpinningTrainingProfile.heartRate =>
+              'Weicher Verlauf mit Belastungswellen und Erholungsphasen.',
+            SpinningTrainingProfile.power =>
+              'Klarere Belastungsblöcke und Intervalle.',
+            SpinningTrainingProfile.cadence =>
+              'Ausgewogene Wellen zwischen Aufbau, Belastung und Peak.',
+          },
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -281,6 +300,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           library: active,
           duration: duration,
           phases: _activePhases,
+          profile: trainingProfile,
           phaseEligibility: _phaseEligibility,
         ),
       );
@@ -294,6 +314,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           phaseTracks: manualPhaseTracks,
           duration: duration,
           phases: _activePhases,
+          profile: trainingProfile,
         ),
       );
     });
@@ -852,6 +873,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
           tracks: nextTracks,
           duration: duration,
           phases: _activePhases,
+          profile: trainingProfile,
+          curveOverride: plan?.curve,
         ),
       );
     });
@@ -1156,7 +1179,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
       ]))),
       if (p != null) ...[
         const SizedBox(height: 14),
-        _CurveCard(plan: p, displayBpm: _displayBpm),
+        _CurveCard(
+          plan: p,
+          profile: trainingProfile,
+          displayBpm: _displayBpm,
+        ),
         const SizedBox(height: 14),
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
