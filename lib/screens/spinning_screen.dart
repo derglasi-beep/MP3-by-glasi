@@ -615,9 +615,38 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return best;
   }
 
-  double _phaseDistance(Track track, SpinningPhase phase) {
+  double _tempoForPhase(Track track, SpinningPhase phase) {
     final bpm = track.bpm;
     if (bpm == null || bpm <= 0) return double.infinity;
+
+    final spec = _phaseSpec(phase);
+    final target = (spec.minBpm + spec.maxBpm) / 2;
+    final candidates = <double>[
+      bpm,
+      if (bpm >= 120) bpm / 2,
+      if (bpm <= 100) bpm * 2,
+    ];
+
+    var best = candidates.first;
+    var bestDistance = (best - target).abs();
+    for (final candidate in candidates.skip(1)) {
+      final distance = (candidate - target).abs();
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  bool _isEligibleForPhase(Track track, SpinningPhase phase) {
+    final phases = _phaseEligibility[track.id];
+    return phases == null || phases.isEmpty || phases.contains(phase);
+  }
+
+  double _phaseDistance(Track track, SpinningPhase phase) {
+    final bpm = _tempoForPhase(track, phase);
+    if (!bpm.isFinite) return double.infinity;
     final spec = _phaseSpec(phase);
     if (bpm < spec.minBpm) return spec.minBpm - bpm;
     if (bpm > spec.maxBpm) return bpm - spec.maxBpm;
@@ -625,15 +654,15 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   String _phaseHint(Track track, SpinningPhase phase) {
-    final bpm = track.bpm;
-    if (bpm == null) return 'BPM unbekannt';
+    if (track.bpm == null) return 'BPM unbekannt';
+    final bpm = _tempoForPhase(track, phase);
     final spec = _phaseSpec(phase);
 
     if (bpm >= spec.minBpm && bpm <= spec.maxBpm) {
       return 'Passt gut zu ${_phaseLabel(phase)}';
     }
 
-    final suggested = _suggestedPhase(bpm);
+    final suggested = _suggestedPhase(track.bpm!);
     return 'Eher ${_phaseLabel(suggested)}';
   }
 
@@ -1185,7 +1214,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         selection == null
                             ? track.artist
                             : '${track.artist} · ${_phaseLabel(selection.phase)} · '
-                                'Ziel ${_displayBpm(selection.targetBpm).round()} BPM',
+                                'Ziel ${_displayBpm(selection.targetBpm).round()} BPM'
+                                '${_isEligibleForPhase(track, selection.phase) ? '' : ' · ⚠ nicht für diese Phase markiert'}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
