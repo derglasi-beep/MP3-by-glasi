@@ -308,44 +308,67 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
         tooltip: 'Playlist erstellen',
       ),
     ]),
-    body: playlists.isEmpty
-        ? const Center(child: Text('Noch keine Playlists. Mit + eine Playlist erstellen.'))
-        : ListView(
-            children: playlists.keys.map((name) => ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.queue_music)),
-              title: Text(name),
-              subtitle: Text((playlists[name]?.length ?? 0).toString() + ' Titel'),
-              onTap: () => _open(name),
-              trailing: PopupMenuButton<String>(
-                tooltip: 'Playlist-Aktion',
-                onSelected: (action) {
-                  if (action == 'export') {
-                    _exportPlaylist(name);
-                  } else if (action == 'delete') {
-                    _delete(name);
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'export',
-                    child: ListTile(
-                      leading: Icon(Icons.upload_file),
-                      title: Text('Exportieren'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete_outline),
-                      title: Text('Löschen'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
-            )).toList(),
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: _importPlaylist,
+              icon: const Icon(Icons.file_download_outlined),
+              label: const Text('Playlist importieren'),
+            ),
           ),
+        ),
+        Expanded(
+          child: playlists.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Noch keine Playlists.\n'
+                    'Du kannst eine Playlist importieren oder mit + neu anlegen.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : ListView(
+                  children: playlists.keys.map((name) => ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.queue_music)),
+                    title: Text(name),
+                    subtitle: Text('${playlists[name]?.length ?? 0} Titel'),
+                    onTap: () => _open(name),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Playlist-Aktion',
+                      onSelected: (action) {
+                        if (action == 'export') {
+                          _exportPlaylist(name);
+                        } else if (action == 'delete') {
+                          _delete(name);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'export',
+                          child: ListTile(
+                            leading: Icon(Icons.upload_file),
+                            title: Text('Exportieren'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Löschen'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+        ),
+      ],
+    ),
   );
 }
 
