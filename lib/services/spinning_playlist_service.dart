@@ -113,7 +113,7 @@ class SpinningPlaylistService {
       return SpinningPlan(duration: duration, tracks: const [], phases: phases);
     }
 
-    final curve = buildCurve(duration, phases, profile: profile);
+    final curve = buildCurve(duration, phases: phases, profile: profile);
     final selected = <Track>[];
     final selections = <SpinningSelection>[];
     final used = <String>{};
@@ -191,7 +191,7 @@ class SpinningPlaylistService {
   }) {
     final usable = tracks.where((t) => t.bpm != null && t.bpm! > 0).toList();
     final curve = curveOverride ??
-        buildCurve(duration, phases, profile: profile);
+        buildCurve(duration, phases: phases, profile: profile);
     final selections = <SpinningSelection>[];
     var elapsed = Duration.zero;
 
@@ -223,7 +223,7 @@ class SpinningPlaylistService {
     List<SpinningPhaseSpec> phases = defaultPhases,
     SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
   }) {
-    final curve = buildCurve(duration, phases, profile: profile);
+    final curve = buildCurve(duration, phases: phases, profile: profile);
     final selections = <SpinningSelection>[];
     final tracks = <Track>[];
     final used = <String>{};
@@ -272,9 +272,8 @@ class SpinningPlaylistService {
   }
 
   List<SpinningCurvePoint> buildCurve(
-    Duration duration, [
+    Duration duration, {
     List<SpinningPhaseSpec> phases = defaultPhases,
-  ], {
     SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
   }) {
     if (duration <= Duration.zero || phases.isEmpty) {
