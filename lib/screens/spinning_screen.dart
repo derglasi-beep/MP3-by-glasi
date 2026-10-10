@@ -373,6 +373,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
   Future<void> _manageSpinningLibrary() async {
     var query = '';
+    var showOnlySpinning = true;
     final selected = Set<String>.from(widget.spinningTrackIds);
     final workingPhases = <String, Set<SpinningPhase>>{
       for (final entry in _phaseEligibility.entries)
@@ -384,7 +385,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           final q = query.trim().toLowerCase();
-          final visible = widget.tracks.where((track) {
+          final source = showOnlySpinning
+              ? widget.tracks.where((track) => selected.contains(track.id))
+              : widget.tracks;
+          final visible = source.where((track) {
             if (q.isEmpty) return true;
             return track.title.toLowerCase().contains(q) ||
                 track.artist.toLowerCase().contains(q) ||
@@ -398,6 +402,25 @@ class _SpinningScreenState extends State<SpinningScreen> {
               height: 700,
               child: Column(
                 children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: true,
+                        icon: Icon(Icons.directions_bike),
+                        label: Text('Spinning Songs'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: false,
+                        icon: Icon(Icons.library_music),
+                        label: Text('Alle'),
+                      ),
+                    ],
+                    selected: {showOnlySpinning},
+                    onSelectionChanged: (values) => setDialogState(() {
+                      showOnlySpinning = values.first;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     autofocus: true,
                     decoration: const InputDecoration(
