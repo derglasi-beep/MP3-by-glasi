@@ -253,11 +253,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
       .where((track) => widget.spinningTrackIds.contains(track.id))
       .toList(growable: false);
 
-  List<Track> get _activeLibrary {
-    final spinning = _spinningTracks;
-    if (useSpinningLibrary && spinning.isNotEmpty) return spinning;
-    return widget.tracks;
-  }
+  List<Track> get _activeLibrary =>
+      useSpinningLibrary ? _spinningTracks : widget.tracks;
 
   void _buildPlan() {
     final active = _activeLibrary;
@@ -618,8 +615,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   Future<void> _chooseManualTracks() async {
-    var useSpinningSource =
-        useSpinningLibrary && _spinningTracks.isNotEmpty;
+    var useSpinningSource = useSpinningLibrary;
     var activePhase = SpinningPhase.warmup;
     var query = '';
 
@@ -633,9 +629,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           final sourceTracks =
-              useSpinningSource && _spinningTracks.isNotEmpty
-                  ? _spinningTracks
-                  : widget.tracks;
+              useSpinningSource ? _spinningTracks : widget.tracks;
           final q = query.trim().toLowerCase();
           final visible = sourceTracks.where((track) {
             if (q.isEmpty) return true;
@@ -677,9 +671,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         label: Text('Alle'),
                       ),
                     ],
-                    selected: {
-                      useSpinningSource && _spinningTracks.isNotEmpty,
-                    },
+                    selected: {useSpinningSource},
                     onSelectionChanged: (values) => setDialogState(() {
                       useSpinningSource = values.first;
                     }),
@@ -971,7 +963,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
               label: Text('Alle'),
             ),
           ],
-          selected: {useSpinningLibrary && _spinningTracks.isNotEmpty},
+          selected: {useSpinningLibrary},
           onSelectionChanged: (values) => setState(() {
             useSpinningLibrary = values.first;
             _setPlan(null);
@@ -984,11 +976,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
             final usable = active
                 .where((track) => track.bpm != null && track.bpm! > 0)
                 .length;
-            final sourceLabel = _spinningTracks.isEmpty
-                ? 'Noch keine Titel für Spinning markiert – aktuell werden alle Titel verwendet.'
-                : (useSpinningLibrary
-                    ? '${_spinningTracks.length} markierte Spinning-Titel'
-                    : '${widget.tracks.length} Titel aus der gesamten Bibliothek');
+            final sourceLabel = useSpinningLibrary
+                ? '${_spinningTracks.length} markierte Spinning-Titel'
+                : '${widget.tracks.length} Titel aus der gesamten Bibliothek';
             return Text(
               '$sourceLabel · $usable mit BPM planbar',
               style: Theme.of(context).textTheme.bodySmall,
