@@ -49,6 +49,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   String? _visibleCacheKey;
 
   String search = '';
+  bool _showLibrary = false;
   int? bpmMin;
   int? bpmMax;
   bool analyzing = false;
@@ -1461,7 +1462,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final albumMatches = matchingAlbums;
 
     return Scaffold(
-    appBar: AppBar(title: const Text('MP3 by Glasi'), actions: [
+    appBar: AppBar(
+      title: Text(_showLibrary ? 'Bibliothek' : 'MP3 by Glasi'),
+      actions: [
+      IconButton(
+        onPressed: () => setState(() => _showLibrary = !_showLibrary),
+        icon: Icon(
+          _showLibrary ? Icons.play_circle_outline : Icons.library_music,
+        ),
+        tooltip: _showLibrary ? 'Aktueller Titel' : 'Bibliothek',
+      ),
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(
@@ -1492,7 +1502,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Ordner scannen'),
     ]),
-    body: Column(children: [
+    body: _showLibrary ? Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         child: TextField(
@@ -1984,7 +1994,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
         ),
       ),
-    ]),
+    ]) : _player(),
   );
   }
 
