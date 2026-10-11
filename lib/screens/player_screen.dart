@@ -1140,7 +1140,30 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final p = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Musikordner auswählen',
     );
-    if (p != null) await _add(await scanner.scanDirectory(p));
+    if (p != null) {
+      final isWindowsNetworkPath = Platform.isWindows &&
+          (p.startsWith(r'\\') || p.startsWith('//'));
+      await _add(
+        await scanner.scanDirectory(
+          p,
+          loadArtwork: !Platform.isWindows,
+        ),
+        startBackgroundBpm: !isWindowsNetworkPath,
+      );
+      if (isWindowsNetworkPath && mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                'Netzwerkordner eingelesen. BPM-Hintergrundanalyse ist '
+                'zum Schutz der Performance pausiert und kann manuell gestartet werden.',
+              ),
+            ),
+          );
+      }
+    }
   }
 
   Future<int> _replaceAndroidLibrary(List<Track> found) async {
@@ -1198,7 +1221,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     return removedCount;
   }
 
-  Future<void> _add(List<Track> found) async {
+  Future<void> _add(
+    List<Track> found, {
+    bool startBackgroundBpm = true,
+  }) async {
     final map = {for (final t in tracks) t.id: t};
     for (final t in found) {
       final existing = map[t.id];
@@ -1239,7 +1265,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (Platform.isAndroid) {
       unawaited(_loadArtworkInBackground());
     }
-    unawaited(_analyzeBpmInBackground());
+    if (startBackgroundBpm) {
+      unawaited(_analyzeBpmInBackground());
+    }
   }
 
   Future<void> _analyzeTrack(Track t) async {
