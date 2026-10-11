@@ -2781,10 +2781,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                     icon: const Icon(Icons.shuffle), tooltip: 'Zufallswiedergabe'),
                   IconButton(onPressed: widget.player.previous, icon: const Icon(Icons.skip_previous), iconSize: 38),
                   IconButton(
+                    tooltip: '10 Sekunden zurück',
+                    onPressed: t == null
+                        ? null
+                        : () => widget.player.seekRelative(
+                              const Duration(seconds: -10),
+                            ),
+                    icon: const Icon(Icons.replay_10),
+                  ),
+                  IconButton(
                     onPressed: t == null ? null : ((ps.data?.playing ?? false)
                         ? widget.player.pause : widget.player.play),
                     icon: Icon((ps.data?.playing ?? false) ? Icons.pause_circle : Icons.play_circle),
                     iconSize: 66),
+                  IconButton(
+                    tooltip: '10 Sekunden vor',
+                    onPressed: t == null
+                        ? null
+                        : () => widget.player.seekRelative(
+                              const Duration(seconds: 10),
+                            ),
+                    icon: const Icon(Icons.forward_10),
+                  ),
                   IconButton(onPressed: widget.player.next, icon: const Icon(Icons.skip_next), iconSize: 38),
                   IconButton(onPressed: widget.player.toggleRepeat,
                     color: widget.player.loopMode != LoopMode.off ? Theme.of(context).colorScheme.primary : null,
