@@ -177,21 +177,43 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           children: [
                             IconButton(
                               tooltip: 'Zurück',
-                              onPressed: player.canGoPrevious ? player.previous : null,
+                              onPressed:
+                                  player.canGoPrevious ? player.previous : null,
                               icon: const Icon(Icons.skip_previous),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            IconButton(
+                              tooltip: '10 Sekunden zurück',
+                              onPressed: () => player.seekRelative(
+                                const Duration(seconds: -10),
+                              ),
+                              icon: const Icon(Icons.replay_10),
+                              visualDensity: VisualDensity.compact,
                             ),
                             IconButton(
                               tooltip: playing ? 'Pause' : 'Wiedergabe',
                               onPressed: playing ? player.pause : player.play,
                               icon: Icon(
-                                playing ? Icons.pause_circle : Icons.play_circle,
+                                playing
+                                    ? Icons.pause_circle
+                                    : Icons.play_circle,
                                 size: 34,
                               ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            IconButton(
+                              tooltip: '10 Sekunden vor',
+                              onPressed: () => player.seekRelative(
+                                const Duration(seconds: 10),
+                              ),
+                              icon: const Icon(Icons.forward_10),
+                              visualDensity: VisualDensity.compact,
                             ),
                             IconButton(
                               tooltip: 'Weiter',
                               onPressed: player.canGoNext ? player.next : null,
                               icon: const Icon(Icons.skip_next),
+                              visualDensity: VisualDensity.compact,
                             ),
                           ],
                         );
