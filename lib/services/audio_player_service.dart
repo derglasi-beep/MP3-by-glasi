@@ -312,6 +312,10 @@ class AudioPlayerService {
     );
     return audio.seek(clamped);
   }
+
+  Future<void> seekRelative(Duration delta) {
+    return seek(audio.position + delta);
+  }
   Future<void> setVolume(double v) async {
     _playerVolume = v.clamp(0, 1).toDouble();
     await _applyEffectiveVolume();
