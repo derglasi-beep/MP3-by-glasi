@@ -82,6 +82,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Timer? _artworkMissSaveTimer;
   bool _backgroundUiDirty = false;
   bool _libraryScrolling = false;
+  bool _libraryFastJump = false;
+  Timer? _libraryFastJumpTimer;
   bool _artworkWorkerRunning = false;
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
@@ -124,6 +126,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
+  void _finishLibraryFastJump() {
+    _libraryFastJumpTimer?.cancel();
+    _libraryFastJumpTimer = Timer(const Duration(milliseconds: 180), () {
+      _libraryFastJumpTimer = null;
+      if (!mounted) return;
+      _libraryFastJump = false;
+      setState(() {});
+    });
+  }
+
   void _jumpOrAnimateLibraryTo(double target) {
     if (!_libraryScrollController.hasClients) return;
 
@@ -131,10 +143,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final clamped = target.clamp(0.0, position.maxScrollExtent);
     final distance = (position.pixels - clamped).abs();
 
-    // Animating through thousands of rows forces Flutter to build too many
-    // intermediate items and can visibly stall very large libraries.
     if (distance > 1200) {
+      _libraryFastJumpTimer?.cancel();
+      _libraryFastJump = true;
+      _libraryScrolling = true;
+      _backgroundUiRefreshTimer?.cancel();
+      _backgroundUiRefreshTimer = null;
+
       _libraryScrollController.jumpTo(clamped);
+
+      _libraryScrolling = false;
+      _finishLibraryFastJump();
       return;
     }
 
@@ -168,8 +187,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    const estimatedTileExtent = 72.0;
-    _jumpOrAnimateLibraryTo(index * estimatedTileExtent);
+    const tileExtent = 72.0;
+    final position = _libraryScrollController.position;
+    final centeredTarget =
+        (index * tileExtent) - ((position.viewportDimension - tileExtent) / 2);
+    _jumpOrAnimateLibraryTo(centeredTarget);
   }
 
   void _rebuildTrackIndex() {
@@ -268,7 +290,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
     // Fast scrolling through a large library can otherwise enqueue dozens of
     // disk/cache reads for rows that are visible only for a few milliseconds.
-    if (_libraryScrolling && widget.player.currentTrack?.id != track.id) {
+    if ((_libraryScrolling || _libraryFastJump) &&
+        widget.player.currentTrack?.id != track.id) {
       return;
     }
 
@@ -427,6 +450,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _librarySaveTimer?.cancel();
     _backgroundUiRefreshTimer?.cancel();
     _artworkMissSaveTimer?.cancel();
+    _libraryFastJumpTimer?.cancel();
     _searchDebounce?.cancel();
     _searchController.dispose();
     _libraryScrollController.dispose();
@@ -2474,7 +2498,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       child: ListView.builder(
                       controller: _libraryScrollController,
                       itemExtent: 72,
-                      cacheExtent: 360,
+                      cacheExtent: 72,
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
