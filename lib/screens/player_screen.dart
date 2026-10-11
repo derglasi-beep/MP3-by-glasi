@@ -265,6 +265,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _touchArtworkInMemory(track.id);
       return;
     }
+
+    // Fast scrolling through a large library can otherwise enqueue dozens of
+    // disk/cache reads for rows that are visible only for a few milliseconds.
+    if (_libraryScrolling && widget.player.currentTrack?.id != track.id) {
+      return;
+    }
+
     unawaited(_loadArtworkForVisibleTrack(track));
   }
 
@@ -559,6 +566,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _backgroundUiRefreshTimer = null;
     } else if (notification is ScrollEndNotification) {
       _libraryScrolling = false;
+
+      // Rebuild once after scrolling stops so only the rows that are actually
+      // visible request their artwork.
+      if (mounted) {
+        setState(() {});
+      }
+
       if (_backgroundUiDirty) {
         _backgroundUiRefreshTimer?.cancel();
         _backgroundUiRefreshTimer = Timer(
@@ -2459,6 +2473,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       onNotification: _onLibraryScroll,
                       child: ListView.builder(
                       controller: _libraryScrollController,
+                      itemExtent: 72,
+                      cacheExtent: 360,
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
