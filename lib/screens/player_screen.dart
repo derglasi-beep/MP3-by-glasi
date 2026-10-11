@@ -402,11 +402,30 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
 
     final checks = await Future.wait(
-      saved.map((t) async => MapEntry(t, await File(t.path).exists())),
+      saved.map((t) async {
+        final isWindowsNetworkPath = Platform.isWindows &&
+            (t.path.startsWith(r'\\') || t.path.startsWith('//'));
+        if (isWindowsNetworkPath) {
+          try {
+            final exists = await File(t.path)
+                .exists()
+                .timeout(const Duration(milliseconds: 800));
+            return MapEntry(t, exists ? true : null);
+          } catch (_) {
+            return MapEntry(t, null);
+          }
+        }
+
+        try {
+          return MapEntry(t, await File(t.path).exists());
+        } catch (_) {
+          return MapEntry(t, false);
+        }
+      }),
     );
     final valid = <Track>[
       for (final check in checks)
-        if (check.value) check.key,
+        if (check.value != false) check.key,
     ];
     if (!mounted) return;
 
@@ -1149,36 +1168,158 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    final p = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Musikordner auswählen',
-    );
-    if (p != null) {
+    if (scanningMusic) return;
+    try {
+      final p = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Musikordner auswählen',
+      );
+      if (p == null) return;
+
+      setState(() {
+        scanningMusic = true;
+        scanDone = 0;
+        scanTotal = 0;
+      });
+
       final isWindowsNetworkPath = Platform.isWindows &&
           (p.startsWith(r'\\') || p.startsWith('//'));
       if (isWindowsNetworkPath) {
         _suppressAutomaticBpm = true;
       }
-      await _add(
-        await scanner.scanDirectory(
-          p,
-          loadArtwork: !Platform.isWindows,
-        ),
-        startBackgroundBpm: !isWindowsNetworkPath,
+
+      final found = await scanner.scanDirectory(
+        p,
+        loadArtwork: !Platform.isWindows,
+        onDiscoveryProgress: (count) {
+          if (!mounted) return;
+          setState(() {
+            scanDone = count;
+            scanTotal = 0;
+          });
+        },
       );
-      if (isWindowsNetworkPath && mounted) {
+
+      if (found.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             const SnackBar(
               behavior: SnackBarBehavior.floating,
               content: Text(
-                'Netzwerkordner eingelesen. BPM-Hintergrundanalyse ist '
-                'zum Schutz der Performance pausiert und kann manuell gestartet werden.',
+                'In diesem Ordner wurden keine unterstützten Musikdateien gefunden.',
               ),
             ),
           );
+        return;
+      }
+
+      await _add(found, startBackgroundBpm: !isWindowsNetworkPath);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              isWindowsNetworkPath
+                  ? '${found.length} Titel aus dem Netzwerkordner eingelesen. '
+                      'BPM-Hintergrundanalyse bleibt zum Schutz der Performance pausiert.'
+                  : '${found.length} Titel eingelesen.',
+            ),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Ordner konnte nicht eingelesen werden: '
+              '${e.toString().replaceFirst('FileSystemException: ', '').replaceFirst('Exception: ', '')}',
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          scanningMusic = false;
+          scanDone = 0;
+          scanTotal = 0;
+        });
       }
     }
+  }
+
+  Future<void> _clearLibrary() async {
+    if (tracks.isEmpty && widget.player.queue.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Bibliothek leeren?'),
+        content: const Text(
+          'Alle eingelesenen Titel werden aus MP3 by Glasi entfernt. '
+          'Die Musikdateien auf dem Gerät oder Datenträger bleiben unverändert.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Bibliothek leeren'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await bpm.cancelActive();
+    _librarySaveTimer?.cancel();
+    _librarySaveTimer = null;
+    _backgroundUiRefreshTimer?.cancel();
+    _backgroundUiRefreshTimer = null;
+    _artworkMissSaveTimer?.cancel();
+    _artworkMissSaveTimer = null;
+
+    _artworkMisses.clear();
+    _spinningTrackIds.clear();
+    _artworkLru.clear();
+    _suppressAutomaticBpm = false;
+    _spinningPlan = null;
+
+    if (mounted) {
+      setState(() {
+        tracks = [];
+        search = '';
+        bpmMin = null;
+        bpmMax = null;
+        analyzing = false;
+        _rebuildTrackIndex();
+        _invalidateVisibleCache();
+      });
+    }
+
+    await Future.wait([
+      library.saveTracks(const <Track>[]),
+      library.saveArtworkMisses(const <String>{}),
+      library.saveSpinningTrackIds(const <String>{}),
+      widget.player.clearQueue(),
+    ]);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Bibliothek wurde geleert.'),
+        ),
+      );
   }
 
   Future<int> _replaceAndroidLibrary(List<Track> found) async {
@@ -1727,15 +1868,24 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                               ? 'Musik wird eingelesen: $scanDone / $scanTotal'
                               : 'Musik wird gesucht…')
                           : 'Smartphone-Musik scannen')
-                      : 'Musikordner hinzufügen',
+                      : (scanningMusic
+                          ? (scanDone > 0
+                              ? 'Musik wird gesucht… $scanDone gefunden'
+                              : 'Musik wird gesucht…')
+                          : 'Musikordner hinzufügen'),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             IconButton(
-              onPressed: addFiles,
+              onPressed: scanningMusic ? null : addFiles,
               tooltip: 'Einzelne Dateien hinzufügen',
               icon: const Icon(Icons.library_music),
+            ),
+            IconButton(
+              onPressed: tracks.isEmpty || scanningMusic ? null : _clearLibrary,
+              tooltip: 'Bibliothek leeren',
+              icon: const Icon(Icons.delete_outline),
             ),
           ],
         ),
