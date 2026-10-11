@@ -1249,39 +1249,34 @@ class _SpinningScreenState extends State<SpinningScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              tooltip: 'Spinning-Markierungen übertragen',
-              icon: const Icon(Icons.sync_alt),
-              onSelected: (value) {
-                if (value == 'import') _importSpinningProfile();
-                if (value == 'export') _exportSpinningProfile();
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'import',
-                  child: ListTile(
-                    leading: Icon(Icons.file_download_outlined),
-                    title: Text('Importieren'),
-                    subtitle: Text('Markierungen von anderem Gerät übernehmen'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'export',
-                  enabled: widget.spinningTrackIds.isNotEmpty,
-                  child: const ListTile(
-                    leading: Icon(Icons.file_upload_outlined),
-                    title: Text('Exportieren'),
-                    subtitle: Text('Markierungen und Phasen sichern'),
-                  ),
-                ),
-              ],
-            ),
             IconButton.filledTonal(
               onPressed: widget.spinningTrackIds.isEmpty
                   ? null
                   : _clearSpinningLibrary,
               icon: const Icon(Icons.delete_sweep_outlined),
               tooltip: 'Spinning-Auswahl leeren',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _importSpinningProfile,
+                icon: const Icon(Icons.file_download_outlined),
+                label: const Text('Spinning importieren'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: widget.spinningTrackIds.isEmpty
+                    ? null
+                    : _exportSpinningProfile,
+                icon: const Icon(Icons.file_upload_outlined),
+                label: const Text('Spinning exportieren'),
+              ),
             ),
           ],
         ),
