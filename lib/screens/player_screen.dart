@@ -98,6 +98,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   int _backgroundArtworkCached = 0;
   int _backgroundArtworkNew = 0;
   int _backgroundArtworkMissSkipped = 0;
+  bool _suppressAutomaticBpm = false;
 
   void _rebuildTrackIndex() {
     _trackIndexById
@@ -255,7 +256,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       if (state.playing) {
         unawaited(bpm.cancelActive());
       } else if (tracks.isNotEmpty) {
-        unawaited(_analyzeBpmInBackground());
+        if (!_suppressAutomaticBpm) {
+          unawaited(_analyzeBpmInBackground());
+        }
         unawaited(_loadArtworkInBackground());
       }
     });
@@ -274,7 +277,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     // Background work is allowed while the app stays alive. Playback still
     // always wins: the BPM worker stops as soon as audio starts.
     unawaited(_loadArtworkInBackground());
-    if (!widget.player.audio.playing) {
+    if (!widget.player.audio.playing && !_suppressAutomaticBpm) {
       unawaited(_analyzeBpmInBackground());
     }
   }
@@ -409,6 +412,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
     setState(() {
       tracks = valid;
+      _suppressAutomaticBpm = Platform.isWindows &&
+          valid.any(
+            (track) =>
+                track.path.startsWith(r'\\') ||
+                track.path.startsWith('//'),
+          );
       _rebuildTrackIndex();
       _invalidateVisibleCache();
     });
@@ -428,7 +437,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       load: false,
       preserveCurrent: false,
     );
-    unawaited(_analyzeBpmInBackground());
+    if (!_suppressAutomaticBpm) {
+      unawaited(_analyzeBpmInBackground());
+    }
   }
 
   void _scheduleBackgroundUiRefresh() {
@@ -469,7 +480,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _analyzeBpmInBackground() async {
-    if (_backgroundBpmWorkerRunning ||
+    if (_suppressAutomaticBpm ||
+        _backgroundBpmWorkerRunning ||
         tracks.isEmpty ||
         widget.player.audio.playing) {
       return;
@@ -1143,6 +1155,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (p != null) {
       final isWindowsNetworkPath = Platform.isWindows &&
           (p.startsWith(r'\\') || p.startsWith('//'));
+      if (isWindowsNetworkPath) {
+        _suppressAutomaticBpm = true;
+      }
       await _add(
         await scanner.scanDirectory(
           p,
