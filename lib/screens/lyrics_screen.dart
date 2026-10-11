@@ -92,7 +92,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
         title: const Text('Lyrics bearbeiten'),
         content: SizedBox(
           width: 720,
-          height: 520,
+          height: MediaQuery.sizeOf(dialogContext).height * 0.55,
           child: TextField(
             controller: controller,
             autofocus: true,
