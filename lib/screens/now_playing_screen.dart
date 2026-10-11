@@ -65,16 +65,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 final playing = state.data?.playing ?? false;
 
                 return SafeArea(
-                  minimum: const EdgeInsets.only(bottom: 12),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 2, 18, 30),
-                    child: Column(
-                      children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: 620,
-                            maxHeight: 620,
-                          ),
+                  minimum: const EdgeInsets.only(bottom: 28),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final coverSize =
+                          (constraints.maxHeight * 0.48).clamp(300.0, 460.0);
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(18, 2, 18, 44),
+                        child: Column(
+                          children: [
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: coverSize,
+                                maxHeight: coverSize,
+                              ),
                           child: AspectRatio(
                             aspectRatio: 1,
                             child: Hero(
@@ -101,7 +105,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 10),
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -139,7 +143,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             BpmBadge(bpm: track?.bpm),
@@ -225,7 +229,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Slider(
                           value: value,
                           max: max,
@@ -242,12 +246,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             Text(_time(d)),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 4),
                         GlasiVisualizer(
                           playing: playing,
                           bpm: track?.bpm,
+                          height: 42,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         StreamBuilder<List<Track>>(
                           stream: player.queueStream,
                           initialData: player.queue,
@@ -268,7 +273,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                     ? player.previous
                                     : null,
                                 icon: const Icon(Icons.skip_previous),
-                                iconSize: 42,
+                                iconSize: 34,
                               ),
                               IconButton(
                                 tooltip: '10 Sekunden zurück',
@@ -287,8 +292,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                 icon: Icon(
                                   playing ? Icons.pause : Icons.play_arrow,
                                 ),
-                                iconSize: 58,
-                                padding: const EdgeInsets.all(18),
+                                iconSize: 48,
+                                padding: const EdgeInsets.all(13),
                               ),
                               IconButton(
                                 tooltip: '10 Sekunden vor',
@@ -304,7 +309,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                 onPressed:
                                     player.canGoNext ? player.next : null,
                                 icon: const Icon(Icons.skip_next),
-                                iconSize: 42,
+                                iconSize: 34,
                               ),
                               IconButton(
                                 tooltip: 'Wiederholung',
@@ -321,8 +326,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 );
               },
