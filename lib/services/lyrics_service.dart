@@ -194,11 +194,11 @@ class LyricsService {
 
   String _plainFromSynced(String value) {
     if (value.isEmpty) return '';
-    final timestamp = RegExp(r'^\\[\\d{2}:\\d{2}(?:\\.\\d+)?\\]\\s*');
+    final timestamp = RegExp(r'^\[\d{2}:\d{2}(?:\.\d+)?\]\s*');
     return value
-        .split('\\n')
+        .split('\n')
         .map((line) => line.replaceFirst(timestamp, '').trimRight())
-        .join('\\n')
+        .join('\n')
         .trim();
   }
 }
