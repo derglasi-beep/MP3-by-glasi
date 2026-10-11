@@ -184,9 +184,10 @@ class LyricsService {
       return null;
     }
 
-    final uri = Uri.https(
-      'api.lyrics.ovh',
-      '/v1/${Uri.encodeComponent(artist)}/${Uri.encodeComponent(title)}',
+    final uri = Uri(
+      scheme: 'https',
+      host: 'api.lyrics.ovh',
+      pathSegments: ['v1', artist, title],
     );
 
     try {
