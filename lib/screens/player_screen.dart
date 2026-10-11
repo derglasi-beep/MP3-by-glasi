@@ -124,13 +124,29 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
-  void _scrollLibraryToTop() {
+  void _jumpOrAnimateLibraryTo(double target) {
     if (!_libraryScrollController.hasClients) return;
+
+    final position = _libraryScrollController.position;
+    final clamped = target.clamp(0.0, position.maxScrollExtent);
+    final distance = (position.pixels - clamped).abs();
+
+    // Animating through thousands of rows forces Flutter to build too many
+    // intermediate items and can visibly stall very large libraries.
+    if (distance > 1200) {
+      _libraryScrollController.jumpTo(clamped);
+      return;
+    }
+
     _libraryScrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOut,
+      clamped,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
     );
+  }
+
+  void _scrollLibraryToTop() {
+    _jumpOrAnimateLibraryTo(0);
   }
 
   void _scrollToCurrentTrack(List<Track> visibleTracks) {
@@ -153,15 +169,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
 
     const estimatedTileExtent = 72.0;
-    final target = (index * estimatedTileExtent).clamp(
-      0.0,
-      _libraryScrollController.position.maxScrollExtent,
-    );
-    _libraryScrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOutCubic,
-    );
+    _jumpOrAnimateLibraryTo(index * estimatedTileExtent);
   }
 
   void _rebuildTrackIndex() {
