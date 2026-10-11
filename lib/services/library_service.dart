@@ -33,6 +33,7 @@ Track _trackFromJsonStatic(
           : Duration(milliseconds: (j['durationMs'] as num).toInt()),
       bpm: (j['bpm'] as num?)?.toDouble(),
       bpmConfidence: (j['bpmConfidence'] as num?)?.toDouble(),
+      bpmManual: j['bpmManual'] as bool? ?? false,
       artwork: artwork == null ? null : Uint8List.fromList(artwork),
     );
 
@@ -47,6 +48,7 @@ Map<String, dynamic> _trackToJsonStatic(Track t) => {
       'durationMs': t.duration?.inMilliseconds,
       'bpm': t.bpm,
       'bpmConfidence': t.bpmConfidence,
+      'bpmManual': t.bpmManual,
     };
 
 String _encodeTrackMetadata(List<Track> tracks) =>
