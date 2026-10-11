@@ -4,7 +4,14 @@ import 'package:flutter/material.dart';
 class GlasiVisualizer extends StatefulWidget {
   final bool playing;
   final double? bpm;
-  const GlasiVisualizer({super.key, required this.playing, this.bpm});
+  final double height;
+
+  const GlasiVisualizer({
+    super.key,
+    required this.playing,
+    this.bpm,
+    this.height = 74,
+  });
 
   @override
   State<GlasiVisualizer> createState() => _GlasiVisualizerState();
@@ -32,7 +39,7 @@ class _GlasiVisualizerState extends State<GlasiVisualizer>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 74,
+      height: widget.height,
       width: double.infinity,
       child: CustomPaint(
         painter: _VisualizerPainter(
