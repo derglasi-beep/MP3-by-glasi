@@ -32,9 +32,13 @@ class AudioPlayerService {
   final SettingsService _settings = SettingsService();
 
   AudioPlayerService() {
-    audio = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer, loudnessEnhancer]),
-    );
+    audio = Platform.isAndroid
+        ? AudioPlayer(
+            audioPipeline: AudioPipeline(
+              androidAudioEffects: [equalizer, loudnessEnhancer],
+            ),
+          )
+        : AudioPlayer();
     _stateSub = audio.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         _handleCompletion();
@@ -322,6 +326,8 @@ class AudioPlayerService {
     _preamp = decibels.clamp(-12, 12).toDouble();
     await _applyEffectiveVolume();
 
+    if (!Platform.isAndroid) return;
+
     if (_preamp > 0) {
       await loudnessEnhancer.setTargetGain(_preamp);
       await loudnessEnhancer.setEnabled(true);
@@ -392,6 +398,7 @@ class AudioPlayerService {
   }
 
   Future<void> _applyToneEq({EqualizerInfo? info}) async {
+    if (!Platform.isAndroid) return;
     try {
       final params = info ?? await EqualizerService(effect: equalizer).info;
       if (params == null || params.bands.isEmpty) return;
@@ -423,6 +430,7 @@ class AudioPlayerService {
   }
 
   Future<EqualizerInfo?> equalizerInfo() async {
+    if (!Platform.isAndroid) return null;
     try {
       final info = await EqualizerService(effect: equalizer)
           .info
@@ -550,6 +558,7 @@ class AudioPlayerService {
   }
 
   Future<void> _restoreEqualizerIfAvailable({EqualizerInfo? info}) async {
+    if (!Platform.isAndroid) return;
     final params = info ?? await equalizerInfo();
     if (params == null || params.bands.isEmpty) return;
 
