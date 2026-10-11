@@ -270,6 +270,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                 icon: const Icon(Icons.skip_previous),
                                 iconSize: 42,
                               ),
+                              IconButton(
+                                tooltip: '10 Sekunden zurück',
+                                onPressed: track == null
+                                    ? null
+                                    : () => player.seekRelative(
+                                          const Duration(seconds: -10),
+                                        ),
+                                icon: const Icon(Icons.replay_10),
+                              ),
                               IconButton.filled(
                                 tooltip: playing ? 'Pause' : 'Wiedergabe',
                                 onPressed: track == null
@@ -280,6 +289,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                 ),
                                 iconSize: 58,
                                 padding: const EdgeInsets.all(18),
+                              ),
+                              IconButton(
+                                tooltip: '10 Sekunden vor',
+                                onPressed: track == null
+                                    ? null
+                                    : () => player.seekRelative(
+                                          const Duration(seconds: 10),
+                                        ),
+                                icon: const Icon(Icons.forward_10),
                               ),
                               IconButton(
                                 tooltip: 'Weiter',
