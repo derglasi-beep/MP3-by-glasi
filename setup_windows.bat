@@ -22,6 +22,10 @@ call "%FLUTTER%" pub get
 if errorlevel 1 exit /b %errorlevel%
 
 echo.
+echo === Optionalen Native-Assets-Ordner sicherstellen ===
+if not exist "build\native_assets\windows" mkdir "build\native_assets\windows"
+
+echo.
 echo === MP3 by Glasi unter Windows starten ===
 call "%FLUTTER%" run -d windows
 
