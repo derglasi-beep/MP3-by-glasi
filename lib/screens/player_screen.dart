@@ -1255,6 +1255,130 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _cleanLibrary() async {
+    if (tracks.isEmpty || scanningMusic || Platform.isAndroid) return;
+
+    setState(() {
+      scanningMusic = true;
+      scanDone = 0;
+      scanTotal = tracks.length;
+    });
+
+    final kept = <Track>[];
+    final removedIds = <String>{};
+    var skippedNetwork = 0;
+
+    try {
+      const batchSize = 128;
+      final snapshot = List<Track>.from(tracks);
+
+      for (var start = 0; start < snapshot.length; start += batchSize) {
+        final end = (start + batchSize).clamp(0, snapshot.length);
+        final batch = snapshot.sublist(start, end);
+
+        final results = await Future.wait(
+          batch.map((track) async {
+            final isWindowsNetworkPath = Platform.isWindows &&
+                (track.path.startsWith(r'\\') || track.path.startsWith('//'));
+
+            // Network shares may be temporarily offline. Never treat that as
+            // proof that a library entry is stale.
+            if (isWindowsNetworkPath) {
+              return (track: track, exists: true, skippedNetwork: true);
+            }
+
+            try {
+              return (
+                track: track,
+                exists: await File(track.path).exists(),
+                skippedNetwork: false,
+              );
+            } catch (_) {
+              return (track: track, exists: false, skippedNetwork: false);
+            }
+          }),
+        );
+
+        for (final result in results) {
+          if (result.skippedNetwork) skippedNetwork++;
+          if (result.exists) {
+            kept.add(result.track);
+          } else {
+            removedIds.add(result.track.id);
+          }
+        }
+
+        if (!mounted) return;
+        setState(() => scanDone = end);
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      if (removedIds.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                skippedNetwork > 0
+                    ? 'Keine verwaisten lokalen Einträge gefunden. '
+                        '$skippedNetwork Netzwerk-Titel wurden sicherheitshalber übersprungen.'
+                    : 'Keine verwaisten Einträge gefunden.',
+              ),
+            ),
+          );
+        return;
+      }
+
+      _spinningTrackIds.removeWhere(removedIds.contains);
+      _artworkLru.removeWhere(removedIds.contains);
+
+      setState(() {
+        tracks = kept;
+        _rebuildTrackIndex();
+        _invalidateVisibleCache();
+
+        final plan = _spinningPlan;
+        if (plan != null &&
+            plan.tracks.any((track) => removedIds.contains(track.id))) {
+          _spinningPlan = null;
+        }
+      });
+
+      await Future.wait([
+        library.saveTracks(tracks),
+        library.saveSpinningTrackIds(_spinningTrackIds),
+        widget.player.setQueue(
+          tracks,
+          load: false,
+          preserveCurrent: true,
+        ),
+      ]);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              '${removedIds.length} verwaiste Einträge entfernt'
+              '${skippedNetwork > 0 ? ' · $skippedNetwork Netzwerk-Titel übersprungen' : ''}.',
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          scanningMusic = false;
+          scanDone = 0;
+          scanTotal = 0;
+        });
+      }
+    }
+  }
+
   Future<void> _clearLibrary() async {
     if (tracks.isEmpty && widget.player.queue.isEmpty) return;
 
@@ -1887,6 +2011,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               tooltip: 'Einzelne Dateien hinzufügen',
               icon: const Icon(Icons.library_music),
             ),
+            if (!Platform.isAndroid)
+              IconButton(
+                onPressed: tracks.isEmpty || scanningMusic ? null : _cleanLibrary,
+                tooltip: 'Bibliothek bereinigen',
+                icon: const Icon(Icons.cleaning_services_outlined),
+              ),
             IconButton(
               onPressed: tracks.isEmpty || scanningMusic ? null : _clearLibrary,
               tooltip: 'Bibliothek leeren',
