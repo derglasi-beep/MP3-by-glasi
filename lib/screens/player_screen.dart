@@ -55,6 +55,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   String? _visibleCacheKey;
 
   String search = '';
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _showLibrary = false;
   int? bpmMin;
   int? bpmMax;
@@ -99,6 +101,27 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   int _backgroundArtworkNew = 0;
   int _backgroundArtworkMissSkipped = 0;
   bool _suppressAutomaticBpm = false;
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted || search == value) return;
+      setState(() {
+        search = value;
+        _invalidateVisibleCache();
+      });
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    if (search.isEmpty) return;
+    setState(() {
+      search = '';
+      _invalidateVisibleCache();
+    });
+  }
 
   void _rebuildTrackIndex() {
     _trackIndexById
@@ -250,6 +273,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    var searchWasEmpty = true;
+    _searchController.addListener(() {
+      final isEmpty = _searchController.text.isEmpty;
+      if (!mounted || isEmpty == searchWasEmpty) return;
+      searchWasEmpty = isEmpty;
+      setState(() {});
+    });
     _playerErrorSub = widget.player.errorStream.listen(_showPlayerError);
     _playerTrackSub = widget.player.currentTrackStream.listen(_onCurrentTrackChanged);
     _playerStateSub = widget.player.playerStateStream.listen((state) {
@@ -341,6 +371,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _librarySaveTimer?.cancel();
     _backgroundUiRefreshTimer?.cancel();
     _artworkMissSaveTimer?.cancel();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     if (_librarySaveTimer != null) {
       unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
     }
@@ -1422,6 +1454,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       setState(() {
         tracks = [];
         search = '';
+        _searchController.clear();
         bpmMin = null;
         bpmMax = null;
         analyzing = false;
@@ -1963,14 +1996,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         child: TextField(
-          onChanged: (v) => setState(() {
-            search = v;
-            _invalidateVisibleCache();
-          }),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
+          controller: _searchController,
+          onChanged: _onSearchChanged,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
             hintText: 'Titel, Interpret oder Album',
-            border: OutlineInputBorder(),
+            border: const OutlineInputBorder(),
+            suffixIcon: _searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    onPressed: _clearSearch,
+                    tooltip: 'Suche leeren',
+                    icon: const Icon(Icons.close),
+                  ),
           ),
         ),
       ),
