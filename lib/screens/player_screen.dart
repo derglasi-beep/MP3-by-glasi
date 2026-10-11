@@ -2775,40 +2775,82 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                     );
                   }),
                 ],
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  IconButton(onPressed: widget.player.toggleShuffle,
-                    color: widget.player.shuffle ? Theme.of(context).colorScheme.primary : null,
-                    icon: const Icon(Icons.shuffle), tooltip: 'Zufallswiedergabe'),
-                  IconButton(onPressed: widget.player.previous, icon: const Icon(Icons.skip_previous), iconSize: 38),
-                  IconButton(
-                    tooltip: '10 Sekunden zurück',
-                    onPressed: t == null
-                        ? null
-                        : () => widget.player.seekRelative(
-                              const Duration(seconds: -10),
-                            ),
-                    icon: const Icon(Icons.replay_10),
-                  ),
-                  IconButton(
-                    onPressed: t == null ? null : ((ps.data?.playing ?? false)
-                        ? widget.player.pause : widget.player.play),
-                    icon: Icon((ps.data?.playing ?? false) ? Icons.pause_circle : Icons.play_circle),
-                    iconSize: 66),
-                  IconButton(
-                    tooltip: '10 Sekunden vor',
-                    onPressed: t == null
-                        ? null
-                        : () => widget.player.seekRelative(
-                              const Duration(seconds: 10),
-                            ),
-                    icon: const Icon(Icons.forward_10),
-                  ),
-                  IconButton(onPressed: widget.player.next, icon: const Icon(Icons.skip_next), iconSize: 38),
-                  IconButton(onPressed: widget.player.toggleRepeat,
-                    color: widget.player.loopMode != LoopMode.off ? Theme.of(context).colorScheme.primary : null,
-                    icon: Icon(widget.player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat),
-                    tooltip: 'Wiederholung'),
-                ]),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'Vorheriger Titel',
+                      onPressed: widget.player.previous,
+                      icon: const Icon(Icons.skip_previous),
+                      iconSize: 38,
+                    ),
+                    IconButton(
+                      tooltip: '10 Sekunden zurück',
+                      onPressed: t == null
+                          ? null
+                          : () => widget.player.seekRelative(
+                                const Duration(seconds: -10),
+                              ),
+                      icon: const Icon(Icons.replay_10),
+                      iconSize: 30,
+                    ),
+                    IconButton(
+                      onPressed: t == null
+                          ? null
+                          : ((ps.data?.playing ?? false)
+                              ? widget.player.pause
+                              : widget.player.play),
+                      icon: Icon(
+                        (ps.data?.playing ?? false)
+                            ? Icons.pause_circle
+                            : Icons.play_circle,
+                      ),
+                      iconSize: 66,
+                    ),
+                    IconButton(
+                      tooltip: '10 Sekunden vor',
+                      onPressed: t == null
+                          ? null
+                          : () => widget.player.seekRelative(
+                                const Duration(seconds: 10),
+                              ),
+                      icon: const Icon(Icons.forward_10),
+                      iconSize: 30,
+                    ),
+                    IconButton(
+                      tooltip: 'Nächster Titel',
+                      onPressed: widget.player.next,
+                      icon: const Icon(Icons.skip_next),
+                      iconSize: 38,
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: widget.player.toggleShuffle,
+                      color: widget.player.shuffle
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                      icon: const Icon(Icons.shuffle),
+                      tooltip: 'Zufallswiedergabe',
+                    ),
+                    const SizedBox(width: 24),
+                    IconButton(
+                      onPressed: widget.player.toggleRepeat,
+                      color: widget.player.loopMode != LoopMode.off
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                      icon: Icon(
+                        widget.player.loopMode == LoopMode.one
+                            ? Icons.repeat_one
+                            : Icons.repeat,
+                      ),
+                      tooltip: 'Wiederholung',
+                    ),
+                  ],
+                ),
                 Row(children: [
                   const Icon(Icons.volume_down),
                   Expanded(child: Slider(value: volume, onChanged: (v) {
