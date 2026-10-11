@@ -22,13 +22,38 @@ class MusicScanner {
         .where((file) => extensions.contains(_extension(file.path)))
         .toList(growable: false);
     final result = <Track>[];
-    for (var i = 0; i < candidates.length; i++) {
-      result.add(await _readTrack(candidates[i], loadArtwork: loadArtwork));
-      onProgress?.call(i + 1, candidates.length);
-      if (i % 8 == 7) {
+
+    // On desktop we deliberately skip artwork during the initial import.
+    // Reading metadata in batches avoids starting one isolate per track,
+    // which becomes extremely expensive for libraries with 10k+ files.
+    if (!loadArtwork && candidates.isNotEmpty) {
+      const batchSize = 96;
+      for (var start = 0; start < candidates.length; start += batchSize) {
+        final end = (start + batchSize).clamp(0, candidates.length);
+        final paths = <String>[
+          for (var i = start; i < end; i++) candidates[i].path,
+        ];
+        final snapshots = await Isolate.run(() => _readMetadataBatch(paths));
+
+        for (var i = 0; i < paths.length; i++) {
+          final path = paths[i];
+          final snapshot = snapshots[i];
+          result.add(_trackFromMetadataSnapshot(path, snapshot));
+        }
+
+        onProgress?.call(end, candidates.length);
         await Future<void>.delayed(Duration.zero);
       }
+    } else {
+      for (var i = 0; i < candidates.length; i++) {
+        result.add(await _readTrack(candidates[i], loadArtwork: loadArtwork));
+        onProgress?.call(i + 1, candidates.length);
+        if (i % 8 == 7) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
     }
+
     result.sort(
       (a, b) => (a.artist + a.title)
           .toLowerCase()
@@ -41,6 +66,7 @@ class MusicScanner {
     String path, {
     bool loadArtwork = true,
     void Function(int found)? onDiscoveryProgress,
+    void Function(int done, int total)? onMetadataProgress,
   }) async {
     final root = Directory(path);
     if (!await root.exists()) {
@@ -69,7 +95,11 @@ class MusicScanner {
       }
     }
 
-    return scanFiles(files, loadArtwork: loadArtwork);
+    return scanFiles(
+      files,
+      loadArtwork: loadArtwork,
+      onProgress: onMetadataProgress,
+    );
   }
 
   Future<Uint8List?> loadArtwork(String path) async {
@@ -182,6 +212,43 @@ class MusicScanner {
     final i = n.lastIndexOf('.');
     return i > 0 ? n.substring(0, i) : n;
   }
+}
+
+
+List<Map<String, Object?>?> _readMetadataBatch(List<String> paths) {
+  return [
+    for (final path in paths) _readMetadataSnapshot(path, false),
+  ];
+}
+
+Track _trackFromMetadataSnapshot(
+  String path,
+  Map<String, Object?>? snapshot,
+) {
+  final normalized = path.replaceAll('\\', '/');
+  final name = normalized.split('/').last;
+  final dot = name.lastIndexOf('.');
+  final fallbackTitle = dot > 0 ? name.substring(0, dot) : name;
+
+  if (snapshot == null) {
+    return Track(
+      id: path,
+      path: path,
+      title: fallbackTitle,
+    );
+  }
+
+  return Track(
+    id: path,
+    path: path,
+    title: snapshot['title'] as String? ?? fallbackTitle,
+    artist: snapshot['artist'] as String? ?? 'Unbekannt',
+    album: snapshot['album'] as String? ?? 'Unbekannt',
+    year: snapshot['year'] as int?,
+    duration: snapshot['durationMs'] == null
+        ? null
+        : Duration(milliseconds: snapshot['durationMs'] as int),
+  );
 }
 
 
