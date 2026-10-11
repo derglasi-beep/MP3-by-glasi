@@ -1197,6 +1197,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             scanTotal = 0;
           });
         },
+        onMetadataProgress: (done, total) {
+          if (!mounted) return;
+          setState(() {
+            scanDone = done;
+            scanTotal = total;
+          });
+        },
       );
 
       if (found.isEmpty) {
@@ -1869,9 +1876,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                               : 'Musik wird gesucht…')
                           : 'Smartphone-Musik scannen')
                       : (scanningMusic
-                          ? (scanDone > 0
-                              ? 'Musik wird gesucht… $scanDone gefunden'
-                              : 'Musik wird gesucht…')
+                          ? (scanTotal > 0
+                              ? 'Metadaten werden gelesen: $scanDone / $scanTotal'
+                              : (scanDone > 0
+                                  ? 'Musik wird gesucht… $scanDone gefunden'
+                                  : 'Musik wird gesucht…'))
                           : 'Musikordner hinzufügen'),
                 ),
               ),
