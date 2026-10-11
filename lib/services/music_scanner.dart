@@ -40,14 +40,35 @@ class MusicScanner {
   Future<List<Track>> scanDirectory(
     String path, {
     bool loadArtwork = true,
+    void Function(int found)? onDiscoveryProgress,
   }) async {
-    final dir = Directory(path);
-    if (!await dir.exists()) return const [];
+    final root = Directory(path);
+    if (!await root.exists()) {
+      throw FileSystemException('Ordner ist nicht erreichbar', path);
+    }
 
     final files = <File>[];
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File) files.add(entity);
+    final pending = <Directory>[root];
+
+    while (pending.isNotEmpty) {
+      final directory = pending.removeLast();
+      try {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (entity is Directory) {
+            pending.add(entity);
+          } else if (entity is File &&
+              extensions.contains(_extension(entity.path))) {
+            files.add(entity);
+            onDiscoveryProgress?.call(files.length);
+          }
+        }
+      } on FileSystemException {
+        // Ein einzelner gesperrter oder vorübergehend nicht erreichbarer
+        // Unterordner darf den kompletten Bibliotheks-Scan nicht abbrechen.
+        continue;
+      }
     }
+
     return scanFiles(files, loadArtwork: loadArtwork);
   }
 
