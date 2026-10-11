@@ -161,6 +161,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         const SizedBox(height: 6),
                         Row(
                           children: [
+                            FilledButton.tonalIcon(
+                              onPressed: track == null
+                                  ? null
+                                  : () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              LyricsScreen(track: track),
+                                        ),
+                                      ),
+                              icon: const Icon(Icons.lyrics_outlined),
+                              label: const Text('Lyrics'),
+                            ),
+                            const SizedBox(width: 8),
                             BpmBadge(bpm: track?.bpm),
                             if (track != null) ...[
                               const SizedBox(width: 8),
