@@ -1160,6 +1160,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           bpm: existing?.bpm ?? cached?.bpm,
           bpmConfidence:
               existing?.bpmConfidence ?? cached?.confidence,
+          bpmManual: existing?.bpmManual ?? false,
           artwork: existing?.artwork,
         ),
       );
@@ -1209,6 +1210,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       map[t.id] = t.copyWith(
         bpm: existing.bpm,
         bpmConfidence: existing.bpmConfidence,
+        bpmManual: existing.bpmManual,
         artwork: (t.artwork == null || t.artwork!.isEmpty)
             ? existing.artwork
             : t.artwork,
@@ -1219,7 +1221,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     for (final t in map.values) {
       final cached = await bpmCache.get(t.path);
       hydrated.add(
-        cached == null
+        cached == null || t.bpmManual
             ? t
             : t.copyWith(
                 bpm: cached.bpm,
@@ -1241,6 +1243,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _analyzeTrack(Track t) async {
+    if (t.bpmManual && t.bpm != null && t.bpm! > 0) return;
     if (analyzing) {
       _pendingBpmAnalysis = t;
       return;
@@ -1305,6 +1308,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       for (final track in List<Track>.from(tracks)) {
         if (!mounted) return;
 
+        // A manual correction is authoritative until the user changes it.
+        if (track.bpmManual && track.bpm != null && track.bpm! > 0) {
+          setState(() => analyzedCount++);
+          continue;
+        }
+
         // High-confidence results are already stable. Lower-confidence or
         // legacy results get a fresh online verification pass.
         if (track.bpm != null && (track.bpmConfidence ?? 0) >= 0.75) {
@@ -1367,6 +1376,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         updated = tracks[i].copyWith(
           bpm: value,
           bpmConfidence: confidence,
+          bpmManual: false,
         );
         tracks[i] = updated!;
         if (sortMode == _SortMode.bpm || bpmMin != null || bpmMax != null) {
@@ -1385,6 +1395,119 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       widget.player.updateTrack(updated!);
     }
     _scheduleLibrarySave();
+  }
+
+  Future<void> _editBpm(Track track) async {
+    final controller = TextEditingController(
+      text: track.bpm == null ? '' : track.bpm!.toStringAsFixed(
+        track.bpm! % 1 == 0 ? 0 : 1,
+      ),
+    );
+
+    final value = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('BPM manuell ändern'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${track.artist} – ${track.title}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'BPM',
+                  hintText: 'z. B. 128',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) {
+                  final parsed = double.tryParse(
+                    controller.text.trim().replaceAll(',', '.'),
+                  );
+                  if (parsed != null && parsed >= 20 && parsed <= 400) {
+                    Navigator.pop(dialogContext, parsed);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Manuell gesetzte BPM werden nicht mehr von der '
+                'automatischen Analyse überschrieben.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = double.tryParse(
+                controller.text.trim().replaceAll(',', '.'),
+              );
+              if (parsed == null || parsed < 20 || parsed > 400) {
+                ScaffoldMessenger.of(dialogContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text('Bitte einen BPM-Wert zwischen 20 und 400 eingeben.'),
+                    ),
+                  );
+                return;
+              }
+              Navigator.pop(dialogContext, parsed);
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (value == null || !mounted) return;
+
+    Track? updated;
+    setState(() {
+      final index = _trackIndex(track.id);
+      if (index < 0) return;
+      updated = tracks[index].copyWith(
+        bpm: value,
+        bpmConfidence: 1.0,
+        bpmManual: true,
+      );
+      tracks[index] = updated!;
+      _invalidateVisibleCache();
+    });
+
+    if (updated != null && widget.player.currentTrack?.id == track.id) {
+      widget.player.updateTrack(updated!);
+    }
+
+    await library.saveTrackMetadata(List<Track>.from(tracks));
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'BPM für „${track.title}“ auf ${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)} gesetzt.',
+          ),
+        ),
+      );
   }
 
   void _scheduleLibrarySave() {
@@ -1973,6 +2096,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                   if (action == 'spinning') {
                                     await _toggleSpinningTrack(t);
                                   }
+                                  if (action == 'bpm') {
+                                    await _editBpm(t);
+                                  }
                                 },
                                 itemBuilder: (_) => [
                                   const PopupMenuItem(
@@ -1999,6 +2125,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                           _spinningTrackIds.contains(t.id)
                                               ? 'Aus Spinning entfernen'
                                               : 'Für Spinning markieren',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'bpm',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.speed),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          t.bpmManual
+                                              ? 'BPM manuell ändern (aktuell ${t.bpm?.toStringAsFixed(1)})'
+                                              : 'BPM manuell ändern',
                                         ),
                                       ],
                                     ),
