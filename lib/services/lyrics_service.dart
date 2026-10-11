@@ -105,7 +105,11 @@ class LyricsService {
   Future<LyricsEntry?> searchOnline(Track track) async {
     final direct = await _getLrclib(track);
     if (direct != null) return direct;
-    return _searchLrclib(track);
+
+    final lrclibSearch = await _searchLrclib(track);
+    if (lrclibSearch != null) return lrclibSearch;
+
+    return _getLyricsOvh(track);
   }
 
   Future<LyricsEntry?> _getLrclib(Track track) async {
@@ -168,6 +172,53 @@ class LyricsService {
       if (entry != null) return entry;
     }
     return null;
+  }
+
+  Future<LyricsEntry?> _getLyricsOvh(Track track) async {
+    final artist = track.artist.trim();
+    final title = track.title.trim();
+    if (artist.isEmpty ||
+        title.isEmpty ||
+        artist.toLowerCase() == 'unbekannt' ||
+        artist.toLowerCase() == 'unknown') {
+      return null;
+    }
+
+    final uri = Uri.https(
+      'api.lyrics.ovh',
+      '/v1/${Uri.encodeComponent(artist)}/${Uri.encodeComponent(title)}',
+    );
+
+    try {
+      final response = await http
+          .get(uri, headers: {'User-Agent': _userAgent})
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 404) return null;
+      if (response.statusCode == 429) {
+        throw Exception(
+          'Lyrics-Dienst ist gerade ausgelastet. Bitte später erneut versuchen.',
+        );
+      }
+      if (response.statusCode != 200) return null;
+
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return null;
+
+      final lyrics = (decoded['lyrics'] as String? ?? '').trim();
+      if (lyrics.isEmpty) return null;
+
+      return LyricsEntry(
+        text: lyrics,
+        source: 'Lyrics.ovh',
+      );
+    } catch (error) {
+      if (error is Exception &&
+          error.toString().contains('ausgelastet')) {
+        rethrow;
+      }
+      return null;
+    }
   }
 
   LyricsEntry? _entryFromLrclib(Map<String, dynamic> data) {
