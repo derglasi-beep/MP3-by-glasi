@@ -56,6 +56,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   String search = '';
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _libraryScrollController = ScrollController();
   Timer? _searchDebounce;
   bool _showLibrary = false;
   int? bpmMin;
@@ -121,6 +122,46 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       search = '';
       _invalidateVisibleCache();
     });
+  }
+
+  void _scrollLibraryToTop() {
+    if (!_libraryScrollController.hasClients) return;
+    _libraryScrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _scrollToCurrentTrack(List<Track> visibleTracks) {
+    final current = widget.player.currentTrack;
+    if (current == null || !_libraryScrollController.hasClients) return;
+
+    final index = visibleTracks.indexWhere((track) => track.id == current.id);
+    if (index < 0) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Der aktuelle Titel ist durch Suche oder Filter ausgeblendet.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    const estimatedTileExtent = 72.0;
+    final target = (index * estimatedTileExtent).clamp(
+      0.0,
+      _libraryScrollController.position.maxScrollExtent,
+    );
+    _libraryScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _rebuildTrackIndex() {
@@ -373,6 +414,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _artworkMissSaveTimer?.cancel();
     _searchDebounce?.cancel();
     _searchController.dispose();
+    _libraryScrollController.dispose();
     if (_librarySaveTimer != null) {
       unawaited(library.saveTrackMetadata(List<Track>.from(tracks)));
     }
@@ -2103,6 +2145,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
           const Spacer(),
           IconButton(
+            onPressed: _scrollLibraryToTop,
+            tooltip: 'Zum Anfang',
+            icon: const Icon(Icons.vertical_align_top),
+          ),
+          IconButton(
+            onPressed: widget.player.currentTrack == null
+                ? null
+                : () => _scrollToCurrentTrack(visibleTracks),
+            tooltip: 'Zum aktuellen Titel',
+            icon: const Icon(Icons.my_location),
+          ),
+          IconButton(
             onPressed: () => setState(() {
               sortAscending = !sortAscending;
               _invalidateVisibleCache();
@@ -2396,6 +2450,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   : NotificationListener<ScrollNotification>(
                       onNotification: _onLibraryScroll,
                       child: ListView.builder(
+                      controller: _libraryScrollController,
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
