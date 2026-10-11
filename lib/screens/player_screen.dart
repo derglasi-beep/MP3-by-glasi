@@ -21,6 +21,7 @@ import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
 import 'queue_screen.dart';
 import 'now_playing_screen.dart';
+import 'lyrics_screen.dart';
 import 'spinning_screen.dart';
 import 'album_screen.dart';
 import 'artist_screen.dart';
@@ -2741,7 +2742,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     onPressed: t == null ? null : () => _analyzeTrack(t),
-                    icon: const Icon(Icons.speed), label: const Text('BPM')),
+                    icon: const Icon(Icons.speed),
+                    label: const Text('BPM'),
+                  ),
+                  if (t != null) ...[
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LyricsScreen(track: t),
+                        ),
+                      ),
+                      icon: const Icon(Icons.lyrics_outlined),
+                      label: const Text('Lyrics'),
+                    ),
+                  ],
                 ]),
                 if (t != null && onlineBpmTrackId == t.id && onlineBpmResult != null) ...[
                   const SizedBox(height: 4),
