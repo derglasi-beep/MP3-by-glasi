@@ -1,8 +1,12 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
+import '../services/spinning_transfer_service.dart';
 
 class SpinningScreen extends StatefulWidget {
   final AudioPlayerService player;
@@ -189,6 +193,7 @@ class _CurvePainter extends CustomPainter {
 class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
   final library = LibraryService();
+  final spinningTransfer = SpinningTransferService();
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   bool useSpinningLibrary = true;
@@ -565,6 +570,161 @@ class _SpinningScreenState extends State<SpinningScreen> {
       useSpinningLibrary = widget.spinningTrackIds.isNotEmpty;
       _setPlan(null);
     });
+  }
+
+  Future<void> _exportSpinningProfile() async {
+    if (widget.spinningTrackIds.isEmpty) return;
+
+    final savePath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Spinning-Markierungen exportieren',
+      fileName: 'MP3-by-Glasi-Spinning.json',
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+    );
+    if (savePath == null || savePath.isEmpty) return;
+
+    final raw = spinningTransfer.exportProfile(
+      library: widget.tracks,
+      spinningTrackIds: widget.spinningTrackIds,
+      phasesByTrackId: _phaseEligibility,
+    );
+
+    try {
+      await File(savePath).writeAsString(raw, flush: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Spinning-Export fehlgeschlagen: $error')),
+        );
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.spinningTrackIds.length} Spinning-Markierungen exportiert.',
+          ),
+        ),
+      );
+  }
+
+  Future<void> _importSpinningProfile() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+    );
+    final path = picked?.files.single.path;
+    if (path == null || path.isEmpty) return;
+
+    SpinningImportResult result;
+    try {
+      result = await spinningTransfer.importFile(
+        File(path),
+        widget.tracks,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Spinning-Import fehlgeschlagen: $error')),
+        );
+      return;
+    }
+
+    if (!mounted) return;
+
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Spinning-Markierungen importieren'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${result.matchedCount} Titel gefunden · '
+                '${result.unmatched.length} nicht gefunden',
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Gefundene Titel werden zur vorhandenen Spinning-Auswahl '
+                'hinzugefügt. Bestehende Markierungen bleiben erhalten.',
+              ),
+              if (result.unmatched.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text(
+                  'Nicht gefunden:',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: result.unmatched.length,
+                    itemBuilder: (_, index) => Text(
+                      '• ${result.unmatched[index]}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: result.matchedCount == 0
+                ? null
+                : () => Navigator.pop(dialogContext, true),
+            child: const Text('Importieren'),
+          ),
+        ],
+      ),
+    );
+
+    if (apply != true || !mounted) return;
+
+    widget.spinningTrackIds.addAll(result.matched.keys);
+    for (final entry in result.matched.entries) {
+      if (entry.value.isEmpty) continue;
+      _phaseEligibility[entry.key] = Set<SpinningPhase>.from(entry.value);
+    }
+
+    await library.saveSpinningTrackIds(widget.spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final entry in _phaseEligibility.entries)
+        entry.key: entry.value.map((phase) => phase.name).toSet(),
+    });
+
+    if (!mounted) return;
+    setState(() {
+      useSpinningLibrary = widget.spinningTrackIds.isNotEmpty;
+      _setPlan(null);
+    });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result.matchedCount} Spinning-Markierungen importiert.',
+          ),
+        ),
+      );
   }
 
   Future<void> _clearSpinningLibrary() async {
@@ -1089,6 +1249,33 @@ class _SpinningScreenState extends State<SpinningScreen> {
               ),
             ),
             const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              tooltip: 'Spinning-Markierungen übertragen',
+              icon: const Icon(Icons.sync_alt),
+              onSelected: (value) {
+                if (value == 'import') _importSpinningProfile();
+                if (value == 'export') _exportSpinningProfile();
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'import',
+                  child: ListTile(
+                    leading: Icon(Icons.file_download_outlined),
+                    title: Text('Importieren'),
+                    subtitle: Text('Markierungen von anderem Gerät übernehmen'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'export',
+                  enabled: widget.spinningTrackIds.isNotEmpty,
+                  child: const ListTile(
+                    leading: Icon(Icons.file_upload_outlined),
+                    title: Text('Exportieren'),
+                    subtitle: Text('Markierungen und Phasen sichern'),
+                  ),
+                ),
+              ],
+            ),
             IconButton.filledTonal(
               onPressed: widget.spinningTrackIds.isEmpty
                   ? null
