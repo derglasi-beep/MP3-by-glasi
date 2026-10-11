@@ -401,32 +401,27 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    final checks = await Future.wait(
-      saved.map((t) async {
-        final isWindowsNetworkPath = Platform.isWindows &&
-            (t.path.startsWith(r'\\') || t.path.startsWith('//'));
-        if (isWindowsNetworkPath) {
+    final valid = <Track>[];
+    if (Platform.isWindows) {
+      // Do not stat every file on startup. With 10k+ tracks this causes a
+      // burst of filesystem/network requests and can make the app appear
+      // frozen. Stale entries are handled when a user actually accesses them.
+      valid.addAll(saved);
+    } else {
+      final checks = await Future.wait(
+        saved.map((t) async {
           try {
-            final exists = await File(t.path)
-                .exists()
-                .timeout(const Duration(milliseconds: 800));
-            return MapEntry(t, exists ? true : null);
+            return MapEntry(t, await File(t.path).exists());
           } catch (_) {
-            return MapEntry(t, null);
+            return MapEntry(t, false);
           }
-        }
-
-        try {
-          return MapEntry(t, await File(t.path).exists());
-        } catch (_) {
-          return MapEntry(t, false);
-        }
-      }),
-    );
-    final valid = <Track>[
-      for (final check in checks)
-        if (check.value != false) check.key,
-    ];
+        }),
+      );
+      valid.addAll([
+        for (final check in checks)
+          if (check.value) check.key,
+      ]);
+    }
     if (!mounted) return;
 
     setState(() {
@@ -440,7 +435,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _rebuildTrackIndex();
       _invalidateVisibleCache();
     });
-    if (valid.length != saved.length) {
+    if (!Platform.isWindows && valid.length != saved.length) {
       await library.saveTracks(valid);
     }
     final lastTrackId = await settings.lastTrackId;
@@ -1406,9 +1401,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       );
     }
 
+    final cache = await bpmCache.snapshot();
     final hydrated = <Track>[];
     for (final t in map.values) {
-      final cached = await bpmCache.get(t.path);
+      final cached = cache[t.path];
       hydrated.add(
         cached == null || t.bpmManual
             ? t
