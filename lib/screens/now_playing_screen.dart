@@ -5,6 +5,7 @@ import '../services/audio_player_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'queue_screen.dart';
+import 'lyrics_screen.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final AudioPlayerService player;
@@ -35,6 +36,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         title: const SizedBox.shrink(),
         centerTitle: false,
         actions: [
+          IconButton(
+            tooltip: 'Lyrics',
+            onPressed: () {
+              final track = player.currentTrack;
+              if (track == null) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LyricsScreen(track: track),
+                ),
+              );
+            },
+            icon: const Icon(Icons.lyrics_outlined),
+          ),
           IconButton(
             tooltip: 'Queue',
             onPressed: () => Navigator.push(
