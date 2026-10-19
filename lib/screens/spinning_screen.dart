@@ -376,6 +376,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return minZone == maxZone ? 'Zone $minZone' : 'Zone $minZone–$maxZone';
   }
 
+  ({int min, int max}) _standardHeartRateRange(SpinningPhase phase) =>
+      switch (phase) {
+        SpinningPhase.warmup => (min: 50, max: 60),
+        SpinningPhase.build => (min: 60, max: 70),
+        SpinningPhase.load => (min: 70, max: 80),
+        SpinningPhase.peak => (min: 80, max: 90),
+        SpinningPhase.cooldown => (min: 50, max: 60),
+      };
+
+  String _standardHeartRateText(SpinningPhase phase) {
+    final range = _standardHeartRateRange(phase);
+    final minZone = _heartRateZone(range.min.toDouble());
+    final maxZone = _heartRateZone(range.max.toDouble());
+    final zoneText =
+        minZone == maxZone ? 'Zone $minZone' : 'Zone $minZone–$maxZone';
+    return 'HF ${range.min}–${range.max} % · $zoneText';
+  }
+
   List<Track> get _spinningTracks => widget.tracks
       .where((track) => widget.spinningTrackIds.contains(track.id))
       .toList(growable: false);
@@ -2056,10 +2074,23 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ] else ...[
             for (final phase in p.phases)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: Text(phase.label)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(phase.label),
+                          const SizedBox(height: 2),
+                          Text(
+                            _standardHeartRateText(phase.phase),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
                     Text(
                       '${_displayBpm(phase.minBpm.toDouble()).round()}–'
                       '${_displayBpm(phase.maxBpm.toDouble()).round()} BPM',
