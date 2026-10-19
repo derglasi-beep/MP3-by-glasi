@@ -589,6 +589,8 @@ class AudioPlayerService {
       settings.preamp,
       settings.bass,
       settings.treble,
+      settings.shuffle,
+      settings.repeatMode,
     ]);
 
     _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
@@ -596,7 +598,19 @@ class AudioPlayerService {
     _preamp = (values[3] as double).clamp(-12, 12).toDouble();
     _bass = (values[4] as double).clamp(-12, 12).toDouble();
     _treble = (values[5] as double).clamp(-12, 12).toDouble();
+    shuffle = values[6] as bool;
+    loopMode = switch ((values[7] as int).clamp(0, 2)) {
+      1 => LoopMode.all,
+      2 => LoopMode.one,
+      _ => LoopMode.off,
+    };
     _audioSettingsLoaded = true;
+
+    // Navigation is handled by this service, so keep just_audio's own
+    // shuffle/repeat disabled and restore only our persisted mode state.
+    await audio.setShuffleModeEnabled(false);
+    await audio.setLoopMode(LoopMode.off);
+    _publishQueue();
 
     await setSpeed(values[1] as double);
     await _applyEffectiveVolume();
@@ -679,6 +693,7 @@ class AudioPlayerService {
     shuffle = !shuffle;
     if (!shuffle) _history.clear();
     await audio.setShuffleModeEnabled(false);
+    await _settings.setShuffle(shuffle);
     _publishQueue();
   }
 
@@ -689,6 +704,12 @@ class AudioPlayerService {
       LoopMode.one => LoopMode.off,
     };
     await audio.setLoopMode(LoopMode.off);
+    final persistedMode = switch (loopMode) {
+      LoopMode.all => 1,
+      LoopMode.one => 2,
+      _ => 0,
+    };
+    await _settings.setRepeatMode(persistedMode);
     _publishQueue();
   }
 
