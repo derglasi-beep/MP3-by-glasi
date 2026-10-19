@@ -151,6 +151,7 @@ class SpinningPlan {
   final List<SpinningPhaseSpec> phases;
   final List<SpinningCurvePoint> curve;
   final List<SpinningSelection> selections;
+  final Map<SpinningPhase, Duration> phaseDurations;
 
   const SpinningPlan({
     required this.duration,
@@ -158,6 +159,7 @@ class SpinningPlan {
     required this.phases,
     this.curve = const [],
     this.selections = const [],
+    this.phaseDurations = const <SpinningPhase, Duration>{},
   });
 }
 
@@ -205,8 +207,16 @@ class SpinningPlaylistService {
     List<SpinningCurvePoint>? curveOverride,
   }) {
     final usable = library.where((t) => t.bpm != null && t.bpm! > 0).toList();
+    final phaseDurations = curveOverride == null
+        ? standardPhaseDurations(duration, phases: phases)
+        : _phaseDurationsFromCurve(curveOverride, duration);
     if (usable.isEmpty || duration <= Duration.zero) {
-      return SpinningPlan(duration: duration, tracks: const [], phases: phases);
+      return SpinningPlan(
+        duration: duration,
+        tracks: const [],
+        phases: phases,
+        phaseDurations: phaseDurations,
+      );
     }
 
     final curve = curveOverride ??
@@ -276,6 +286,7 @@ class SpinningPlaylistService {
       phases: phases,
       curve: curve,
       selections: selections,
+      phaseDurations: phaseDurations,
     );
   }
 
@@ -289,6 +300,9 @@ class SpinningPlaylistService {
     final usable = tracks.where((t) => t.bpm != null && t.bpm! > 0).toList();
     final curve = curveOverride ??
         buildCurve(duration, phases: phases, profile: profile);
+    final phaseDurations = curveOverride == null
+        ? standardPhaseDurations(duration, phases: phases)
+        : _phaseDurationsFromCurve(curve, duration);
     final selections = <SpinningSelection>[];
     var elapsed = Duration.zero;
 
@@ -311,6 +325,7 @@ class SpinningPlaylistService {
       phases: phases,
       curve: curve,
       selections: selections,
+      phaseDurations: phaseDurations,
     );
   }
 
@@ -321,6 +336,7 @@ class SpinningPlaylistService {
     SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
   }) {
     final curve = buildCurve(duration, phases: phases, profile: profile);
+    final phaseDurations = standardPhaseDurations(duration, phases: phases);
     final selections = <SpinningSelection>[];
     final tracks = <Track>[];
     final used = <String>{};
@@ -365,6 +381,7 @@ class SpinningPlaylistService {
       phases: phases,
       curve: curve,
       selections: selections,
+      phaseDurations: phaseDurations,
     );
   }
 
@@ -427,6 +444,36 @@ class SpinningPlaylistService {
     }
 
     return points;
+  }
+
+  Map<SpinningPhase, Duration> _phaseDurationsFromCurve(
+    List<SpinningCurvePoint> curve,
+    Duration totalDuration,
+  ) {
+    if (curve.isEmpty || totalDuration <= Duration.zero) {
+      return const <SpinningPhase, Duration>{};
+    }
+
+    final resultMs = <SpinningPhase, int>{
+      for (final phase in SpinningPhase.values) phase: 0,
+    };
+
+    for (var i = 0; i < curve.length; i++) {
+      final start = curve[i].position;
+      final end = i + 1 < curve.length
+          ? curve[i + 1].position
+          : totalDuration;
+      final delta = end - start;
+      if (delta > Duration.zero) {
+        resultMs[curve[i].phase] =
+            (resultMs[curve[i].phase] ?? 0) + delta.inMilliseconds;
+      }
+    }
+
+    return {
+      for (final phase in SpinningPhase.values)
+        phase: Duration(milliseconds: resultMs[phase] ?? 0),
+    };
   }
 
   Map<SpinningPhase, Duration> standardPhaseDurations(
