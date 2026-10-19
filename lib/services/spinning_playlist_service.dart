@@ -429,6 +429,82 @@ class SpinningPlaylistService {
     return points;
   }
 
+  Map<SpinningPhase, Duration> standardPhaseDurations(
+    Duration duration, {
+    List<SpinningPhaseSpec> phases = defaultPhases,
+  }) {
+    if (duration <= Duration.zero || phases.isEmpty) {
+      return <SpinningPhase, Duration>{};
+    }
+
+    final totalMs = duration.inMilliseconds;
+    final weights = <SpinningPhase, double>{};
+    for (final spec in phases) {
+      weights[spec.phase] = (weights[spec.phase] ?? 0) + spec.share;
+    }
+
+    final totalWeight = weights.values.fold<double>(0, (sum, value) => sum + value);
+    if (totalWeight <= 0) return <SpinningPhase, Duration>{};
+
+    double rawMs(SpinningPhase phase) =>
+        totalMs * ((weights[phase] ?? 0) / totalWeight);
+
+    final warmupMs = min(
+      rawMs(SpinningPhase.warmup),
+      const Duration(minutes: 10).inMilliseconds.toDouble(),
+    );
+    final cooldownMs = min(
+      rawMs(SpinningPhase.cooldown),
+      const Duration(minutes: 8).inMilliseconds.toDouble(),
+    );
+
+    final workPhases = <SpinningPhase>[
+      SpinningPhase.build,
+      SpinningPhase.load,
+      SpinningPhase.peak,
+    ];
+    final workWeight = workPhases.fold<double>(
+      0,
+      (sum, phase) => sum + (weights[phase] ?? 0),
+    );
+    final remainingMs = max(0.0, totalMs - warmupMs - cooldownMs);
+
+    final resultMs = <SpinningPhase, int>{
+      SpinningPhase.warmup: warmupMs.round(),
+      SpinningPhase.cooldown: cooldownMs.round(),
+    };
+
+    var allocatedWorkMs = 0;
+    for (var i = 0; i < workPhases.length; i++) {
+      final phase = workPhases[i];
+      final isLast = i == workPhases.length - 1;
+      final value = isLast
+          ? remainingMs.round() - allocatedWorkMs
+          : workWeight <= 0
+              ? 0
+              : (remainingMs * ((weights[phase] ?? 0) / workWeight)).round();
+      resultMs[phase] = max(0, value);
+      allocatedWorkMs += max(0, value);
+    }
+
+    // Any millisecond-level rounding residue goes to a working phase, never
+    // to warm-up/cool-down, so their hard caps remain exact.
+    final allocatedTotal = resultMs.values.fold<int>(0, (sum, value) => sum + value);
+    final residue = totalMs - allocatedTotal;
+    if (residue != 0) {
+      final phase = workPhases.firstWhere(
+        (item) => (weights[item] ?? 0) > 0,
+        orElse: () => SpinningPhase.load,
+      );
+      resultMs[phase] = max(0, (resultMs[phase] ?? 0) + residue);
+    }
+
+    return {
+      for (final phase in SpinningPhase.values)
+        phase: Duration(milliseconds: resultMs[phase] ?? 0),
+    };
+  }
+
   List<SpinningCurvePoint> buildCurve(
     Duration duration, {
     List<SpinningPhaseSpec> phases = defaultPhases,
@@ -441,74 +517,40 @@ class SpinningPlaylistService {
     final variant = _random.nextInt(3);
     final specs = {for (final spec in phases) spec.phase: spec};
     final blocks = _curveBlocks(profile, variant);
+    final phaseDurations = standardPhaseDurations(
+      duration,
+      phases: phases,
+    );
 
-    // Built-in training profiles keep warm-up and cool-down compact even for
-    // long sessions. Any capped time is redistributed across the working
-    // phases so the selected total session duration remains unchanged.
-    final totalMs = duration.inMilliseconds;
-    double rawWarmupMs = 0;
-    double rawCooldownMs = 0;
-    double rawWorkMs = 0;
-
+    final phaseBlockWeights = <SpinningPhase, double>{};
     for (final block in blocks) {
-      final rawMs = totalMs * block.share;
-      switch (block.phase) {
-        case SpinningPhase.warmup:
-          rawWarmupMs += rawMs;
-        case SpinningPhase.cooldown:
-          rawCooldownMs += rawMs;
-        default:
-          rawWorkMs += rawMs;
-      }
+      phaseBlockWeights[block.phase] =
+          (phaseBlockWeights[block.phase] ?? 0) + block.share;
     }
 
-    final warmupMs = min(
-      rawWarmupMs,
-      const Duration(minutes: 10).inMilliseconds.toDouble(),
-    );
-    final cooldownMs = min(
-      rawCooldownMs,
-      const Duration(minutes: 8).inMilliseconds.toDouble(),
-    );
-    final workMs = max(0.0, totalMs - warmupMs - cooldownMs);
+    final blockDurationsMs = List<int>.filled(blocks.length, 0);
+    final allocatedByPhase = <SpinningPhase, int>{};
+    final lastIndexByPhase = <SpinningPhase, int>{};
+    for (var i = 0; i < blocks.length; i++) {
+      lastIndexByPhase[blocks[i].phase] = i;
+    }
 
-    final warmupScale =
-        rawWarmupMs <= 0 ? 0.0 : warmupMs / rawWarmupMs;
-    final cooldownScale =
-        rawCooldownMs <= 0 ? 0.0 : cooldownMs / rawCooldownMs;
-    final workScale = rawWorkMs <= 0 ? 0.0 : workMs / rawWorkMs;
+    for (var i = 0; i < blocks.length; i++) {
+      final block = blocks[i];
+      final phaseBudgetMs =
+          phaseDurations[block.phase]?.inMilliseconds ?? 0;
+      final phaseWeight = phaseBlockWeights[block.phase] ?? 0;
+      final isLastForPhase = lastIndexByPhase[block.phase] == i;
 
-    final blockDurationsMs = <int>[
-      for (final block in blocks)
-        (totalMs *
-                block.share *
-                switch (block.phase) {
-                  SpinningPhase.warmup => warmupScale,
-                  SpinningPhase.cooldown => cooldownScale,
-                  _ => workScale,
-                })
-            .round(),
-    ];
+      final value = isLastForPhase
+          ? phaseBudgetMs - (allocatedByPhase[block.phase] ?? 0)
+          : phaseWeight <= 0
+              ? 0
+              : (phaseBudgetMs * (block.share / phaseWeight)).round();
 
-    // Rounding can leave a few milliseconds. Never put that remainder into
-    // warm-up or cool-down, otherwise their hard caps could be exceeded.
-    final allocatedMs =
-        blockDurationsMs.fold<int>(0, (sum, value) => sum + value);
-    final remainderMs = totalMs - allocatedMs;
-    if (remainderMs != 0) {
-      var adjustmentIndex = -1;
-      for (var i = blockDurationsMs.length - 1; i >= 0; i--) {
-        final phase = blocks[i].phase;
-        if (phase != SpinningPhase.warmup &&
-            phase != SpinningPhase.cooldown) {
-          adjustmentIndex = i;
-          break;
-        }
-      }
-      if (adjustmentIndex >= 0) {
-        blockDurationsMs[adjustmentIndex] =
-            max(0, blockDurationsMs[adjustmentIndex] + remainderMs);
-      }
+      blockDurationsMs[i] = max(0, value);
+      allocatedByPhase[block.phase] =
+          (allocatedByPhase[block.phase] ?? 0) + blockDurationsMs[i];
     }
 
     final points = <SpinningCurvePoint>[];
