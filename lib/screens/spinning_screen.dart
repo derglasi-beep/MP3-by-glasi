@@ -404,11 +404,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
   ({int min, int max}) _standardHeartRateRange(SpinningPhase phase) =>
       switch (phase) {
-        SpinningPhase.warmup => (min: 50, max: 60),
+        SpinningPhase.warmup => (min: 65, max: 69),
         SpinningPhase.build => (min: 60, max: 70),
         SpinningPhase.load => (min: 70, max: 80),
         SpinningPhase.peak => (min: 80, max: 90),
-        SpinningPhase.cooldown => (min: 50, max: 60),
+        SpinningPhase.cooldown => (min: 60, max: 65),
       };
 
   String _standardHeartRateText(SpinningPhase phase) {
@@ -417,6 +417,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
     final maxZone = _heartRateZone(range.max.toDouble());
     final zoneText =
         minZone == maxZone ? 'Zone $minZone' : 'Zone $minZone–$maxZone';
+
+    if (phase == SpinningPhase.cooldown) {
+      return 'HF ${range.max}→${range.min} % · $zoneText';
+    }
     return 'HF ${range.min}–${range.max} % · $zoneText';
   }
 
