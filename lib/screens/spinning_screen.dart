@@ -350,6 +350,32 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return ' · HF $min–$max % · $minPulse–$maxPulse bpm · Zone $zone';
   }
 
+  String _scaledSegmentDuration(
+    CustomBpmSegment segment,
+    CustomBpmProfile profile,
+  ) {
+    if (profile.duration <= Duration.zero || duration <= Duration.zero) {
+      return '${segment.duration.inMinutes} min';
+    }
+    final scaledSeconds = (segment.duration.inSeconds *
+            duration.inSeconds /
+            profile.duration.inSeconds)
+        .round();
+    final minutes = scaledSeconds ~/ 60;
+    final seconds = scaledSeconds % 60;
+    if (seconds == 0) return '$minutes min';
+    return '$minutes:${seconds.toString().padLeft(2, '0')} min';
+  }
+
+  String _heartRateZoneLabel(CustomBpmSegment segment) {
+    final min = segment.minHeartRatePercent;
+    final max = segment.maxHeartRatePercent;
+    if (min == null || max == null) return 'keine HF-Vorgabe';
+    final minZone = _heartRateZone(min.toDouble());
+    final maxZone = _heartRateZone(max.toDouble());
+    return minZone == maxZone ? 'Zone $minZone' : 'Zone $minZone–$maxZone';
+  }
+
   List<Track> get _spinningTracks => widget.tracks
       .where((track) => widget.spinningTrackIds.contains(track.id))
       .toList(growable: false);
@@ -1978,17 +2004,70 @@ class _SpinningScreenState extends State<SpinningScreen> {
           Text('${p.tracks.length} Tracks · ${duration.inMinutes} Minuten', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 3),
           Text(
-            'Die Kurve ist das Ziel – einzelne Tracks dürfen leicht davon abweichen.',
+            _activeCustomProfile == null
+                ? 'Die Kurve ist das Ziel – einzelne Tracks dürfen leicht davon abweichen.'
+                : 'Musik-BPM und Herzfrequenz sind getrennte Zielwerte. '
+                    'Die Abschnittszeiten sind auf die gewählte Sessiondauer skaliert.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
-          for (final phase in p.phases) Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Row(children: [
-              Expanded(child: Text(phase.label)),
-              Text('${_displayBpm(phase.minBpm.toDouble()).round()}–${_displayBpm(phase.maxBpm.toDouble()).round()} BPM'),
-            ]),
-          ),
+          if (_activeCustomProfile case final custom?) ...[
+            for (final segment in custom.segments)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 76,
+                      child: Text(
+                        _scaledSegmentDuration(segment, custom),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            segment.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_displayBpm(segment.minBpm.toDouble()).round()}–'
+                            '${_displayBpm(segment.maxBpm.toDouble()).round()} Musik-BPM'
+                            '${_heartRateTargetText(segment, custom.maxHeartRate)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _heartRateZoneLabel(segment),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+          ] else ...[
+            for (final phase in p.phases)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(phase.label)),
+                    Text(
+                      '${_displayBpm(phase.minBpm.toDouble()).round()}–'
+                      '${_displayBpm(phase.maxBpm.toDouble()).round()} BPM',
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ]))),
         const SizedBox(height: 14),
         Card(
