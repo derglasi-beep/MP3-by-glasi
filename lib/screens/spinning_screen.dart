@@ -351,20 +351,46 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   String _scaledSegmentDuration(
-    CustomBpmSegment segment,
     CustomBpmProfile profile,
+    int index,
   ) {
-    if (profile.duration <= Duration.zero || duration <= Duration.zero) {
-      return '${segment.duration.inMinutes} min';
-    }
-    final scaledSeconds = (segment.duration.inSeconds *
-            duration.inSeconds /
-            profile.duration.inSeconds)
-        .round();
-    final minutes = scaledSeconds ~/ 60;
-    final seconds = scaledSeconds % 60;
+    final scaled = planner.scaledCustomSegmentDurations(profile, duration);
+    final value = index >= 0 && index < scaled.length
+        ? scaled[index]
+        : profile.segments[index].duration;
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds.remainder(60);
     if (seconds == 0) return '$minutes min';
     return '$minutes:${seconds.toString().padLeft(2, '0')} min';
+  }
+
+  bool _validateCustomSessionDuration() {
+    final custom = _activeCustomProfile;
+    if (custom == null) return true;
+
+    final scaled = planner.scaledCustomSegmentDurations(custom, duration);
+    if (scaled.length == custom.segments.length) return true;
+
+    final fixed = custom.segments
+        .where((segment) =>
+            segment.phase == SpinningPhase.warmup ||
+            segment.phase == SpinningPhase.cooldown)
+        .fold<Duration>(
+          Duration.zero,
+          (sum, segment) => sum + segment.duration,
+        );
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Die gewählte Session ist zu kurz: Warm-up und Cool-down '
+            'benötigen zusammen mindestens ${fixed.inMinutes} Minuten.',
+          ),
+        ),
+      );
+    return false;
   }
 
   String _heartRateZoneLabel(CustomBpmSegment segment) {
@@ -409,6 +435,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       useSpinningLibrary ? _spinningTracks : widget.tracks;
 
   void _buildPlan() {
+    if (!_validateCustomSessionDuration()) return;
     final active = _activeLibrary;
     final usable =
         active.where((track) => track.bpm != null && track.bpm! > 0).toList();
@@ -447,6 +474,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   void _buildManualPlan() {
+    if (!_validateCustomSessionDuration()) return;
     setState(() {
       _setPlan(
         _activeCustomProfile == null
@@ -1975,8 +2003,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
           const SizedBox(height: 6),
           Text(
             '${_activeCustomProfile!.segments.length} Abschnitte · '
-            '${_activeCustomProfile!.duration.inMinutes} Minuten. '
-            'Die automatische Planung folgt dieser Kurve.',
+            '${_activeCustomProfile!.duration.inMinutes} Minuten Vorlage. '
+            'Warm-up/Cool-down bleiben fest, die mittleren Intervalle '
+            'passen sich an die Sessiondauer an.',
             style: Theme.of(context).textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
@@ -2037,7 +2066,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ),
           const SizedBox(height: 8),
           if (_activeCustomProfile case final custom?) ...[
-            for (final segment in custom.segments)
+            for (final entry in custom.segments.indexed)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
@@ -2046,7 +2075,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                     SizedBox(
                       width: 76,
                       child: Text(
-                        _scaledSegmentDuration(segment, custom),
+                        _scaledSegmentDuration(custom, entry.$1),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
@@ -2055,16 +2084,16 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            segment.label,
+                            entry.$2.label,
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${_displayBpm(segment.minBpm.toDouble()).round()}–'
-                            '${_displayBpm(segment.maxBpm.toDouble()).round()} Musik-BPM'
-                            '${_heartRateTargetText(segment, custom.maxHeartRate)}',
+                            '${_displayBpm(entry.$2.minBpm.toDouble()).round()}–'
+                            '${_displayBpm(entry.$2.maxBpm.toDouble()).round()} Musik-BPM'
+                            '${_heartRateTargetText(entry.$2, custom.maxHeartRate)}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -2072,7 +2101,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _heartRateZoneLabel(segment),
+                      _heartRateZoneLabel(entry.$2),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
