@@ -369,14 +369,28 @@ class SpinningPlaylistService {
   }
 
   List<SpinningCurvePoint> buildCustomCurve(
-    CustomBpmProfile profile,
-  ) {
+    CustomBpmProfile profile, {
+    Duration? targetDuration,
+  }) {
     if (profile.segments.isEmpty) return const <SpinningCurvePoint>[];
+
+    final sourceDuration = profile.duration;
+    if (sourceDuration <= Duration.zero) {
+      return const <SpinningCurvePoint>[];
+    }
+
+    final effectiveDuration = targetDuration != null &&
+            targetDuration > Duration.zero
+        ? targetDuration
+        : sourceDuration;
+    final scale =
+        effectiveDuration.inMilliseconds / sourceDuration.inMilliseconds;
 
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
 
-    for (final segment in profile.segments) {
+    for (var index = 0; index < profile.segments.length; index++) {
+      final segment = profile.segments[index];
       if (segment.duration <= Duration.zero) continue;
       final min = segment.minBpm.toDouble();
       final max = segment.maxBpm.toDouble();
@@ -392,7 +406,16 @@ class SpinningPlaylistService {
           tolerance: ((endTarget - startTarget) / 2).clamp(4, 15).toDouble(),
         ),
       );
-      elapsed += segment.duration;
+
+      final isLast = index == profile.segments.length - 1;
+      elapsed = isLast
+          ? effectiveDuration
+          : elapsed +
+              Duration(
+                milliseconds:
+                    (segment.duration.inMilliseconds * scale).round(),
+              );
+
       points.add(
         SpinningCurvePoint(
           position: elapsed,
