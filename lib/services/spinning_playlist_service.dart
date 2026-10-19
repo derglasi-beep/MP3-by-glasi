@@ -11,8 +11,8 @@ class CustomBpmSegment {
   final Duration duration;
   final int minBpm;
   final int maxBpm;
-  final int? minHeartRate;
-  final int? maxHeartRate;
+  final int? minHeartRatePercent;
+  final int? maxHeartRatePercent;
   final SpinningPhase phase;
 
   const CustomBpmSegment({
@@ -20,8 +20,8 @@ class CustomBpmSegment {
     required this.duration,
     required this.minBpm,
     required this.maxBpm,
-    this.minHeartRate,
-    this.maxHeartRate,
+    this.minHeartRatePercent,
+    this.maxHeartRatePercent,
     required this.phase,
   });
 
@@ -30,8 +30,8 @@ class CustomBpmSegment {
         'durationSeconds': duration.inSeconds,
         'minBpm': minBpm,
         'maxBpm': maxBpm,
-        'minHeartRate': minHeartRate,
-        'maxHeartRate': maxHeartRate,
+        'minHeartRatePercent': minHeartRatePercent,
+        'maxHeartRatePercent': maxHeartRatePercent,
         'phase': phase.name,
       };
 
@@ -48,8 +48,8 @@ class CustomBpmSegment {
       ),
       minBpm: (json['minBpm'] as num?)?.toInt() ?? 120,
       maxBpm: (json['maxBpm'] as num?)?.toInt() ?? 140,
-      minHeartRate: (json['minHeartRate'] as num?)?.toInt(),
-      maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
+      minHeartRatePercent: (json['minHeartRatePercent'] as num?)?.toInt(),
+      maxHeartRatePercent: (json['maxHeartRatePercent'] as num?)?.toInt(),
       phase: phase,
     );
   }
