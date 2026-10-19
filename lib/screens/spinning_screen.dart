@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/custom_bpm_profile_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_transfer_service.dart';
@@ -194,10 +195,13 @@ class _SpinningScreenState extends State<SpinningScreen> {
   final planner = SpinningPlaylistService();
   final library = LibraryService();
   final spinningTransfer = SpinningTransferService();
+  final customBpmProfiles = CustomBpmProfileService();
   Duration duration = const Duration(minutes: 45);
   bool sprintMode = false;
   bool useSpinningLibrary = true;
   SpinningTrainingProfile trainingProfile = SpinningTrainingProfile.cadence;
+  List<CustomBpmProfile> _customProfiles = const <CustomBpmProfile>[];
+  String? _activeCustomProfileId;
   SpinningPlan? plan;
   final Map<String, Set<SpinningPhase>> _phaseEligibility =
       <String, Set<SpinningPhase>>{};
@@ -208,6 +212,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
     plan = widget.initialPlan;
     _loadSpinningPhases();
     _loadTrainingProfile();
+    _loadCustomBpmProfiles();
   }
 
   Future<void> _loadSpinningPhases() async {
@@ -243,8 +248,53 @@ class _SpinningScreenState extends State<SpinningScreen> {
     }
   }
 
-  List<SpinningPhaseSpec> get _activePhases =>
-      SpinningPlaylistService.phasesForProfile(trainingProfile);
+  Future<void> _loadCustomBpmProfiles() async {
+    final profiles = await customBpmProfiles.loadProfiles();
+    final activeId = await customBpmProfiles.loadActiveProfileId();
+    if (!mounted) return;
+
+    final active = profiles.any((profile) => profile.id == activeId)
+        ? activeId
+        : null;
+    setState(() {
+      _customProfiles = profiles;
+      _activeCustomProfileId = active;
+      final profile = _activeCustomProfile;
+      if (profile != null && profile.duration > Duration.zero) {
+        duration = profile.duration;
+      }
+    });
+  }
+
+  CustomBpmProfile? get _activeCustomProfile {
+    final id = _activeCustomProfileId;
+    if (id == null) return null;
+    for (final profile in _customProfiles) {
+      if (profile.id == id) return profile;
+    }
+    return null;
+  }
+
+  List<SpinningPhaseSpec> get _activePhases {
+    final custom = _activeCustomProfile;
+    if (custom == null || custom.segments.isEmpty) {
+      return SpinningPlaylistService.phasesForProfile(trainingProfile);
+    }
+
+    final totalSeconds = custom.duration.inSeconds;
+    return [
+      for (final segment in custom.segments)
+        SpinningPhaseSpec(
+          phase: segment.phase,
+          label: segment.label,
+          minBpm: segment.minBpm,
+          maxBpm: segment.maxBpm,
+          share: totalSeconds <= 0
+              ? 0
+              : segment.duration.inSeconds / totalSeconds,
+        ),
+    ];
+  }
 
   String _trainingProfileLabel(SpinningTrainingProfile profile) =>
       switch (profile) {
@@ -307,6 +357,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
           phases: _activePhases,
           profile: trainingProfile,
           phaseEligibility: _phaseEligibility,
+          curveOverride: _activeCustomProfile == null
+              ? null
+              : planner.buildCustomCurve(_activeCustomProfile!),
         ),
       );
     });
@@ -315,12 +368,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
   void _buildManualPlan() {
     setState(() {
       _setPlan(
-        planner.buildFromPhaseTracks(
-          phaseTracks: manualPhaseTracks,
-          duration: duration,
-          phases: _activePhases,
-          profile: trainingProfile,
-        ),
+        _activeCustomProfile == null
+            ? planner.buildFromPhaseTracks(
+                phaseTracks: manualPhaseTracks,
+                duration: duration,
+                phases: _activePhases,
+                profile: trainingProfile,
+              )
+            : planner.buildFromTracks(
+                tracks: [
+                  for (final phase in SpinningPhase.values)
+                    ...manualPhaseTracks[phase] ?? const <Track>[],
+                ],
+                duration: duration,
+                phases: _activePhases,
+                profile: trainingProfile,
+                curveOverride:
+                    planner.buildCustomCurve(_activeCustomProfile!),
+              ),
       );
     });
   }
@@ -395,6 +460,355 @@ class _SpinningScreenState extends State<SpinningScreen> {
         .where(phases.contains)
         .map(_phaseLabel)
         .join(', ');
+  }
+
+  Future<void> _selectCustomProfile(String? id) async {
+    CustomBpmProfile? profile;
+    if (id != null) {
+      for (final item in _customProfiles) {
+        if (item.id == id) {
+          profile = item;
+          break;
+        }
+      }
+    }
+
+    setState(() {
+      _activeCustomProfileId = profile?.id;
+      if (profile != null && profile.duration > Duration.zero) {
+        duration = profile.duration;
+      }
+      _setPlan(null);
+    });
+    await customBpmProfiles.saveActiveProfileId(profile?.id);
+  }
+
+  Future<void> _editCustomBpmProfile([CustomBpmProfile? existing]) async {
+    final nameController = TextEditingController(
+      text: existing?.name ?? 'Intervalltraining',
+    );
+    final segments = existing == null
+        ? <CustomBpmSegment>[
+            const CustomBpmSegment(
+              label: 'Warm-up',
+              duration: Duration(minutes: 8),
+              minBpm: 90,
+              maxBpm: 110,
+              phase: SpinningPhase.warmup,
+            ),
+            const CustomBpmSegment(
+              label: 'Belastung',
+              duration: Duration(minutes: 4),
+              minBpm: 135,
+              maxBpm: 150,
+              phase: SpinningPhase.load,
+            ),
+            const CustomBpmSegment(
+              label: 'Erholung',
+              duration: Duration(minutes: 3),
+              minBpm: 105,
+              maxBpm: 120,
+              phase: SpinningPhase.build,
+            ),
+            const CustomBpmSegment(
+              label: 'Belastung',
+              duration: Duration(minutes: 4),
+              minBpm: 140,
+              maxBpm: 155,
+              phase: SpinningPhase.peak,
+            ),
+            const CustomBpmSegment(
+              label: 'Cool-down',
+              duration: Duration(minutes: 8),
+              minBpm: 90,
+              maxBpm: 105,
+              phase: SpinningPhase.cooldown,
+            ),
+          ]
+        : List<CustomBpmSegment>.from(existing.segments);
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> editSegment(int index) async {
+            final segment = segments[index];
+            final label = TextEditingController(text: segment.label);
+            final minutes = TextEditingController(
+              text: segment.duration.inMinutes.toString(),
+            );
+            final minBpm = TextEditingController(
+              text: segment.minBpm.toString(),
+            );
+            final maxBpm = TextEditingController(
+              text: segment.maxBpm.toString(),
+            );
+            var phase = segment.phase;
+
+            final changed = await showDialog<bool>(
+              context: dialogContext,
+              builder: (segmentContext) => StatefulBuilder(
+                builder: (context, setSegmentState) => AlertDialog(
+                  title: const Text('Intervall bearbeiten'),
+                  content: SizedBox(
+                    width: 460,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: label,
+                            decoration: const InputDecoration(
+                              labelText: 'Bezeichnung',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: minutes,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Dauer in Minuten',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: minBpm,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'BPM min.',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: maxBpm,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'BPM max.',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<SpinningPhase>(
+                            initialValue: phase,
+                            decoration: const InputDecoration(
+                              labelText: 'Trainingsphase',
+                            ),
+                            items: [
+                              for (final item in SpinningPhase.values)
+                                DropdownMenuItem(
+                                  value: item,
+                                  child: Text(_phaseLabel(item)),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) {
+                                setSegmentState(() => phase = value);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(segmentContext, false),
+                      child: const Text('Abbrechen'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(segmentContext, true),
+                      child: const Text('Übernehmen'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+
+            if (changed == true) {
+              final mins = int.tryParse(minutes.text.trim()) ?? 1;
+              var min = int.tryParse(minBpm.text.trim()) ?? 100;
+              var max = int.tryParse(maxBpm.text.trim()) ?? 120;
+              if (min > max) {
+                final swap = min;
+                min = max;
+                max = swap;
+              }
+              setDialogState(() {
+                segments[index] = CustomBpmSegment(
+                  label: label.text.trim().isEmpty
+                      ? 'Intervall'
+                      : label.text.trim(),
+                  duration: Duration(minutes: mins.clamp(1, 180)),
+                  minBpm: min.clamp(40, 240),
+                  maxBpm: max.clamp(40, 240),
+                  phase: phase,
+                );
+              });
+            }
+            label.dispose();
+            minutes.dispose();
+            minBpm.dispose();
+            maxBpm.dispose();
+          }
+
+          final totalMinutes = segments.fold<int>(
+            0,
+            (sum, segment) => sum + segment.duration.inMinutes,
+          );
+
+          return AlertDialog(
+            title: Text(existing == null
+                ? 'Eigene BPM-Kurve'
+                : 'BPM-Kurve bearbeiten'),
+            content: SizedBox(
+              width: 680,
+              height: MediaQuery.sizeOf(dialogContext).height * .68,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Profilname',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '$totalMinutes Minuten · ${segments.length} Abschnitte',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ReorderableListView.builder(
+                      itemCount: segments.length,
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) newIndex--;
+                        setDialogState(() {
+                          final item = segments.removeAt(oldIndex);
+                          segments.insert(newIndex, item);
+                        });
+                      },
+                      itemBuilder: (_, index) {
+                        final segment = segments[index];
+                        return ListTile(
+                          key: ValueKey(
+                            '${segment.label}-${segment.duration.inSeconds}-$index',
+                          ),
+                          leading: const Icon(Icons.drag_handle),
+                          title: Text(segment.label),
+                          subtitle: Text(
+                            '${segment.duration.inMinutes} min · '
+                            '${segment.minBpm}–${segment.maxBpm} BPM · '
+                            '${_phaseLabel(segment.phase)}',
+                          ),
+                          onTap: () => editSegment(index),
+                          trailing: IconButton(
+                            tooltip: 'Abschnitt entfernen',
+                            onPressed: segments.length <= 1
+                                ? null
+                                : () => setDialogState(
+                                      () => segments.removeAt(index),
+                                    ),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => setDialogState(() {
+                      segments.add(
+                        const CustomBpmSegment(
+                          label: 'Neues Intervall',
+                          duration: Duration(minutes: 5),
+                          minBpm: 120,
+                          maxBpm: 140,
+                          phase: SpinningPhase.load,
+                        ),
+                      );
+                    }),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Abschnitt hinzufügen'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Abbrechen'),
+              ),
+              FilledButton(
+                onPressed: segments.isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                child: const Text('Profil speichern'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (accepted != true || !mounted) {
+      nameController.dispose();
+      return;
+    }
+
+    final id = existing?.id ??
+        DateTime.now().microsecondsSinceEpoch.toString();
+    final profile = CustomBpmProfile(
+      id: id,
+      name: nameController.text.trim().isEmpty
+          ? 'Eigenes Profil'
+          : nameController.text.trim(),
+      segments: List<CustomBpmSegment>.from(segments),
+    );
+    nameController.dispose();
+
+    final nextProfiles = List<CustomBpmProfile>.from(_customProfiles);
+    final existingIndex = nextProfiles.indexWhere((item) => item.id == id);
+    if (existingIndex >= 0) {
+      nextProfiles[existingIndex] = profile;
+    } else {
+      nextProfiles.add(profile);
+    }
+
+    await customBpmProfiles.saveProfiles(nextProfiles);
+    await customBpmProfiles.saveActiveProfileId(profile.id);
+    if (!mounted) return;
+    setState(() {
+      _customProfiles = nextProfiles;
+      _activeCustomProfileId = profile.id;
+      duration = profile.duration;
+      _setPlan(null);
+    });
+  }
+
+  Future<void> _deleteActiveCustomProfile() async {
+    final active = _activeCustomProfile;
+    if (active == null) return;
+    final next = _customProfiles
+        .where((profile) => profile.id != active.id)
+        .toList(growable: false);
+    await customBpmProfiles.saveProfiles(next);
+    await customBpmProfiles.saveActiveProfileId(null);
+    if (!mounted) return;
+    setState(() {
+      _customProfiles = next;
+      _activeCustomProfileId = null;
+      _setPlan(null);
+    });
   }
 
   Future<void> _manageSpinningLibrary() async {
@@ -1197,10 +1611,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
         const SizedBox(height: 8),
         Text('Trainings-Session', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 12),
-        SegmentedButton<int>(segments: const [
-          ButtonSegment(value: 30, label: Text('30 min')), ButtonSegment(value: 45, label: Text('45 min')),
-          ButtonSegment(value: 60, label: Text('60 min')), ButtonSegment(value: 90, label: Text('90 min'))],
-          selected: {duration.inMinutes}, onSelectionChanged: (v) => setState(() { duration = Duration(minutes: v.first); _setPlan(null); })),
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 30, label: Text('30 min')),
+            ButtonSegment(value: 45, label: Text('45 min')),
+            ButtonSegment(value: 60, label: Text('60 min')),
+            ButtonSegment(value: 90, label: Text('90 min')),
+          ],
+          emptySelectionAllowed: _activeCustomProfile != null,
+          selected: _activeCustomProfile != null
+              ? const <int>{}
+              : {duration.inMinutes},
+          onSelectionChanged: _activeCustomProfile != null
+              ? null
+              : (v) => setState(() {
+                    duration = Duration(minutes: v.first);
+                    _setPlan(null);
+                  }),
+        ),
         const SizedBox(height: 14),
         SegmentedButton<bool>(
           segments: const [
@@ -1323,6 +1751,74 @@ class _SpinningScreenState extends State<SpinningScreen> {
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Individuelle BPM-Kurve',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String?>(
+                initialValue: _activeCustomProfileId,
+                decoration: const InputDecoration(
+                  labelText: 'Profil',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Standardprofil verwenden'),
+                  ),
+                  for (final profile in _customProfiles)
+                    DropdownMenuItem<String?>(
+                      value: profile.id,
+                      child: Text(
+                        '${profile.name} · ${profile.duration.inMinutes} min',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: _selectCustomProfile,
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: _activeCustomProfile == null
+                  ? 'Neue BPM-Kurve'
+                  : 'BPM-Kurve bearbeiten',
+              onPressed: () => _editCustomBpmProfile(_activeCustomProfile),
+              icon: Icon(
+                _activeCustomProfile == null
+                    ? Icons.add_chart
+                    : Icons.edit_outlined,
+              ),
+            ),
+            if (_activeCustomProfile != null) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Eigenes Profil löschen',
+                onPressed: _deleteActiveCustomProfile,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ],
+        ),
+        if (_activeCustomProfile != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${_activeCustomProfile!.segments.length} Abschnitte · '
+            '${_activeCustomProfile!.duration.inMinutes} Minuten. '
+            'Die automatische Planung folgt dieser Kurve.',
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
         const SizedBox(height: 14),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
