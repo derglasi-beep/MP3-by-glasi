@@ -2081,10 +2081,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ] else ...[
             Builder(
               builder: (context) {
-                final phaseDurations = planner.standardPhaseDurations(
-                  duration,
-                  phases: p.phases,
-                );
+                final phaseDurations = p.phaseDurations;
                 return Column(
                   children: [
                     for (final phase in p.phases)
