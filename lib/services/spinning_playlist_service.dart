@@ -462,15 +462,15 @@ class SpinningPlaylistService {
       }
     }
 
-    final warmupMs = math.min(
+    final warmupMs = min(
       rawWarmupMs,
       const Duration(minutes: 10).inMilliseconds.toDouble(),
     );
-    final cooldownMs = math.min(
+    final cooldownMs = min(
       rawCooldownMs,
       const Duration(minutes: 8).inMilliseconds.toDouble(),
     );
-    final workMs = math.max(0.0, totalMs - warmupMs - cooldownMs);
+    final workMs = max(0.0, totalMs - warmupMs - cooldownMs);
 
     final warmupScale =
         rawWarmupMs <= 0 ? 0.0 : warmupMs / rawWarmupMs;
