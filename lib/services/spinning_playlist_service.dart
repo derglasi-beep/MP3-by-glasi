@@ -11,6 +11,8 @@ class CustomBpmSegment {
   final Duration duration;
   final int minBpm;
   final int maxBpm;
+  final int? minHeartRate;
+  final int? maxHeartRate;
   final SpinningPhase phase;
 
   const CustomBpmSegment({
@@ -18,6 +20,8 @@ class CustomBpmSegment {
     required this.duration,
     required this.minBpm,
     required this.maxBpm,
+    this.minHeartRate,
+    this.maxHeartRate,
     required this.phase,
   });
 
@@ -26,6 +30,8 @@ class CustomBpmSegment {
         'durationSeconds': duration.inSeconds,
         'minBpm': minBpm,
         'maxBpm': maxBpm,
+        'minHeartRate': minHeartRate,
+        'maxHeartRate': maxHeartRate,
         'phase': phase.name,
       };
 
@@ -42,6 +48,8 @@ class CustomBpmSegment {
       ),
       minBpm: (json['minBpm'] as num?)?.toInt() ?? 120,
       maxBpm: (json['maxBpm'] as num?)?.toInt() ?? 140,
+      minHeartRate: (json['minHeartRate'] as num?)?.toInt(),
+      maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
       phase: phase,
     );
   }
@@ -50,11 +58,13 @@ class CustomBpmSegment {
 class CustomBpmProfile {
   final String id;
   final String name;
+  final int? maxHeartRate;
   final List<CustomBpmSegment> segments;
 
   const CustomBpmProfile({
     required this.id,
     required this.name,
+    this.maxHeartRate,
     required this.segments,
   });
 
@@ -66,6 +76,7 @@ class CustomBpmProfile {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
+        'maxHeartRate': maxHeartRate,
         'segments': segments.map((segment) => segment.toJson()).toList(),
       };
 
@@ -73,6 +84,7 @@ class CustomBpmProfile {
       CustomBpmProfile(
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? 'Eigenes Profil',
+        maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
         segments: [
           for (final item in (json['segments'] as List? ?? const []))
             if (item is Map)
