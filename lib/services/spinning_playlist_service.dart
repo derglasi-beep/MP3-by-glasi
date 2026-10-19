@@ -478,6 +478,39 @@ class SpinningPlaylistService {
         rawCooldownMs <= 0 ? 0.0 : cooldownMs / rawCooldownMs;
     final workScale = rawWorkMs <= 0 ? 0.0 : workMs / rawWorkMs;
 
+    final blockDurationsMs = <int>[
+      for (final block in blocks)
+        (totalMs *
+                block.share *
+                switch (block.phase) {
+                  SpinningPhase.warmup => warmupScale,
+                  SpinningPhase.cooldown => cooldownScale,
+                  _ => workScale,
+                })
+            .round(),
+    ];
+
+    // Rounding can leave a few milliseconds. Never put that remainder into
+    // warm-up or cool-down, otherwise their hard caps could be exceeded.
+    final allocatedMs =
+        blockDurationsMs.fold<int>(0, (sum, value) => sum + value);
+    final remainderMs = totalMs - allocatedMs;
+    if (remainderMs != 0) {
+      var adjustmentIndex = -1;
+      for (var i = blockDurationsMs.length - 1; i >= 0; i--) {
+        final phase = blocks[i].phase;
+        if (phase != SpinningPhase.warmup &&
+            phase != SpinningPhase.cooldown) {
+          adjustmentIndex = i;
+          break;
+        }
+      }
+      if (adjustmentIndex >= 0) {
+        blockDurationsMs[adjustmentIndex] =
+            max(0, blockDurationsMs[adjustmentIndex] + remainderMs);
+      }
+    }
+
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
     double? previousTarget;
@@ -488,17 +521,9 @@ class SpinningPlaylistService {
       final spec = specs[block.phase];
       if (spec == null) continue;
 
-      final scale = switch (block.phase) {
-        SpinningPhase.warmup => warmupScale,
-        SpinningPhase.cooldown => cooldownScale,
-        _ => workScale,
-      };
-      final blockDuration = blockIndex == blocks.length - 1
-          ? duration - elapsed
-          : Duration(
-              milliseconds:
-                  (duration.inMilliseconds * block.share * scale).round(),
-            );
+      final blockDuration = Duration(
+        milliseconds: blockDurationsMs[blockIndex],
+      );
       if (blockDuration <= Duration.zero) continue;
 
       final min = spec.minBpm.toDouble();
