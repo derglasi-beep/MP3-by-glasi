@@ -441,6 +441,43 @@ class SpinningPlaylistService {
     final variant = _random.nextInt(3);
     final specs = {for (final spec in phases) spec.phase: spec};
     final blocks = _curveBlocks(profile, variant);
+
+    // Built-in training profiles keep warm-up and cool-down compact even for
+    // long sessions. Any capped time is redistributed across the working
+    // phases so the selected total session duration remains unchanged.
+    final totalMs = duration.inMilliseconds;
+    double rawWarmupMs = 0;
+    double rawCooldownMs = 0;
+    double rawWorkMs = 0;
+
+    for (final block in blocks) {
+      final rawMs = totalMs * block.share;
+      switch (block.phase) {
+        case SpinningPhase.warmup:
+          rawWarmupMs += rawMs;
+        case SpinningPhase.cooldown:
+          rawCooldownMs += rawMs;
+        default:
+          rawWorkMs += rawMs;
+      }
+    }
+
+    final warmupMs = math.min(
+      rawWarmupMs,
+      const Duration(minutes: 10).inMilliseconds.toDouble(),
+    );
+    final cooldownMs = math.min(
+      rawCooldownMs,
+      const Duration(minutes: 8).inMilliseconds.toDouble(),
+    );
+    final workMs = math.max(0.0, totalMs - warmupMs - cooldownMs);
+
+    final warmupScale =
+        rawWarmupMs <= 0 ? 0.0 : warmupMs / rawWarmupMs;
+    final cooldownScale =
+        rawCooldownMs <= 0 ? 0.0 : cooldownMs / rawCooldownMs;
+    final workScale = rawWorkMs <= 0 ? 0.0 : workMs / rawWorkMs;
+
     final points = <SpinningCurvePoint>[];
     var elapsed = Duration.zero;
     double? previousTarget;
@@ -451,11 +488,16 @@ class SpinningPlaylistService {
       final spec = specs[block.phase];
       if (spec == null) continue;
 
+      final scale = switch (block.phase) {
+        SpinningPhase.warmup => warmupScale,
+        SpinningPhase.cooldown => cooldownScale,
+        _ => workScale,
+      };
       final blockDuration = blockIndex == blocks.length - 1
           ? duration - elapsed
           : Duration(
               milliseconds:
-                  (duration.inMilliseconds * block.share).round(),
+                  (duration.inMilliseconds * block.share * scale).round(),
             );
       if (blockDuration <= Duration.zero) continue;
 
