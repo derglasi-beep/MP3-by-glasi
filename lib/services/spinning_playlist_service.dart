@@ -553,13 +553,21 @@ class SpinningPlaylistService {
     double rawMs(SpinningPhase phase) =>
         totalMs * ((weights[phase] ?? 0) / totalWeight);
 
+    final shortSession = duration <= const Duration(minutes: 45);
+    final warmupCap = shortSession
+        ? const Duration(minutes: 8)
+        : const Duration(minutes: 10);
+    final cooldownCap = shortSession
+        ? const Duration(minutes: 6)
+        : const Duration(minutes: 8);
+
     final warmupMs = min(
       rawMs(SpinningPhase.warmup),
-      const Duration(minutes: 10).inMilliseconds.toDouble(),
+      warmupCap.inMilliseconds.toDouble(),
     );
     final cooldownMs = min(
       rawMs(SpinningPhase.cooldown),
-      const Duration(minutes: 8).inMilliseconds.toDouble(),
+      cooldownCap.inMilliseconds.toDouble(),
     );
 
     final workPhases = <SpinningPhase>[
