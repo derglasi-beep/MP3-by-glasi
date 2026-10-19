@@ -394,6 +394,13 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return 'HF ${range.min}–${range.max} % · $zoneText';
   }
 
+  String _formatPhaseDuration(Duration value) {
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds.remainder(60);
+    if (seconds == 0) return '$minutes:00';
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   List<Track> get _spinningTracks => widget.tracks
       .where((track) => widget.spinningTrackIds.contains(track.id))
       .toList(growable: false);
@@ -2072,32 +2079,53 @@ class _SpinningScreenState extends State<SpinningScreen> {
                 ),
               ),
           ] else ...[
-            for (final phase in p.phases)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            Builder(
+              builder: (context) {
+                final phaseDurations = planner.standardPhaseDurations(
+                  duration,
+                  phases: p.phases,
+                );
+                return Column(
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(phase.label),
-                          const SizedBox(height: 2),
-                          Text(
-                            _standardHeartRateText(phase.phase),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
+                    for (final phase in p.phases)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 58,
+                              child: Text(
+                                _formatPhaseDuration(
+                                  phaseDurations[phase.phase] ?? Duration.zero,
+                                ),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(phase.label),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _standardHeartRateText(phase.phase),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '${_displayBpm(phase.minBpm.toDouble()).round()}–'
+                              '${_displayBpm(phase.maxBpm.toDouble()).round()} BPM',
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${_displayBpm(phase.minBpm.toDouble()).round()}–'
-                      '${_displayBpm(phase.maxBpm.toDouble()).round()} BPM',
-                    ),
                   ],
-                ),
-              ),
+                );
+              },
+            ),
           ],
         ]))),
         const SizedBox(height: 14),
