@@ -323,6 +323,35 @@ class _SpinningScreenState extends State<SpinningScreen> {
   double _displayBpm(double bpm) => sprintMode ? bpm : bpm / 2;
   String _bpmText(double bpm) => '${_displayBpm(bpm).round()} BPM${sprintMode ? ' · Sprint' : ''}';
 
+  int _heartRateZone(double percent) => percent < 60
+      ? 1
+      : percent < 70
+          ? 2
+          : percent < 80
+              ? 3
+              : percent < 90
+                  ? 4
+                  : 5;
+
+  String _heartRateTargetText(
+    CustomBpmSegment segment,
+    int? maxHeartRate,
+  ) {
+    final min = segment.minHeartRatePercent;
+    final max = segment.maxHeartRatePercent;
+    if (min == null || max == null) return '';
+
+    final midpoint = (min + max) / 2;
+    final zone = _heartRateZone(midpoint);
+    if (maxHeartRate == null || maxHeartRate <= 0) {
+      return ' · HF $min–$max % · Zone $zone';
+    }
+
+    final minPulse = (maxHeartRate * min / 100).round();
+    final maxPulse = (maxHeartRate * max / 100).round();
+    return ' · HF $min–$max % · $minPulse–$maxPulse bpm · Zone $zone';
+  }
+
   List<Track> get _spinningTracks => widget.tracks
       .where((track) => widget.spinningTrackIds.contains(track.id))
       .toList(growable: false);
@@ -487,6 +516,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
     final nameController = TextEditingController(
       text: existing?.name ?? 'Intervalltraining',
     );
+    final maxHeartRateController = TextEditingController(
+      text: existing?.maxHeartRate?.toString() ?? '',
+    );
     final segments = existing == null
         ? <CustomBpmSegment>[
             const CustomBpmSegment(
@@ -494,6 +526,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
               duration: Duration(minutes: 8),
               minBpm: 90,
               maxBpm: 110,
+              minHeartRatePercent: 50,
+              maxHeartRatePercent: 60,
               phase: SpinningPhase.warmup,
             ),
             const CustomBpmSegment(
@@ -501,6 +535,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
               duration: Duration(minutes: 4),
               minBpm: 135,
               maxBpm: 150,
+              minHeartRatePercent: 80,
+              maxHeartRatePercent: 90,
               phase: SpinningPhase.load,
             ),
             const CustomBpmSegment(
@@ -508,6 +544,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
               duration: Duration(minutes: 3),
               minBpm: 105,
               maxBpm: 120,
+              minHeartRatePercent: 60,
+              maxHeartRatePercent: 70,
               phase: SpinningPhase.build,
             ),
             const CustomBpmSegment(
@@ -515,6 +553,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
               duration: Duration(minutes: 4),
               minBpm: 140,
               maxBpm: 155,
+              minHeartRatePercent: 90,
+              maxHeartRatePercent: 95,
               phase: SpinningPhase.peak,
             ),
             const CustomBpmSegment(
@@ -522,6 +562,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
               duration: Duration(minutes: 8),
               minBpm: 90,
               maxBpm: 105,
+              minHeartRatePercent: 50,
+              maxHeartRatePercent: 60,
               phase: SpinningPhase.cooldown,
             ),
           ]
@@ -542,6 +584,12 @@ class _SpinningScreenState extends State<SpinningScreen> {
             );
             final maxBpm = TextEditingController(
               text: segment.maxBpm.toString(),
+            );
+            final minHeartRatePercent = TextEditingController(
+              text: segment.minHeartRatePercent?.toString() ?? '',
+            );
+            final maxHeartRatePercent = TextEditingController(
+              text: segment.maxHeartRatePercent?.toString() ?? '',
             );
             var phase = segment.phase;
 
@@ -578,7 +626,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                                   controller: minBpm,
                                   keyboardType: TextInputType.number,
                                   decoration: const InputDecoration(
-                                    labelText: 'BPM min.',
+                                    labelText: 'Musik-BPM min.',
                                   ),
                                 ),
                               ),
@@ -588,11 +636,45 @@ class _SpinningScreenState extends State<SpinningScreen> {
                                   controller: maxBpm,
                                   keyboardType: TextInputType.number,
                                   decoration: const InputDecoration(
-                                    labelText: 'BPM max.',
+                                    labelText: 'Musik-BPM max.',
                                   ),
                                 ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: minHeartRatePercent,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'HF min. %',
+                                    hintText: 'z. B. 70',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: maxHeartRatePercent,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'HF max. %',
+                                    hintText: 'z. B. 80',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Polar-orientiert: Z1 50–60 %, Z2 60–70 %, '
+                              'Z3 70–80 %, Z4 80–90 %, Z5 90–100 %.',
+                            ),
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<SpinningPhase>(
@@ -640,6 +722,20 @@ class _SpinningScreenState extends State<SpinningScreen> {
                 min = max;
                 max = swap;
               }
+              var minHrPercent =
+                  int.tryParse(minHeartRatePercent.text.trim());
+              var maxHrPercent =
+                  int.tryParse(maxHeartRatePercent.text.trim());
+              if (minHrPercent != null &&
+                  maxHrPercent != null &&
+                  minHrPercent > maxHrPercent) {
+                final swap = minHrPercent;
+                minHrPercent = maxHrPercent;
+                maxHrPercent = swap;
+              }
+              minHrPercent = minHrPercent?.clamp(30, 100);
+              maxHrPercent = maxHrPercent?.clamp(30, 100);
+
               setDialogState(() {
                 segments[index] = CustomBpmSegment(
                   label: label.text.trim().isEmpty
@@ -648,6 +744,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                   duration: Duration(minutes: mins.clamp(1, 180)),
                   minBpm: min.clamp(40, 240),
                   maxBpm: max.clamp(40, 240),
+                  minHeartRatePercent: minHrPercent,
+                  maxHeartRatePercent: maxHrPercent,
                   phase: phase,
                 );
               });
@@ -656,6 +754,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
             minutes.dispose();
             minBpm.dispose();
             maxBpm.dispose();
+            minHeartRatePercent.dispose();
+            maxHeartRatePercent.dispose();
           }
 
           final totalMinutes = segments.fold<int>(
@@ -676,6 +776,16 @@ class _SpinningScreenState extends State<SpinningScreen> {
                     controller: nameController,
                     decoration: const InputDecoration(
                       labelText: 'Profilname',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: maxHeartRateController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'HFmax (optional)',
+                      helperText:
+                          'Nur für die zusätzliche Umrechnung der Prozentwerte in Puls-bpm.',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -707,8 +817,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
                           title: Text(segment.label),
                           subtitle: Text(
                             '${segment.duration.inMinutes} min · '
-                            '${segment.minBpm}–${segment.maxBpm} BPM · '
-                            '${_phaseLabel(segment.phase)}',
+                            '${segment.minBpm}–${segment.maxBpm} Musik-BPM'
+                            '${_heartRateTargetText(segment, int.tryParse(maxHeartRateController.text.trim()))}'
+                            ' · ${_phaseLabel(segment.phase)}',
                           ),
                           onTap: () => editSegment(index),
                           trailing: IconButton(
@@ -762,19 +873,24 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
     if (accepted != true || !mounted) {
       nameController.dispose();
+      maxHeartRateController.dispose();
       return;
     }
 
     final id = existing?.id ??
         DateTime.now().microsecondsSinceEpoch.toString();
+    final maxHeartRate =
+        int.tryParse(maxHeartRateController.text.trim())?.clamp(80, 240);
     final profile = CustomBpmProfile(
       id: id,
       name: nameController.text.trim().isEmpty
           ? 'Eigenes Profil'
           : nameController.text.trim(),
+      maxHeartRate: maxHeartRate,
       segments: List<CustomBpmSegment>.from(segments),
     );
     nameController.dispose();
+    maxHeartRateController.dispose();
 
     final nextProfiles = List<CustomBpmProfile>.from(_customProfiles);
     final existingIndex = nextProfiles.indexWhere((item) => item.id == id);
