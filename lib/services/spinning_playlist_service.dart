@@ -6,6 +6,81 @@ enum SpinningPhase { warmup, build, load, peak, cooldown }
 
 enum SpinningTrainingProfile { cadence, heartRate, power }
 
+class CustomBpmSegment {
+  final String label;
+  final Duration duration;
+  final int minBpm;
+  final int maxBpm;
+  final SpinningPhase phase;
+
+  const CustomBpmSegment({
+    required this.label,
+    required this.duration,
+    required this.minBpm,
+    required this.maxBpm,
+    required this.phase,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'durationSeconds': duration.inSeconds,
+        'minBpm': minBpm,
+        'maxBpm': maxBpm,
+        'phase': phase.name,
+      };
+
+  factory CustomBpmSegment.fromJson(Map<String, dynamic> json) {
+    final phaseName = json['phase']?.toString();
+    final phase = SpinningPhase.values.firstWhere(
+      (value) => value.name == phaseName,
+      orElse: () => SpinningPhase.load,
+    );
+    return CustomBpmSegment(
+      label: json['label']?.toString() ?? 'Intervall',
+      duration: Duration(
+        seconds: (json['durationSeconds'] as num?)?.toInt() ?? 300,
+      ),
+      minBpm: (json['minBpm'] as num?)?.toInt() ?? 120,
+      maxBpm: (json['maxBpm'] as num?)?.toInt() ?? 140,
+      phase: phase,
+    );
+  }
+}
+
+class CustomBpmProfile {
+  final String id;
+  final String name;
+  final List<CustomBpmSegment> segments;
+
+  const CustomBpmProfile({
+    required this.id,
+    required this.name,
+    required this.segments,
+  });
+
+  Duration get duration => segments.fold(
+        Duration.zero,
+        (total, segment) => total + segment.duration,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'segments': segments.map((segment) => segment.toJson()).toList(),
+      };
+
+  factory CustomBpmProfile.fromJson(Map<String, dynamic> json) =>
+      CustomBpmProfile(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? 'Eigenes Profil',
+        segments: [
+          for (final item in (json['segments'] as List? ?? const []))
+            if (item is Map)
+              CustomBpmSegment.fromJson(Map<String, dynamic>.from(item)),
+        ],
+      );
+}
+
 class _SpinningCurveBlock {
   final SpinningPhase phase;
   final double share;
@@ -115,13 +190,15 @@ class SpinningPlaylistService {
     List<SpinningPhaseSpec> phases = defaultPhases,
     SpinningTrainingProfile profile = SpinningTrainingProfile.cadence,
     Map<String, Set<SpinningPhase>> phaseEligibility = const {},
+    List<SpinningCurvePoint>? curveOverride,
   }) {
     final usable = library.where((t) => t.bpm != null && t.bpm! > 0).toList();
     if (usable.isEmpty || duration <= Duration.zero) {
       return SpinningPlan(duration: duration, tracks: const [], phases: phases);
     }
 
-    final curve = buildCurve(duration, phases: phases, profile: profile);
+    final curve = curveOverride ??
+        buildCurve(duration, phases: phases, profile: profile);
     final selected = <Track>[];
     final selections = <SpinningSelection>[];
     final used = <String>{};
@@ -277,6 +354,44 @@ class SpinningPlaylistService {
       curve: curve,
       selections: selections,
     );
+  }
+
+  List<SpinningCurvePoint> buildCustomCurve(
+    CustomBpmProfile profile,
+  ) {
+    if (profile.segments.isEmpty) return const <SpinningCurvePoint>[];
+
+    final points = <SpinningCurvePoint>[];
+    var elapsed = Duration.zero;
+
+    for (final segment in profile.segments) {
+      if (segment.duration <= Duration.zero) continue;
+      final min = segment.minBpm.toDouble();
+      final max = segment.maxBpm.toDouble();
+      final startTarget = min <= max ? min : max;
+      final endTarget = min <= max ? max : min;
+      final midpoint = (startTarget + endTarget) / 2;
+
+      points.add(
+        SpinningCurvePoint(
+          position: elapsed,
+          targetBpm: midpoint,
+          phase: segment.phase,
+          tolerance: ((endTarget - startTarget) / 2).clamp(4, 15).toDouble(),
+        ),
+      );
+      elapsed += segment.duration;
+      points.add(
+        SpinningCurvePoint(
+          position: elapsed,
+          targetBpm: midpoint,
+          phase: segment.phase,
+          tolerance: ((endTarget - startTarget) / 2).clamp(4, 15).toDouble(),
+        ),
+      );
+    }
+
+    return points;
   }
 
   List<SpinningCurvePoint> buildCurve(
