@@ -259,10 +259,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
     setState(() {
       _customProfiles = profiles;
       _activeCustomProfileId = active;
-      final profile = _activeCustomProfile;
-      if (profile != null && profile.duration > Duration.zero) {
-        duration = profile.duration;
-      }
+      // Keep the user's selected session duration independent from the
+      // profile's original template length.
     });
   }
 
@@ -388,7 +386,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
           phaseEligibility: _phaseEligibility,
           curveOverride: _activeCustomProfile == null
               ? null
-              : planner.buildCustomCurve(_activeCustomProfile!),
+              : planner.buildCustomCurve(
+                    _activeCustomProfile!,
+                    targetDuration: duration,
+                  ),
         ),
       );
     });
@@ -413,7 +414,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
                 phases: _activePhases,
                 profile: trainingProfile,
                 curveOverride:
-                    planner.buildCustomCurve(_activeCustomProfile!),
+                    planner.buildCustomCurve(
+                    _activeCustomProfile!,
+                    targetDuration: duration,
+                  ),
               ),
       );
     });
@@ -504,9 +508,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
 
     setState(() {
       _activeCustomProfileId = profile?.id;
-      if (profile != null && profile.duration > Duration.zero) {
-        duration = profile.duration;
-      }
       _setPlan(null);
     });
     await customBpmProfiles.saveActiveProfileId(profile?.id);
@@ -906,7 +907,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
     setState(() {
       _customProfiles = nextProfiles;
       _activeCustomProfileId = profile.id;
-      duration = profile.duration;
       _setPlan(null);
     });
   }
@@ -1734,16 +1734,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
             ButtonSegment(value: 60, label: Text('60 min')),
             ButtonSegment(value: 90, label: Text('90 min')),
           ],
-          emptySelectionAllowed: _activeCustomProfile != null,
-          selected: _activeCustomProfile != null
-              ? const <int>{}
-              : {duration.inMinutes},
-          onSelectionChanged: _activeCustomProfile != null
-              ? null
-              : (v) => setState(() {
-                    duration = Duration(minutes: v.first);
-                    _setPlan(null);
-                  }),
+          selected: {duration.inMinutes},
+          onSelectionChanged: (v) => setState(() {
+            duration = Duration(minutes: v.first);
+            _setPlan(null);
+          }),
         ),
         const SizedBox(height: 14),
         SegmentedButton<bool>(
