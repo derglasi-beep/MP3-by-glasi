@@ -206,6 +206,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   SpinningTrainingProfile trainingProfile = SpinningTrainingProfile.cadence;
   List<CustomBpmProfile> _customProfiles = const <CustomBpmProfile>[];
   String? _activeCustomProfileId;
+  int? _maxHeartRate;
   SpinningPlan? plan;
   final Map<String, Set<SpinningPhase>> _phaseEligibility =
       <String, Set<SpinningPhase>>{};
@@ -217,6 +218,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
     _loadSpinningPhases();
     _loadTrainingProfile();
     _loadCustomBpmProfiles();
+    _loadMaxHeartRate();
   }
 
   Future<void> _loadSpinningPhases() async {
@@ -250,6 +252,67 @@ class _SpinningScreenState extends State<SpinningScreen> {
       setState(() => trainingProfile = profile);
       return;
     }
+  }
+
+  Future<void> _loadMaxHeartRate() async {
+    final value = await customBpmProfiles.loadMaxHeartRate();
+    if (!mounted) return;
+    setState(() => _maxHeartRate = value);
+  }
+
+  Future<void> _editMaxHeartRate() async {
+    final controller = TextEditingController(
+      text: _maxHeartRate?.toString() ?? '',
+    );
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('HFmax einstellen'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Maximale Herzfrequenz',
+            hintText: 'z. B. 185',
+            helperText:
+                'Optional. Wird für Zielbereiche in Puls-bpm verwendet.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () {
+              controller.clear();
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Löschen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (accepted != true) {
+      controller.dispose();
+      return;
+    }
+
+    final parsed = int.tryParse(controller.text.trim());
+    final value = parsed == null ? null : parsed.clamp(80, 240);
+    controller.dispose();
+
+    await customBpmProfiles.saveMaxHeartRate(value);
+    if (!mounted) return;
+    setState(() => _maxHeartRate = value);
   }
 
   Future<void> _loadCustomBpmProfiles() async {
@@ -1806,6 +1869,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       plan: p,
       customProfile: _activeCustomProfile,
       sprintMode: sprintMode,
+      maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
     );
     widget.onSessionChanged(session);
@@ -1968,6 +2032,21 @@ class _SpinningScreenState extends State<SpinningScreen> {
           _trainingProfileDescription(),
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.favorite_outline),
+          title: const Text('HFmax'),
+          subtitle: Text(
+            _maxHeartRate == null
+                ? 'Nicht festgelegt · Zielbereiche nur in % HFmax'
+                : '$_maxHeartRate bpm · Zielbereiche werden zusätzlich in Puls-bpm berechnet',
+          ),
+          trailing: TextButton(
+            onPressed: _editMaxHeartRate,
+            child: const Text('Ändern'),
+          ),
         ),
         const SizedBox(height: 12),
         Align(
