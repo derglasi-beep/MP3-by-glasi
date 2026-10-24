@@ -4,6 +4,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../models/track.dart';
 import 'audio_player_service.dart';
+import 'heart_rate_sensor_service.dart';
 import 'spinning_playlist_service.dart';
 
 class SpinningSessionController {
@@ -13,6 +14,7 @@ class SpinningSessionController {
   final bool sprintMode;
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
+  final HeartRateSensorService heartRateSensor = HeartRateSensorService();
 
   final Stopwatch _watch = Stopwatch();
   Duration _offset = Duration.zero;
@@ -99,5 +101,6 @@ class SpinningSessionController {
   Future<void> dispose() async {
     _watch.stop();
     await _playerStateSub?.cancel();
+    await heartRateSensor.dispose();
   }
 }
