@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
@@ -148,20 +149,24 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     widget.session.jumpTo(targetPosition);
 
-    var targetIndex = -1;
+    var targetQueueIndex = -1;
     final currentIndex = widget.player.currentIndex;
-    for (var i = 0; i < widget.plan.selections.length; i++) {
-      final selection = widget.plan.selections[i];
+    for (final selection in widget.plan.selections) {
       if (selection.phase != targetPhase) continue;
-      if (i > currentIndex) {
-        targetIndex = i;
+      final queueIndex = widget.player.queue.indexWhere(
+        (track) => track.id == selection.track.id,
+      );
+      if (queueIndex < 0) continue;
+      if (queueIndex > currentIndex) {
+        targetQueueIndex = queueIndex;
         break;
       }
-      if (targetIndex < 0) targetIndex = i;
+      if (targetQueueIndex < 0) targetQueueIndex = queueIndex;
     }
 
-    if (targetIndex >= 0 && targetIndex < widget.plan.tracks.length) {
-      await widget.player.playAt(targetIndex);
+    if (targetQueueIndex >= 0 &&
+        targetQueueIndex < widget.player.queue.length) {
+      await widget.player.playAt(targetQueueIndex);
     }
 
     if (mounted) setState(() {});
@@ -170,7 +175,102 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   Future<void> _endSession() async {
     await widget.session.end();
     widget.onSessionEnded();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _addTrackToSession() async {
+    final searchController = TextEditingController();
+    Track? selected;
+
+    selected = await showDialog<Track>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final query = searchController.text.trim().toLowerCase();
+          final queuedIds = widget.player.queue.map((track) => track.id).toSet();
+          final matches = widget.session.library.where((track) {
+            if (queuedIds.contains(track.id)) return false;
+            if (query.isEmpty) return true;
+            return track.title.toLowerCase().contains(query) ||
+                track.artist.toLowerCase().contains(query) ||
+                track.album.toLowerCase().contains(query);
+          }).take(250).toList(growable: false);
+
+          return AlertDialog(
+            title: const Text('Titel zur Session hinzufügen'),
+            content: SizedBox(
+              width: 620,
+              height: 520,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: searchController,
+                    autofocus: true,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Titel, Interpret oder Album',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: matches.isEmpty
+                        ? const Center(
+                            child: Text('Keine passenden Titel gefunden.'),
+                          )
+                        : ListView.builder(
+                            itemCount: matches.length,
+                            itemBuilder: (_, index) {
+                              final track = matches[index];
+                              return ListTile(
+                                leading: const Icon(Icons.add_circle_outline),
+                                title: Text(
+                                  track.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: track.bpm == null
+                                    ? null
+                                    : Text(
+                                        '${_displayBpm(track.bpm!).round()} BPM',
+                                      ),
+                                onTap: () =>
+                                    Navigator.pop(dialogContext, track),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Abbrechen'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    searchController.dispose();
+    if (selected == null) return;
+
+    await widget.player.addTracksToQueue([selected]);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _removeTrackFromSession(int index) async {
+    if (index < 0 || index >= widget.player.queue.length) return;
+    await widget.player.removeAt(index);
+    if (mounted) setState(() {});
   }
 
   SpinningCurvePoint? _pointAt(Duration elapsed) {
@@ -355,6 +455,76 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                             '${_displayBpm(currentTrack!.bpm!).round()} BPM',
                           ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                StreamBuilder<List<Track>>(
+                  stream: widget.player.queueStream,
+                  initialData: List<Track>.from(widget.player.queue),
+                  builder: (context, queueSnapshot) {
+                    final queue = queueSnapshot.data ??
+                        List<Track>.from(widget.player.queue);
+                    final currentIndex = widget.player.currentIndex;
+
+                    return Card(
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.queue_music),
+                        title: Text('Session-Musik (${queue.length})'),
+                        subtitle: const Text(
+                          'Titel während der laufenden Session anpassen',
+                        ),
+                        childrenPadding:
+                            const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                        children: [
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.tonalIcon(
+                              onPressed: widget.session.completed
+                                  ? null
+                                  : _addTrackToSession,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Titel hinzufügen'),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          if (queue.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text('Keine Titel in der Session.'),
+                            )
+                          else
+                            for (var i = 0; i < queue.length; i++)
+                              ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  i == currentIndex
+                                      ? Icons.play_arrow
+                                      : Icons.music_note,
+                                ),
+                                title: Text(
+                                  queue[i].title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  queue[i].artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onTap: () => widget.player.playAt(i),
+                                trailing: IconButton(
+                                  tooltip: 'Aus Session entfernen',
+                                  onPressed: widget.session.completed
+                                      ? null
+                                      : () => _removeTrackFromSession(i),
+                                  icon: const Icon(
+                                    Icons.remove_circle_outline,
+                                  ),
+                                ),
+                              ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 Card(
