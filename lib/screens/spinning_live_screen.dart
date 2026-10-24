@@ -78,35 +78,106 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     return elapsed > widget.plan.duration ? widget.plan.duration : elapsed;
   }
 
-  SpinningCurvePoint? _nextPhasePoint(
-    Duration elapsed,
-    SpinningPhase current,
-  ) {
-    for (final point in widget.plan.curve) {
-      if (point.position <= elapsed) continue;
-      if (point.phase != current) return point;
+  ({
+    SpinningPhase phase,
+    String label,
+    Duration start,
+    Duration end,
+    SpinningPhase? nextPhase,
+  }) _phaseWindowAt(Duration elapsed) {
+    final custom = widget.customProfile;
+    if (custom != null) {
+      final durations =
+          planner.scaledCustomSegmentDurations(custom, widget.plan.duration);
+      if (durations.length == custom.segments.length) {
+        var cursor = Duration.zero;
+        for (var i = 0; i < custom.segments.length; i++) {
+          final segment = custom.segments[i];
+          final end = cursor + durations[i];
+          if (elapsed < end || i == custom.segments.length - 1) {
+            return (
+              phase: segment.phase,
+              label: segment.label,
+              start: cursor,
+              end: end,
+              nextPhase: i + 1 < custom.segments.length
+                  ? custom.segments[i + 1].phase
+                  : null,
+            );
+          }
+          cursor = end;
+        }
+      }
     }
-    return null;
+
+    const order = <SpinningPhase>[
+      SpinningPhase.warmup,
+      SpinningPhase.build,
+      SpinningPhase.load,
+      SpinningPhase.peak,
+      SpinningPhase.cooldown,
+    ];
+    var cursor = Duration.zero;
+    for (var i = 0; i < order.length; i++) {
+      final phase = order[i];
+      final phaseDuration =
+          widget.plan.phaseDurations[phase] ?? Duration.zero;
+      if (phaseDuration <= Duration.zero) continue;
+      final end = cursor + phaseDuration;
+      if (elapsed < end || i == order.length - 1) {
+        SpinningPhase? next;
+        for (var j = i + 1; j < order.length; j++) {
+          if ((widget.plan.phaseDurations[order[j]] ?? Duration.zero) >
+              Duration.zero) {
+            next = order[j];
+            break;
+          }
+        }
+        return (
+          phase: phase,
+          label: _phaseLabel(phase),
+          start: cursor,
+          end: end,
+          nextPhase: next,
+        );
+      }
+      cursor = end;
+    }
+
+    return (
+      phase: SpinningPhase.cooldown,
+      label: _phaseLabel(SpinningPhase.cooldown),
+      start: widget.plan.duration,
+      end: widget.plan.duration,
+      nextPhase: null,
+    );
+  }
+
+  Duration? _nextPhaseStart(Duration elapsed) {
+    final current = _phaseWindowAt(elapsed);
+    if (current.nextPhase == null) return null;
+    return current.end;
   }
 
   Future<void> _startNextPhase() async {
     final elapsed = _sessionElapsed;
-    final current = _pointAt(elapsed)?.phase ?? SpinningPhase.warmup;
-    final target = _nextPhasePoint(elapsed, current);
-    if (target == null) return;
+    final current = _phaseWindowAt(elapsed);
+    final targetPosition = _nextPhaseStart(elapsed);
+    final targetPhase = current.nextPhase;
+    if (targetPosition == null || targetPhase == null) return;
 
     final wasRunning = _sessionWatch.isRunning;
     _sessionWatch
       ..stop()
       ..reset();
-    _sessionOffset = target.position;
+    _sessionOffset = targetPosition;
     if (wasRunning) _sessionWatch.start();
 
     var targetIndex = -1;
     final currentIndex = widget.player.currentIndex;
     for (var i = 0; i < widget.plan.selections.length; i++) {
       final selection = widget.plan.selections[i];
-      if (selection.phase != target.phase) continue;
+      if (selection.phase != targetPhase) continue;
       if (i > currentIndex) {
         targetIndex = i;
         break;
@@ -224,11 +295,13 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
           builder: (context) {
             final elapsed = _sessionElapsed;
             final point = _pointAt(elapsed);
-            final currentPhase = point?.phase ?? SpinningPhase.warmup;
+            final phaseWindow = _phaseWindowAt(elapsed);
+            final currentPhase = phaseWindow.phase;
             final custom = _customSegmentAt(elapsed);
-            final phaseRemaining = custom?.remaining ??
-                _phaseRemaining(elapsed, currentPhase);
-            final nextPhase = _nextPhase(elapsed, currentPhase);
+            final phaseRemaining = phaseWindow.end - elapsed > Duration.zero
+                ? phaseWindow.end - elapsed
+                : Duration.zero;
+            final nextPhase = phaseWindow.nextPhase;
             final progress = widget.plan.duration.inMilliseconds <= 0
                 ? 0.0
                 : (elapsed.inMilliseconds /
@@ -238,8 +311,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final hfText = custom == null
                 ? _standardHeartRate(currentPhase)
                 : _customHeartRate(custom.segment);
-            final phaseTitle =
-                custom?.segment.label ?? _phaseLabel(currentPhase);
+            final phaseTitle = phaseWindow.label;
             final targetBpm = point == null
                 ? null
                 : _displayBpm(point.targetBpm).round();
