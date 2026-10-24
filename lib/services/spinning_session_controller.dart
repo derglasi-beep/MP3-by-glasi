@@ -52,7 +52,7 @@ class SpinningSessionController {
 
   void jumpTo(Duration position) {
     final clampedMs =
-        position.inMilliseconds.clamp(0, plan.duration.inMilliseconds);
+        position.inMilliseconds.clamp(0, plan.duration.inMilliseconds).toInt();
     final wasRunning = _watch.isRunning;
     _watch
       ..stop()
