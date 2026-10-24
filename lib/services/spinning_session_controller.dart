@@ -12,6 +12,7 @@ class SpinningSessionController {
   final CustomBpmProfile? customProfile;
   final bool sprintMode;
   final List<Track> library;
+  final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
 
   final Stopwatch _watch = Stopwatch();
   Duration _offset = Duration.zero;
@@ -26,6 +27,10 @@ class SpinningSessionController {
     required this.sprintMode,
     required this.library,
   }) {
+    for (final selection in plan.selections) {
+      phaseByTrackId[selection.track.id] = selection.phase;
+    }
+
     if (player.audio.playing) {
       _watch.start();
     }
@@ -52,6 +57,16 @@ class SpinningSessionController {
   }
 
   bool get isRunning => _watch.isRunning;
+
+  SpinningPhase? phaseForTrack(Track track) => phaseByTrackId[track.id];
+
+  void setTrackPhase(Track track, SpinningPhase phase) {
+    phaseByTrackId[track.id] = phase;
+  }
+
+  void removeTrackPhase(Track track) {
+    phaseByTrackId.remove(track.id);
+  }
 
   void jumpTo(Duration position) {
     final clampedMs =
