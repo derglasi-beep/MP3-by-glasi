@@ -7,6 +7,7 @@ import 'spinning_playlist_service.dart';
 class CustomBpmProfileService {
   static const _profilesKey = 'custom_bpm_profiles_v1';
   static const _activeProfileKey = 'custom_bpm_active_profile_v1';
+  static const _maxHeartRateKey = 'spinning_max_heart_rate_v1';
 
   Future<List<CustomBpmProfile>> loadProfiles() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,6 +37,20 @@ class CustomBpmProfileService {
         profiles.map((profile) => profile.toJson()).toList(growable: false),
       ),
     );
+  }
+
+  Future<int?> loadMaxHeartRate() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_maxHeartRateKey);
+  }
+
+  Future<void> saveMaxHeartRate(int? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null) {
+      await prefs.remove(_maxHeartRateKey);
+    } else {
+      await prefs.setInt(_maxHeartRateKey, value.clamp(80, 240));
+    }
   }
 
   Future<String?> loadActiveProfileId() async {
