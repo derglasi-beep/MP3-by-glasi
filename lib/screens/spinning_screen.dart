@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:universal_ble/universal_ble.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/custom_bpm_profile_service.dart';
+import '../services/heart_rate_sensor_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
@@ -18,6 +20,7 @@ class SpinningScreen extends StatefulWidget {
   final SpinningPlan? initialPlan;
   final ValueChanged<SpinningPlan?> onPlanChanged;
   final ValueChanged<SpinningSessionController?> onSessionChanged;
+  final HeartRateSensorService heartRateSensor;
   const SpinningScreen({
     super.key,
     required this.player,
@@ -26,6 +29,7 @@ class SpinningScreen extends StatefulWidget {
     required this.initialPlan,
     required this.onPlanChanged,
     required this.onSessionChanged,
+    required this.heartRateSensor,
   });
   @override State<SpinningScreen> createState() => _SpinningScreenState();
 }
@@ -252,6 +256,80 @@ class _SpinningScreenState extends State<SpinningScreen> {
       setState(() => trainingProfile = profile);
       return;
     }
+  }
+
+  Future<void> _connectHeartRateSensor() async {
+    final sensor = widget.heartRateSensor;
+    await sensor.startScan();
+    if (!mounted) return;
+
+    final selected = await showDialog<BleDevice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Herzfrequenz-Sensor'),
+        content: SizedBox(
+          width: 520,
+          height: 420,
+          child: StreamBuilder<List<BleDevice>>(
+            stream: sensor.devicesStream,
+            initialData: sensor.devices,
+            builder: (context, snapshot) {
+              final devices = snapshot.data ?? const <BleDevice>[];
+              if (devices.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 14),
+                      Text(
+                        'Suche nach BLE-Herzfrequenz-Sensoren …',
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Brustgurt ggf. anlegen oder Sensor aktivieren.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: devices.length,
+                itemBuilder: (_, index) {
+                  final device = devices[index];
+                  final name = device.name?.trim();
+                  return ListTile(
+                    leading: const Icon(Icons.bluetooth),
+                    title: Text(
+                      name == null || name.isEmpty ? 'HF-Sensor' : name,
+                    ),
+                    subtitle: Text(device.deviceId),
+                    trailing: device.rssi == null
+                        ? null
+                        : Text('${device.rssi} dBm'),
+                    onTap: () => Navigator.pop(dialogContext, device),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+
+    await sensor.stopScan();
+    if (selected == null) return;
+    await sensor.connect(selected);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadMaxHeartRate() async {
@@ -1871,6 +1949,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       sprintMode: sprintMode,
       maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
+      heartRateSensor: widget.heartRateSensor,
     );
     widget.onSessionChanged(session);
 
@@ -2047,6 +2126,51 @@ class _SpinningScreenState extends State<SpinningScreen> {
             onPressed: _editMaxHeartRate,
             child: const Text('Ändern'),
           ),
+        ),
+        const SizedBox(height: 4),
+        StreamBuilder<HeartRateSensorState>(
+          stream: widget.heartRateSensor.stateStream,
+          initialData: widget.heartRateSensor.state,
+          builder: (context, snapshot) {
+            final state = snapshot.data ??
+                const HeartRateSensorState.disconnected();
+            final connected =
+                state.status == HeartRateSensorStatus.connected;
+            final busy = state.status == HeartRateSensorStatus.connecting ||
+                state.status == HeartRateSensorStatus.scanning;
+            final title = connected
+                ? (state.deviceName ?? 'HF-Sensor verbunden')
+                : busy
+                    ? 'HF-Sensor wird gesucht …'
+                    : 'HF-Sensor vor Session verbinden';
+            final subtitle = connected
+                ? (state.bpm == null
+                    ? 'Verbunden'
+                    : 'Live-Puls: ${state.bpm} bpm')
+                : (state.error ??
+                    'Optional · z. B. Polar H9, H10 oder kompatibler BLE-Sensor');
+
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                connected ? Icons.favorite : Icons.bluetooth_searching,
+              ),
+              title: Text(title),
+              subtitle: Text(subtitle),
+              trailing: connected
+                  ? TextButton(
+                      onPressed: () async {
+                        await widget.heartRateSensor.disconnect();
+                        if (mounted) setState(() {});
+                      },
+                      child: const Text('Trennen'),
+                    )
+                  : FilledButton.tonal(
+                      onPressed: busy ? null : _connectHeartRateSensor,
+                      child: const Text('Verbinden'),
+                    ),
+            );
+          },
         ),
         const SizedBox(height: 12),
         Align(
