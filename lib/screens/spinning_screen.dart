@@ -8,6 +8,7 @@ import '../services/custom_bpm_profile_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_transfer_service.dart';
+import 'spinning_live_screen.dart';
 
 class SpinningScreen extends StatefulWidget {
   final AudioPlayerService player;
@@ -1787,13 +1788,26 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   Future<void> _start() async {
-    final p = plan; if (p == null || p.tracks.isEmpty) return;
+    final p = plan;
+    if (p == null || p.tracks.isEmpty) return;
+
     await widget.player.setQueue(
       p.tracks,
       preserveCurrent: false,
     );
     await widget.player.play();
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SpinningLiveScreen(
+          player: widget.player,
+          plan: p,
+          customProfile: _activeCustomProfile,
+          sprintMode: sprintMode,
+        ),
+      ),
+    );
   }
   @override Widget build(BuildContext context) {
     final p = plan;
