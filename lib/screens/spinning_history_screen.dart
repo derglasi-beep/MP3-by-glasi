@@ -44,6 +44,18 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
         '${local.minute.toString().padLeft(2, '0')}';
   }
 
+  String _heartRateValue(
+    int? bpm,
+    int? configuredMaxHeartRate,
+  ) {
+    if (bpm == null) return '—';
+    if (configuredMaxHeartRate == null || configuredMaxHeartRate <= 0) {
+      return '$bpm bpm';
+    }
+    final percent = (bpm / configuredMaxHeartRate * 100).round();
+    return '$bpm bpm · $percent %';
+  }
+
   Future<void> _clearHistory() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -126,8 +138,8 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                   ),
                   subtitle: Text(
                     '${_date(entry.startedAt)}'
-                    '${entry.averageHeartRate == null ? '' : ' · Ø ${entry.averageHeartRate} bpm'}'
-                    '${entry.maxHeartRate == null ? '' : ' · max ${entry.maxHeartRate} bpm'}',
+                    '${entry.averageHeartRate == null ? '' : ' · Ø ${_heartRateValue(entry.averageHeartRate, entry.configuredMaxHeartRate)}'}'
+                    '${entry.maxHeartRate == null ? '' : ' · max ${_heartRateValue(entry.maxHeartRate, entry.configuredMaxHeartRate)}'}',
                   ),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   children: [
@@ -138,17 +150,19 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                           Expanded(
                             child: _HistoryValue(
                               label: 'Ø Puls',
-                              value: entry.averageHeartRate == null
-                                  ? '—'
-                                  : '${entry.averageHeartRate} bpm',
+                              value: _heartRateValue(
+                                entry.averageHeartRate,
+                                entry.configuredMaxHeartRate,
+                              ),
                             ),
                           ),
                           Expanded(
                             child: _HistoryValue(
                               label: 'Max Puls',
-                              value: entry.maxHeartRate == null
-                                  ? '—'
-                                  : '${entry.maxHeartRate} bpm',
+                              value: _heartRateValue(
+                                entry.maxHeartRate,
+                                entry.configuredMaxHeartRate,
+                              ),
                             ),
                           ),
                         ],
