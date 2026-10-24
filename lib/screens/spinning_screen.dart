@@ -7,6 +7,7 @@ import '../services/audio_player_service.dart';
 import '../services/custom_bpm_profile_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
+import '../services/spinning_session_controller.dart';
 import '../services/spinning_transfer_service.dart';
 import 'spinning_live_screen.dart';
 
@@ -16,6 +17,7 @@ class SpinningScreen extends StatefulWidget {
   final Set<String> spinningTrackIds;
   final SpinningPlan? initialPlan;
   final ValueChanged<SpinningPlan?> onPlanChanged;
+  final ValueChanged<SpinningSessionController?> onSessionChanged;
   const SpinningScreen({
     super.key,
     required this.player,
@@ -23,6 +25,7 @@ class SpinningScreen extends StatefulWidget {
     required this.spinningTrackIds,
     required this.initialPlan,
     required this.onPlanChanged,
+    required this.onSessionChanged,
   });
   @override State<SpinningScreen> createState() => _SpinningScreenState();
 }
@@ -1798,13 +1801,19 @@ class _SpinningScreenState extends State<SpinningScreen> {
     await widget.player.play();
     if (!mounted) return;
 
+    final session = SpinningSessionController(
+      player: widget.player,
+      plan: p,
+      customProfile: _activeCustomProfile,
+      sprintMode: sprintMode,
+    );
+    widget.onSessionChanged(session);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SpinningLiveScreen(
-          player: widget.player,
-          plan: p,
-          customProfile: _activeCustomProfile,
-          sprintMode: sprintMode,
+          session: session,
+          onSessionEnded: () => widget.onSessionChanged(null),
         ),
       ),
     );
