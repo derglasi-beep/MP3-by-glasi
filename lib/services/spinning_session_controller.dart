@@ -51,7 +51,12 @@ class SpinningSessionController {
     }
 
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (ended || completed || !_watch.isRunning) return;
+      if (ended || completed) return;
+      if (elapsed >= plan.duration) {
+        unawaited(complete());
+        return;
+      }
+      if (!_watch.isRunning) return;
 
       final current = player.currentTrack;
       if (current != null) {
@@ -144,6 +149,7 @@ class SpinningSessionController {
         durationSeconds: seconds,
         averageHeartRate: average,
         maxHeartRate: _heartRateMax,
+        configuredMaxHeartRate: maxHeartRate,
         zoneSeconds: {
           for (var zone = 1; zone <= 5; zone++)
             zone: _zoneSeconds[zone] ?? 0,
