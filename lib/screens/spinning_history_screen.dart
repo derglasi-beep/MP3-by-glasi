@@ -53,7 +53,7 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
       return '$bpm bpm';
     }
     final percent = (bpm / configuredMaxHeartRate * 100).round();
-    return '$bpm bpm · $percent %';
+    return '$percent % · $bpm bpm';
   }
 
   Future<void> _clearHistory() async {
