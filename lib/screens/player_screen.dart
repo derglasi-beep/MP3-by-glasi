@@ -12,6 +12,7 @@ import '../services/bpm_cache.dart';
 import '../services/online_bpm_service.dart';
 import '../services/online_artwork_service.dart';
 import '../services/bpm_fusion_service.dart';
+import '../services/heart_rate_sensor_service.dart';
 import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../services/settings_service.dart';
@@ -93,6 +94,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Set<String> _spinningTrackIds = <String>{};
   SpinningPlan? _spinningPlan;
   SpinningSessionController? _spinningSession;
+  final HeartRateSensorService _heartRateSensor = HeartRateSensorService();
   static const int _maxArtworkInMemory = 80;
   final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
@@ -148,6 +150,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               initialPlan: _spinningPlan,
               onPlanChanged: (plan) => _spinningPlan = plan,
               onSessionChanged: _setSpinningSession,
+              heartRateSensor: _heartRateSensor,
             ),
           ),
         );
@@ -542,6 +545,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (spinningSession != null) {
       unawaited(spinningSession.dispose());
     }
+    unawaited(_heartRateSensor.dispose());
     super.dispose();
   }
 
