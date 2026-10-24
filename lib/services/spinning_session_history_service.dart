@@ -8,6 +8,7 @@ class SpinningSessionHistoryEntry {
   final int durationSeconds;
   final int? averageHeartRate;
   final int? maxHeartRate;
+  final int? configuredMaxHeartRate;
   final Map<int, int> zoneSeconds;
   final List<SpinningHistoryTrack> tracks;
   final bool completed;
@@ -18,6 +19,7 @@ class SpinningSessionHistoryEntry {
     required this.durationSeconds,
     required this.averageHeartRate,
     required this.maxHeartRate,
+    required this.configuredMaxHeartRate,
     required this.zoneSeconds,
     required this.tracks,
     required this.completed,
@@ -58,6 +60,8 @@ class SpinningSessionHistoryEntry {
       averageHeartRate:
           (json['averageHeartRate'] as num?)?.toInt(),
       maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
+      configuredMaxHeartRate:
+          (json['configuredMaxHeartRate'] as num?)?.toInt(),
       zoneSeconds: zones,
       tracks: tracks,
       completed: json['completed'] == true,
@@ -70,6 +74,7 @@ class SpinningSessionHistoryEntry {
         'durationSeconds': durationSeconds,
         'averageHeartRate': averageHeartRate,
         'maxHeartRate': maxHeartRate,
+        'configuredMaxHeartRate': configuredMaxHeartRate,
         'zoneSeconds': {
           for (final entry in zoneSeconds.entries)
             entry.key.toString(): entry.value,
