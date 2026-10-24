@@ -298,10 +298,12 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     final addedIndex =
         widget.player.queue.indexWhere((item) => item.id == track.id);
-    final targetIndex = (insertAfter + 1).clamp(
-      widget.player.currentIndex + 1,
-      widget.player.queue.length - 1,
-    );
+    final targetIndex = (insertAfter + 1)
+        .clamp(
+          widget.player.currentIndex + 1,
+          widget.player.queue.length - 1,
+        )
+        .toInt();
 
     if (addedIndex >= 0 && addedIndex != targetIndex) {
       await widget.player.move(addedIndex, targetIndex);
@@ -326,7 +328,11 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
         target >= widget.player.queue.length) {
       return;
     }
-    await widget.player.move(index, target);
+
+    // AudioPlayerService.move uses ReorderableList-style destination indices:
+    // moving down needs one extra slot because the source is removed first.
+    final destination = delta > 0 ? target + 1 : target;
+    await widget.player.move(index, destination);
     if (mounted) setState(() {});
   }
 
@@ -572,6 +578,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
+                                      visualDensity: VisualDensity.compact,
                                       tooltip: 'Nach oben',
                                       onPressed: widget.session.completed || i == 0
                                           ? null
@@ -579,6 +586,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                       icon: const Icon(Icons.arrow_upward),
                                     ),
                                     IconButton(
+                                      visualDensity: VisualDensity.compact,
                                       tooltip: 'Nach unten',
                                       onPressed: widget.session.completed ||
                                               i == queue.length - 1
@@ -587,6 +595,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                       icon: const Icon(Icons.arrow_downward),
                                     ),
                                     IconButton(
+                                      visualDensity: VisualDensity.compact,
                                       tooltip: 'Aus Session entfernen',
                                       onPressed: widget.session.completed
                                           ? null
