@@ -12,6 +12,7 @@ class SpinningSessionController {
   final SpinningPlan plan;
   final CustomBpmProfile? customProfile;
   final bool sprintMode;
+  final int? maxHeartRate;
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
   final HeartRateSensorService heartRateSensor = HeartRateSensorService();
@@ -27,6 +28,7 @@ class SpinningSessionController {
     required this.plan,
     required this.customProfile,
     required this.sprintMode,
+    required this.maxHeartRate,
     required this.library,
   }) {
     for (final selection in plan.selections) {
