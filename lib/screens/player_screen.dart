@@ -16,6 +16,7 @@ import '../services/library_service.dart';
 import '../services/music_scanner.dart';
 import '../services/settings_service.dart';
 import '../services/spinning_playlist_service.dart';
+import '../services/spinning_session_controller.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
@@ -23,6 +24,7 @@ import 'queue_screen.dart';
 import 'now_playing_screen.dart';
 import 'lyrics_screen.dart';
 import 'spinning_screen.dart';
+import 'spinning_live_screen.dart';
 import 'album_screen.dart';
 import 'artist_screen.dart';
 
@@ -90,6 +92,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Set<String> _artworkMisses = <String>{};
   final Set<String> _spinningTrackIds = <String>{};
   SpinningPlan? _spinningPlan;
+  SpinningSessionController? _spinningSession;
   static const int _maxArtworkInMemory = 80;
   final List<String> _artworkLru = <String>[];
   bool _backgroundBpmWorkerRunning = false;
@@ -105,6 +108,53 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   int _backgroundArtworkNew = 0;
   int _backgroundArtworkMissSkipped = 0;
   bool _suppressAutomaticBpm = false;
+
+  void _setSpinningSession(SpinningSessionController? session) {
+    final previous = _spinningSession;
+    _spinningSession = session;
+    if (previous != null && !identical(previous, session)) {
+      unawaited(previous.dispose());
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openSpinning() async {
+    final active = _spinningSession;
+    if (active != null && !active.ended) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SpinningLiveScreen(
+            session: active,
+            onSessionEnded: () => _setSpinningSession(null),
+          ),
+        ),
+      );
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final persistedSpinningIds = await library.loadSpinningTrackIds();
+    _spinningTrackIds
+      ..clear()
+      ..addAll(persistedSpinningIds);
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SpinningScreen(
+          player: widget.player,
+          tracks: tracks,
+          spinningTrackIds: _spinningTrackIds,
+          initialPlan: _spinningPlan,
+          onPlanChanged: (plan) => _spinningPlan = plan,
+          onSessionChanged: _setSpinningSession,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
 
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
@@ -466,6 +516,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _playerStateSub.cancel();
     onlineBpm.dispose();
     onlineArtwork.dispose();
+    final spinningSession = _spinningSession;
+    if (spinningSession != null) {
+      unawaited(spinningSession.dispose());
+    }
     super.dispose();
   }
 
@@ -2054,29 +2108,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       IconButton(onPressed: _openQueue, icon: const Icon(Icons.queue_music), tooltip: 'Queue'),
       IconButton(onPressed: _openPlaylists, icon: const Icon(Icons.playlist_play), tooltip: 'Playlists'),
       IconButton(
-        onPressed: () async {
-          final persistedSpinningIds = await library.loadSpinningTrackIds();
-          _spinningTrackIds
-            ..clear()
-            ..addAll(persistedSpinningIds);
-          if (!mounted) return;
-
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SpinningScreen(
-                player: widget.player,
-                tracks: tracks,
-                spinningTrackIds: _spinningTrackIds,
-                initialPlan: _spinningPlan,
-                onPlanChanged: (plan) => _spinningPlan = plan,
-              ),
-            ),
-          );
-          if (mounted) setState(() {});
-        },
-        icon: const Icon(Icons.directions_bike),
-        tooltip: 'Spinning DJ',
+        onPressed: _openSpinning,
+        icon: Icon(
+          Icons.directions_bike,
+          color: _spinningSession == null
+              ? null
+              : Theme.of(context).colorScheme.primary,
+        ),
+        tooltip: _spinningSession == null
+            ? 'Spinning DJ'
+            : 'Laufende Session fortsetzen',
       ),
       IconButton(onPressed: addFiles, icon: const Icon(Icons.library_music), tooltip: 'Dateien hinzufügen'),
       IconButton(onPressed: addFolder, icon: const Icon(Icons.folder_open), tooltip: Platform.isAndroid ? 'Smartphone-Musik scannen' : 'Ordner scannen'),
