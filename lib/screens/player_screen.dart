@@ -121,7 +121,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _openSpinning() async {
     final active = _spinningSession;
     if (active != null && !active.ended) {
-      await Navigator.push(
+      final returnToPlanning = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
           builder: (_) => SpinningLiveScreen(
@@ -130,6 +130,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ),
         ),
       );
+      if (!mounted) return;
+      if (returnToPlanning == true) {
+        final persistedSpinningIds = await library.loadSpinningTrackIds();
+        _spinningTrackIds
+          ..clear()
+          ..addAll(persistedSpinningIds);
+        if (!mounted) return;
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SpinningScreen(
+              player: widget.player,
+              tracks: tracks,
+              spinningTrackIds: _spinningTrackIds,
+              initialPlan: _spinningPlan,
+              onPlanChanged: (plan) => _spinningPlan = plan,
+              onSessionChanged: _setSpinningSession,
+            ),
+          ),
+        );
+      }
       if (mounted) setState(() {});
       return;
     }
