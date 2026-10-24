@@ -15,7 +15,7 @@ class SpinningSessionController {
   final int? maxHeartRate;
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
-  final HeartRateSensorService heartRateSensor = HeartRateSensorService();
+  final HeartRateSensorService heartRateSensor;
 
   final Stopwatch _watch = Stopwatch();
   Duration _offset = Duration.zero;
@@ -30,6 +30,7 @@ class SpinningSessionController {
     required this.sprintMode,
     required this.maxHeartRate,
     required this.library,
+    required this.heartRateSensor,
   }) {
     for (final selection in plan.selections) {
       phaseByTrackId[selection.track.id] = selection.phase;
@@ -103,6 +104,5 @@ class SpinningSessionController {
   Future<void> dispose() async {
     _watch.stop();
     await _playerStateSub?.cancel();
-    await heartRateSensor.dispose();
   }
 }
