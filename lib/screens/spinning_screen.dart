@@ -307,7 +307,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
     }
 
     final parsed = int.tryParse(controller.text.trim());
-    final value = parsed == null ? null : parsed.clamp(80, 240);
+    final value = parsed == null ? null : parsed.clamp(80, 240).toInt();
     controller.dispose();
 
     await customBpmProfiles.saveMaxHeartRate(value);
