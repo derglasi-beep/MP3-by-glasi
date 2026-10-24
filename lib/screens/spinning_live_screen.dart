@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:universal_ble/universal_ble.dart';
 
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/heart_rate_sensor_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
 
@@ -336,6 +338,119 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openHeartRateSensorDialog() async {
+    final sensor = widget.session.heartRateSensor;
+    await sensor.startScan();
+    if (!mounted) return;
+
+    final selected = await showDialog<BleDevice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Herzfrequenz-Sensor'),
+        content: SizedBox(
+          width: 520,
+          height: 420,
+          child: StreamBuilder<List<BleDevice>>(
+            stream: sensor.devicesStream,
+            initialData: sensor.devices,
+            builder: (context, snapshot) {
+              final devices = snapshot.data ?? const <BleDevice>[];
+              if (devices.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 14),
+                      Text(
+                        'Suche nach BLE-Herzfrequenz-Sensoren …',
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Brustgurt ggf. anlegen oder Sensor aktivieren.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: devices.length,
+                itemBuilder: (_, index) {
+                  final device = devices[index];
+                  final name = device.name?.trim();
+                  return ListTile(
+                    leading: const Icon(Icons.bluetooth),
+                    title: Text(
+                      name == null || name.isEmpty ? 'HF-Sensor' : name,
+                    ),
+                    subtitle: Text(device.deviceId),
+                    trailing: device.rssi == null
+                        ? null
+                        : Text('${device.rssi} dBm'),
+                    onTap: () => Navigator.pop(dialogContext, device),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+
+    await sensor.stopScan();
+    if (selected == null) return;
+
+    await sensor.connect(selected);
+    if (mounted) setState(() {});
+  }
+
+  ({int min, int max}) _heartRateRange(
+    SpinningPhase phase,
+    CustomBpmSegment? custom,
+  ) {
+    if (custom != null &&
+        custom.minHeartRatePercent != null &&
+        custom.maxHeartRatePercent != null) {
+      return (
+        min: custom.minHeartRatePercent!,
+        max: custom.maxHeartRatePercent!,
+      );
+    }
+
+    return switch (phase) {
+      SpinningPhase.warmup => (min: 65, max: 69),
+      SpinningPhase.build => (min: 60, max: 70),
+      SpinningPhase.load => (min: 70, max: 80),
+      SpinningPhase.peak => (min: 80, max: 90),
+      SpinningPhase.cooldown => (min: 60, max: 65),
+    };
+  }
+
+  String _heartRateLiveStatus(
+    int bpm,
+    ({int min, int max}) targetPercent,
+  ) {
+    final maxHeartRate = widget.customProfile?.maxHeartRate;
+    if (maxHeartRate == null || maxHeartRate <= 0) {
+      return 'Live-Puls · Ziel ${targetPercent.min}–${targetPercent.max} % HFmax';
+    }
+
+    final minBpm = (maxHeartRate * targetPercent.min / 100).round();
+    final maxBpm = (maxHeartRate * targetPercent.max / 100).round();
+    if (bpm < minBpm) return 'Unter Ziel · Ziel $minBpm–$maxBpm bpm';
+    if (bpm > maxBpm) return 'Über Ziel · Ziel $minBpm–$maxBpm bpm';
+    return 'Im Zielbereich · $minBpm–$maxBpm bpm';
+  }
+
   SpinningCurvePoint? _pointAt(Duration elapsed) {
     if (widget.plan.curve.isEmpty) return null;
 
@@ -490,13 +605,80 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                         Expanded(
                           child: _LiveValue(
                             icon: Icons.favorite_outline,
-                            label: 'Herzfrequenz',
+                            label: 'HF-Ziel',
                             value: hfText,
                           ),
                         ),
                       ],
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                StreamBuilder<HeartRateSensorState>(
+                  stream: widget.session.heartRateSensor.stateStream,
+                  initialData: widget.session.heartRateSensor.state,
+                  builder: (context, sensorSnapshot) {
+                    final sensorState = sensorSnapshot.data ??
+                        const HeartRateSensorState.disconnected();
+                    final liveBpm = sensorState.bpm;
+                    final targetPercent =
+                        _heartRateRange(currentPhase, custom?.segment);
+                    final connected =
+                        sensorState.status == HeartRateSensorStatus.connected;
+                    final connecting =
+                        sensorState.status == HeartRateSensorStatus.connecting;
+                    final scanning =
+                        sensorState.status == HeartRateSensorStatus.scanning;
+
+                    final title = liveBpm == null
+                        ? (connected
+                            ? 'HF-Sensor verbunden'
+                            : connecting
+                                ? 'HF-Sensor wird verbunden …'
+                                : scanning
+                                    ? 'Suche nach HF-Sensor …'
+                                    : 'Kein HF-Sensor verbunden')
+                        : '$liveBpm bpm';
+
+                    final subtitle = sensorState.error != null
+                        ? sensorState.error!
+                        : liveBpm != null
+                            ? _heartRateLiveStatus(liveBpm, targetPercent)
+                            : sensorState.deviceName ??
+                                'Bluetooth-LE Brustgurt oder HF-Sensor';
+
+                    return Card(
+                      child: ListTile(
+                        leading: Icon(
+                          connected
+                              ? Icons.favorite
+                              : Icons.favorite_outline,
+                        ),
+                        title: Text(title),
+                        subtitle: Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: connected
+                            ? TextButton(
+                                onPressed: () async {
+                                  await widget.session.heartRateSensor
+                                      .disconnect();
+                                  if (mounted) setState(() {});
+                                },
+                                child: const Text('Trennen'),
+                              )
+                            : FilledButton.tonalIcon(
+                                onPressed: connecting || scanning
+                                    ? null
+                                    : _openHeartRateSensorDialog,
+                                icon: const Icon(Icons.bluetooth_searching),
+                                label: const Text('Verbinden'),
+                              ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 Card(
