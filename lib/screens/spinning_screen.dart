@@ -1806,10 +1806,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
       plan: p,
       customProfile: _activeCustomProfile,
       sprintMode: sprintMode,
+      library: widget.tracks,
     );
     widget.onSessionChanged(session);
 
-    await Navigator.of(context).push(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => SpinningLiveScreen(
           session: session,
