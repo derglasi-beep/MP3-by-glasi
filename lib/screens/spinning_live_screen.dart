@@ -439,7 +439,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     int bpm,
     ({int min, int max}) targetPercent,
   ) {
-    final maxHeartRate = widget.customProfile?.maxHeartRate;
+    final maxHeartRate = widget.session.maxHeartRate;
     if (maxHeartRate == null || maxHeartRate <= 0) {
       return 'Live-Puls · Ziel ${targetPercent.min}–${targetPercent.max} % HFmax';
     }
