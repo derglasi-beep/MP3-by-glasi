@@ -31,6 +31,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   Timer? _ticker;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<dynamic>? _trackSub;
+  bool _sessionCompleted = false;
 
   @override
   void initState() {
@@ -56,12 +57,16 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       if (mounted) setState(() {});
     });
 
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted) return;
       if (_sessionElapsed >= widget.plan.duration) {
         _sessionWatch.stop();
+        if (!_sessionCompleted) {
+          _sessionCompleted = true;
+          await widget.player.pause();
+        }
       }
-      setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
@@ -192,6 +197,12 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _endSession() async {
+    _sessionWatch.stop();
+    await widget.player.pause();
+    if (mounted) Navigator.of(context).pop();
+  }
+
   SpinningCurvePoint? _pointAt(Duration elapsed) {
     if (widget.plan.curve.isEmpty) return null;
 
@@ -201,26 +212,6 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       current = point;
     }
     return current;
-  }
-
-  Duration _phaseRemaining(Duration elapsed, SpinningPhase phase) {
-    for (final point in widget.plan.curve) {
-      if (point.position <= elapsed) continue;
-      if (point.phase != phase) {
-        final remaining = point.position - elapsed;
-        return remaining > Duration.zero ? remaining : Duration.zero;
-      }
-    }
-    final remaining = widget.plan.duration - elapsed;
-    return remaining > Duration.zero ? remaining : Duration.zero;
-  }
-
-  SpinningPhase? _nextPhase(Duration elapsed, SpinningPhase current) {
-    for (final point in widget.plan.curve) {
-      if (point.position <= elapsed) continue;
-      if (point.phase != current) return point.phase;
-    }
-    return null;
   }
 
   ({CustomBpmSegment segment, Duration remaining})? _customSegmentAt(
@@ -325,13 +316,15 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     child: Column(
                       children: [
                         Text(
-                          phaseTitle,
+                          _sessionCompleted ? 'Session beendet' : phaseTitle,
                           style: Theme.of(context).textTheme.headlineMedium,
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'noch ${_clock(phaseRemaining)}',
+                          _sessionCompleted
+                              ? 'Training abgeschlossen'
+                              : 'noch ${_clock(phaseRemaining)}',
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(height: 18),
@@ -411,8 +404,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton.icon(
-                          onPressed:
-                              nextPhase == null ? null : _startNextPhase,
+                          onPressed: _sessionCompleted || nextPhase == null
+                              ? null
+                              : _startNextPhase,
                           icon: const Icon(Icons.skip_next),
                           label: const Text('Phase starten'),
                         ),
@@ -454,6 +448,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                       ],
                     );
                   },
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: _endSession,
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  label: Text(
+                    _sessionCompleted ? 'Zur Planung zurück' : 'Session beenden',
+                  ),
                 ),
               ],
             );
