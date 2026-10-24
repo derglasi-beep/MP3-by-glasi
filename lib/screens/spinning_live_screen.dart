@@ -435,20 +435,63 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     };
   }
 
-  String _heartRateLiveStatus(
+  int? _heartRateZoneForBpm(int bpm) {
+    final maxHeartRate = widget.session.maxHeartRate;
+    if (maxHeartRate == null || maxHeartRate <= 0) return null;
+    final percent = bpm / maxHeartRate * 100;
+    if (percent < 60) return 1;
+    if (percent < 70) return 2;
+    if (percent < 80) return 3;
+    if (percent < 90) return 4;
+    return 5;
+  }
+
+  ({
+    String label,
+    String detail,
+    IconData icon,
+    Color color,
+  }) _heartRateFeedback(
+    BuildContext context,
     int bpm,
     ({int min, int max}) targetPercent,
   ) {
+    final scheme = Theme.of(context).colorScheme;
     final maxHeartRate = widget.session.maxHeartRate;
     if (maxHeartRate == null || maxHeartRate <= 0) {
-      return 'Live-Puls · Ziel ${targetPercent.min}–${targetPercent.max} % HFmax';
+      return (
+        label: 'Live-Puls',
+        detail:
+            'Ziel ${targetPercent.min}–${targetPercent.max} % HFmax · HFmax nicht gesetzt',
+        icon: Icons.favorite,
+        color: scheme.primary,
+      );
     }
 
     final minBpm = (maxHeartRate * targetPercent.min / 100).round();
     final maxBpm = (maxHeartRate * targetPercent.max / 100).round();
-    if (bpm < minBpm) return 'Unter Ziel · Ziel $minBpm–$maxBpm bpm';
-    if (bpm > maxBpm) return 'Über Ziel · Ziel $minBpm–$maxBpm bpm';
-    return 'Im Zielbereich · $minBpm–$maxBpm bpm';
+    if (bpm < minBpm) {
+      return (
+        label: 'Unter Ziel',
+        detail: 'Ziel $minBpm–$maxBpm bpm',
+        icon: Icons.south,
+        color: scheme.tertiary,
+      );
+    }
+    if (bpm > maxBpm) {
+      return (
+        label: 'Über Ziel',
+        detail: 'Ziel $minBpm–$maxBpm bpm',
+        icon: Icons.north,
+        color: scheme.error,
+      );
+    }
+    return (
+      label: 'Im Zielbereich',
+      detail: '$minBpm–$maxBpm bpm',
+      icon: Icons.check_circle,
+      color: scheme.primary,
+    );
   }
 
   SpinningCurvePoint? _pointAt(Duration elapsed) {
@@ -630,51 +673,190 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     final scanning =
                         sensorState.status == HeartRateSensorStatus.scanning;
 
-                    final title = liveBpm == null
-                        ? (connected
-                            ? 'HF-Sensor verbunden'
-                            : connecting
-                                ? 'HF-Sensor wird verbunden …'
-                                : scanning
-                                    ? 'Suche nach HF-Sensor …'
-                                    : 'Kein HF-Sensor verbunden')
-                        : '$liveBpm bpm';
-
-                    final subtitle = sensorState.error != null
-                        ? sensorState.error!
-                        : liveBpm != null
-                            ? _heartRateLiveStatus(liveBpm, targetPercent)
-                            : sensorState.deviceName ??
-                                'Bluetooth-LE Brustgurt oder HF-Sensor';
+                    final zone =
+                        liveBpm == null ? null : _heartRateZoneForBpm(liveBpm);
+                    final feedback = liveBpm == null
+                        ? null
+                        : _heartRateFeedback(
+                            context,
+                            liveBpm,
+                            targetPercent,
+                          );
 
                     return Card(
-                      child: ListTile(
-                        leading: Icon(
-                          connected
-                              ? Icons.favorite
-                              : Icons.favorite_outline,
-                        ),
-                        title: Text(title),
-                        subtitle: Text(
-                          subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: connected
-                            ? TextButton(
-                                onPressed: () async {
-                                  await widget.session.heartRateSensor
-                                      .disconnect();
-                                  if (mounted) setState(() {});
-                                },
-                                child: const Text('Trennen'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: connected && liveBpm != null
+                            ? Column(
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.favorite,
+                                        size: 34,
+                                        color: feedback!.color,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              sensorState.deviceName ??
+                                                  'HF-Sensor',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall,
+                                            ),
+                                            Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  '$liveBpm',
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .displaySmall
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                ),
+                                                const Padding(
+                                                  padding: EdgeInsets.only(
+                                                    left: 6,
+                                                    bottom: 6,
+                                                  ),
+                                                  child: Text('bpm'),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (zone != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: feedback.color.withValues(
+                                              alpha: .12,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            'Zone $zone',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              color: feedback.color,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: feedback.color.withValues(
+                                        alpha: .10,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          feedback.icon,
+                                          color: feedback.color,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                feedback.label,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  color: feedback.color,
+                                                ),
+                                              ),
+                                              Text(
+                                                feedback.detail,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            await widget
+                                                .session.heartRateSensor
+                                                .disconnect();
+                                            if (mounted) setState(() {});
+                                          },
+                                          child: const Text('Trennen'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               )
-                            : FilledButton.tonalIcon(
-                                onPressed: connecting || scanning
-                                    ? null
-                                    : _openHeartRateSensorDialog,
-                                icon: const Icon(Icons.bluetooth_searching),
-                                label: const Text('Verbinden'),
+                            : ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  connected
+                                      ? Icons.favorite
+                                      : Icons.favorite_outline,
+                                ),
+                                title: Text(
+                                  connected
+                                      ? 'HF-Sensor verbunden'
+                                      : connecting
+                                          ? 'HF-Sensor wird verbunden …'
+                                          : scanning
+                                              ? 'Suche nach HF-Sensor …'
+                                              : 'Kein HF-Sensor verbunden',
+                                ),
+                                subtitle: Text(
+                                  sensorState.error ??
+                                      sensorState.deviceName ??
+                                      'Bluetooth-LE Brustgurt oder HF-Sensor',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: connected
+                                    ? TextButton(
+                                        onPressed: () async {
+                                          await widget
+                                              .session.heartRateSensor
+                                              .disconnect();
+                                          if (mounted) setState(() {});
+                                        },
+                                        child: const Text('Trennen'),
+                                      )
+                                    : FilledButton.tonalIcon(
+                                        onPressed: connecting || scanning
+                                            ? null
+                                            : _openHeartRateSensorDialog,
+                                        icon: const Icon(
+                                          Icons.bluetooth_searching,
+                                        ),
+                                        label: const Text('Verbinden'),
+                                      ),
                               ),
                       ),
                     );
