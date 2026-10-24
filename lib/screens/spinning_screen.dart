@@ -11,6 +11,7 @@ import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
 import '../services/spinning_transfer_service.dart';
+import 'spinning_history_screen.dart';
 import 'spinning_live_screen.dart';
 
 class SpinningScreen extends StatefulWidget {
@@ -1965,7 +1966,20 @@ class _SpinningScreenState extends State<SpinningScreen> {
   @override Widget build(BuildContext context) {
     final p = plan;
     return Scaffold(
-      appBar: AppBar(title: const Text('Spinning DJ')),
+      appBar: AppBar(
+        title: const Text('Spinning DJ'),
+        actions: [
+          IconButton(
+            tooltip: 'Session-Historie',
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const SpinningHistoryScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         top: false,
         minimum: const EdgeInsets.only(bottom: 12),
