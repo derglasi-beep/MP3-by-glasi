@@ -175,6 +175,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           initialPlan: _spinningPlan,
           onPlanChanged: (plan) => _spinningPlan = plan,
           onSessionChanged: _setSpinningSession,
+          heartRateSensor: _heartRateSensor,
         ),
       ),
     );
