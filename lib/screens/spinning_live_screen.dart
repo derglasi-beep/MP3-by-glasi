@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
-import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/spinning_playlist_service.dart';
 
@@ -25,36 +26,55 @@ class SpinningLiveScreen extends StatefulWidget {
 
 class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   final SpinningPlaylistService planner = SpinningPlaylistService();
+  final Stopwatch _sessionWatch = Stopwatch();
+  Timer? _ticker;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<dynamic>? _trackSub;
 
-  Duration _planningDuration(Track track) {
-    final value = track.duration;
-    if (value == null || value <= Duration.zero) {
-      return const Duration(minutes: 4);
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.player.audio.playing) {
+      _sessionWatch.start();
     }
-    if (value > const Duration(minutes: 15)) {
-      return const Duration(minutes: 5);
-    }
-    return value;
+
+    _playerStateSub = widget.player.playerStateStream.listen((state) {
+      if (state.playing) {
+        if (!_sessionWatch.isRunning &&
+            _sessionWatch.elapsed < widget.plan.duration) {
+          _sessionWatch.start();
+        }
+      } else {
+        _sessionWatch.stop();
+      }
+      if (mounted) setState(() {});
+    });
+
+    _trackSub = widget.player.currentTrackStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_sessionWatch.elapsed >= widget.plan.duration) {
+        _sessionWatch.stop();
+      }
+      setState(() {});
+    });
   }
 
-  Duration _sessionElapsed(Duration trackPosition) {
-    var index = widget.player.currentIndex;
-    if (index < 0 || index >= widget.plan.tracks.length) {
-      final currentId = widget.player.currentTrack?.id;
-      index = currentId == null
-          ? 0
-          : widget.plan.tracks.indexWhere((track) => track.id == currentId);
-      if (index < 0) index = 0;
-    }
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _playerStateSub?.cancel();
+    _trackSub?.cancel();
+    super.dispose();
+  }
 
-    var elapsed = Duration.zero;
-    for (var i = 0; i < index && i < widget.plan.tracks.length; i++) {
-      elapsed += _planningDuration(widget.plan.tracks[i]);
-    }
-    elapsed += trackPosition;
-
-    if (elapsed > widget.plan.duration) return widget.plan.duration;
-    return elapsed;
+  Duration get _sessionElapsed {
+    final elapsed = _sessionWatch.elapsed;
+    return elapsed > widget.plan.duration ? widget.plan.duration : elapsed;
   }
 
   SpinningCurvePoint? _pointAt(Duration elapsed) {
@@ -156,13 +176,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
         title: const Text('Spinning Live'),
       ),
       body: SafeArea(
-        child: StreamBuilder<Duration>(
-          stream: widget.player.positionStream,
-          initialData: widget.player.audio.position,
-          builder: (context, positionSnapshot) {
-            final elapsed = _sessionElapsed(
-              positionSnapshot.data ?? Duration.zero,
-            );
+        child: Builder(
+          builder: (context) {
+            final elapsed = _sessionElapsed;
             final point = _pointAt(elapsed);
             final currentPhase = point?.phase ?? SpinningPhase.warmup;
             final custom = _customSegmentAt(elapsed);
