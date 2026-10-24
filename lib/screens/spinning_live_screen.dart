@@ -711,36 +711,49 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                                   .textTheme
                                                   .bodySmall,
                                             ),
-                                            Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  '$liveBpm',
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .displaySmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.bold,
+                                            Builder(
+                                              builder: (context) {
+                                                final maxHeartRate =
+                                                    widget.session.maxHeartRate;
+                                                final percent =
+                                                    maxHeartRate == null ||
+                                                            maxHeartRate <= 0
+                                                        ? null
+                                                        : (liveBpm /
+                                                                maxHeartRate *
+                                                                100)
+                                                            .round();
+                                                return Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  children: [
+                                                    Text(
+                                                      percent == null
+                                                          ? '$liveBpm'
+                                                          : '$percent %',
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .displaySmall
+                                                          ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                    ),
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                        left: 6,
+                                                        bottom: 6,
                                                       ),
-                                                ),
-                                                Padding(
-                                                  padding: const EdgeInsets.only(
-                                                    left: 6,
-                                                    bottom: 6,
-                                                  ),
-                                                  child: Text(
-                                                    widget.session.maxHeartRate ==
-                                                                null ||
-                                                            widget.session
-                                                                    .maxHeartRate! <=
-                                                                0
-                                                        ? 'bpm'
-                                                        : '${(liveBpm / widget.session.maxHeartRate! * 100).round()} % · $liveBpm bpm',
-                                                  ),
-                                                ),
-                                              ],
+                                                      child: Text(
+                                                        percent == null
+                                                            ? 'bpm'
+                                                            : '· $liveBpm bpm',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
                                             ),
                                           ],
                                         ),
