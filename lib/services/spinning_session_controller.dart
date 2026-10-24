@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
 
+import '../models/track.dart';
 import 'audio_player_service.dart';
 import 'spinning_playlist_service.dart';
 
@@ -10,6 +11,7 @@ class SpinningSessionController {
   final SpinningPlan plan;
   final CustomBpmProfile? customProfile;
   final bool sprintMode;
+  final List<Track> library;
 
   final Stopwatch _watch = Stopwatch();
   Duration _offset = Duration.zero;
@@ -22,6 +24,7 @@ class SpinningSessionController {
     required this.plan,
     required this.customProfile,
     required this.sprintMode,
+    required this.library,
   }) {
     if (player.audio.playing) {
       _watch.start();
