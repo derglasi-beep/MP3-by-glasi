@@ -49,7 +49,7 @@ class CustomBpmProfileService {
     if (value == null) {
       await prefs.remove(_maxHeartRateKey);
     } else {
-      await prefs.setInt(_maxHeartRateKey, value.clamp(80, 240));
+      await prefs.setInt(_maxHeartRateKey, value.clamp(80, 240).toInt());
     }
   }
 
