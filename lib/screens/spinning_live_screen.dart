@@ -1,24 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
-
-import '../services/audio_player_service.dart';
 import '../services/spinning_playlist_service.dart';
+import '../services/spinning_session_controller.dart';
 
 class SpinningLiveScreen extends StatefulWidget {
-  final AudioPlayerService player;
-  final SpinningPlan plan;
-  final CustomBpmProfile? customProfile;
-  final bool sprintMode;
+  final SpinningSessionController session;
+  final VoidCallback onSessionEnded;
 
   const SpinningLiveScreen({
     super.key,
-    required this.player,
-    required this.plan,
-    required this.customProfile,
-    required this.sprintMode,
+    required this.session,
+    required this.onSessionEnded,
   });
+
+  AudioPlayerService get player => session.player;
+  SpinningPlan get plan => session.plan;
+  CustomBpmProfile? get customProfile => session.customProfile;
+  bool get sprintMode => session.sprintMode;
 
   @override
   State<SpinningLiveScreen> createState() => _SpinningLiveScreenState();
@@ -26,32 +25,12 @@ class SpinningLiveScreen extends StatefulWidget {
 
 class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   final SpinningPlaylistService planner = SpinningPlaylistService();
-  final Stopwatch _sessionWatch = Stopwatch();
-  Duration _sessionOffset = Duration.zero;
   Timer? _ticker;
-  StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<dynamic>? _trackSub;
-  bool _sessionCompleted = false;
 
   @override
   void initState() {
     super.initState();
-
-    if (widget.player.audio.playing) {
-      _sessionWatch.start();
-    }
-
-    _playerStateSub = widget.player.playerStateStream.listen((state) {
-      if (state.playing) {
-        if (!_sessionWatch.isRunning &&
-            _sessionElapsed < widget.plan.duration) {
-          _sessionWatch.start();
-        }
-      } else {
-        _sessionWatch.stop();
-      }
-      if (mounted) setState(() {});
-    });
 
     _trackSub = widget.player.currentTrackStream.listen((_) {
       if (mounted) setState(() {});
@@ -59,12 +38,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted) return;
-      if (_sessionElapsed >= widget.plan.duration) {
-        _sessionWatch.stop();
-        if (!_sessionCompleted) {
-          _sessionCompleted = true;
-          await widget.player.pause();
-        }
+      if (_sessionElapsed >= widget.plan.duration &&
+          !widget.session.completed) {
+        await widget.session.complete();
       }
       if (mounted) setState(() {});
     });
@@ -73,15 +49,11 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
-    _playerStateSub?.cancel();
     _trackSub?.cancel();
     super.dispose();
   }
 
-  Duration get _sessionElapsed {
-    final elapsed = _sessionOffset + _sessionWatch.elapsed;
-    return elapsed > widget.plan.duration ? widget.plan.duration : elapsed;
-  }
+  Duration get _sessionElapsed => widget.session.elapsed;
 
   ({
     SpinningPhase phase,
@@ -171,12 +143,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     final targetPhase = current.nextPhase;
     if (targetPosition == null || targetPhase == null) return;
 
-    final wasRunning = _sessionWatch.isRunning;
-    _sessionWatch
-      ..stop()
-      ..reset();
-    _sessionOffset = targetPosition;
-    if (wasRunning) _sessionWatch.start();
+    widget.session.jumpTo(targetPosition);
 
     var targetIndex = -1;
     final currentIndex = widget.player.currentIndex;
@@ -198,8 +165,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   }
 
   Future<void> _endSession() async {
-    _sessionWatch.stop();
-    await widget.player.pause();
+    await widget.session.end();
+    widget.onSessionEnded();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -316,13 +283,13 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     child: Column(
                       children: [
                         Text(
-                          _sessionCompleted ? 'Session beendet' : phaseTitle,
+                          widget.session.completed ? 'Session beendet' : phaseTitle,
                           style: Theme.of(context).textTheme.headlineMedium,
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _sessionCompleted
+                          widget.session.completed
                               ? 'Training abgeschlossen'
                               : 'noch ${_clock(phaseRemaining)}',
                           style: Theme.of(context).textTheme.headlineSmall,
@@ -404,7 +371,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton.icon(
-                          onPressed: _sessionCompleted || nextPhase == null
+                          onPressed: widget.session.completed || nextPhase == null
                               ? null
                               : _startNextPhase,
                           icon: const Icon(Icons.skip_next),
@@ -454,7 +421,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                   onPressed: _endSession,
                   icon: const Icon(Icons.stop_circle_outlined),
                   label: Text(
-                    _sessionCompleted ? 'Zur Planung zurück' : 'Session beenden',
+                    widget.session.completed ? 'Zur Planung zurück' : 'Session beenden',
                   ),
                 ),
               ],
