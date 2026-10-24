@@ -151,17 +151,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     var targetQueueIndex = -1;
     final currentIndex = widget.player.currentIndex;
-    for (final selection in widget.plan.selections) {
-      if (selection.phase != targetPhase) continue;
-      final queueIndex = widget.player.queue.indexWhere(
-        (track) => track.id == selection.track.id,
-      );
-      if (queueIndex < 0) continue;
-      if (queueIndex > currentIndex) {
-        targetQueueIndex = queueIndex;
+    for (var i = 0; i < widget.player.queue.length; i++) {
+      final track = widget.player.queue[i];
+      if (widget.session.phaseForTrack(track) != targetPhase) continue;
+      if (i > currentIndex) {
+        targetQueueIndex = i;
         break;
       }
-      if (targetQueueIndex < 0) targetQueueIndex = queueIndex;
+      if (targetQueueIndex < 0) targetQueueIndex = i;
     }
 
     if (targetQueueIndex >= 0 &&
@@ -180,9 +177,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
   Future<void> _addTrackToSession() async {
     final searchController = TextEditingController();
-    Track? selected;
+    var selectedPhase = _phaseWindowAt(_sessionElapsed).phase;
 
-    selected = await showDialog<Track>(
+    final result = await showDialog<({Track track, SpinningPhase phase})>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -199,10 +196,30 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
           return AlertDialog(
             title: const Text('Titel zur Session hinzufügen'),
             content: SizedBox(
-              width: 620,
-              height: 520,
+              width: 660,
+              height: 560,
               child: Column(
                 children: [
+                  DropdownButtonFormField<SpinningPhase>(
+                    initialValue: selectedPhase,
+                    decoration: const InputDecoration(
+                      labelText: 'Für Phase einfügen',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final phase in SpinningPhase.values)
+                        DropdownMenuItem(
+                          value: phase,
+                          child: Text(_phaseLabel(phase)),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => selectedPhase = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: searchController,
                     autofocus: true,
@@ -240,8 +257,10 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                     : Text(
                                         '${_displayBpm(track.bpm!).round()} BPM',
                                       ),
-                                onTap: () =>
-                                    Navigator.pop(dialogContext, track),
+                                onTap: () => Navigator.pop(
+                                  dialogContext,
+                                  (track: track, phase: selectedPhase),
+                                ),
                               );
                             },
                           ),
@@ -261,15 +280,53 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     );
 
     searchController.dispose();
-    if (selected == null) return;
+    if (result == null) return;
 
-    await widget.player.addTracksToQueue([selected]);
+    final track = result.track;
+    final phase = result.phase;
+    widget.session.setTrackPhase(track, phase);
+
+    await widget.player.addTracksToQueue([track]);
+
+    var insertAfter = widget.player.currentIndex;
+    for (var i = 0; i < widget.player.queue.length - 1; i++) {
+      final queued = widget.player.queue[i];
+      if (widget.session.phaseForTrack(queued) == phase) {
+        insertAfter = i;
+      }
+    }
+
+    final addedIndex =
+        widget.player.queue.indexWhere((item) => item.id == track.id);
+    final targetIndex = (insertAfter + 1).clamp(
+      widget.player.currentIndex + 1,
+      widget.player.queue.length - 1,
+    );
+
+    if (addedIndex >= 0 && addedIndex != targetIndex) {
+      await widget.player.move(addedIndex, targetIndex);
+    }
+
     if (mounted) setState(() {});
   }
 
   Future<void> _removeTrackFromSession(int index) async {
     if (index < 0 || index >= widget.player.queue.length) return;
+    final track = widget.player.queue[index];
+    widget.session.removeTrackPhase(track);
     await widget.player.removeAt(index);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _moveTrack(int index, int delta) async {
+    final target = index + delta;
+    if (index < 0 ||
+        index >= widget.player.queue.length ||
+        target < 0 ||
+        target >= widget.player.queue.length) {
+      return;
+    }
+    await widget.player.move(index, target);
     if (mounted) setState(() {});
   }
 
@@ -506,19 +563,39 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
-                                  queue[i].artist,
+                                  '${queue[i].artist} · ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 onTap: () => widget.player.playAt(i),
-                                trailing: IconButton(
-                                  tooltip: 'Aus Session entfernen',
-                                  onPressed: widget.session.completed
-                                      ? null
-                                      : () => _removeTrackFromSession(i),
-                                  icon: const Icon(
-                                    Icons.remove_circle_outline,
-                                  ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Nach oben',
+                                      onPressed: widget.session.completed || i == 0
+                                          ? null
+                                          : () => _moveTrack(i, -1),
+                                      icon: const Icon(Icons.arrow_upward),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Nach unten',
+                                      onPressed: widget.session.completed ||
+                                              i == queue.length - 1
+                                          ? null
+                                          : () => _moveTrack(i, 1),
+                                      icon: const Icon(Icons.arrow_downward),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Aus Session entfernen',
+                                      onPressed: widget.session.completed
+                                          ? null
+                                          : () => _removeTrackFromSession(i),
+                                      icon: const Icon(
+                                        Icons.remove_circle_outline,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                         ],
