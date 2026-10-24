@@ -27,6 +27,7 @@ class SpinningLiveScreen extends StatefulWidget {
 class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   final SpinningPlaylistService planner = SpinningPlaylistService();
   final Stopwatch _sessionWatch = Stopwatch();
+  Duration _sessionOffset = Duration.zero;
   Timer? _ticker;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<dynamic>? _trackSub;
@@ -42,7 +43,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     _playerStateSub = widget.player.playerStateStream.listen((state) {
       if (state.playing) {
         if (!_sessionWatch.isRunning &&
-            _sessionWatch.elapsed < widget.plan.duration) {
+            _sessionElapsed < widget.plan.duration) {
           _sessionWatch.start();
         }
       } else {
@@ -57,7 +58,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (_sessionWatch.elapsed >= widget.plan.duration) {
+      if (_sessionElapsed >= widget.plan.duration) {
         _sessionWatch.stop();
       }
       setState(() {});
@@ -73,8 +74,51 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   }
 
   Duration get _sessionElapsed {
-    final elapsed = _sessionWatch.elapsed;
+    final elapsed = _sessionOffset + _sessionWatch.elapsed;
     return elapsed > widget.plan.duration ? widget.plan.duration : elapsed;
+  }
+
+  SpinningCurvePoint? _nextPhasePoint(
+    Duration elapsed,
+    SpinningPhase current,
+  ) {
+    for (final point in widget.plan.curve) {
+      if (point.position <= elapsed) continue;
+      if (point.phase != current) return point;
+    }
+    return null;
+  }
+
+  Future<void> _startNextPhase() async {
+    final elapsed = _sessionElapsed;
+    final current = _pointAt(elapsed)?.phase ?? SpinningPhase.warmup;
+    final target = _nextPhasePoint(elapsed, current);
+    if (target == null) return;
+
+    final wasRunning = _sessionWatch.isRunning;
+    _sessionWatch
+      ..stop()
+      ..reset();
+    _sessionOffset = target.position;
+    if (wasRunning) _sessionWatch.start();
+
+    var targetIndex = -1;
+    final currentIndex = widget.player.currentIndex;
+    for (var i = 0; i < widget.plan.selections.length; i++) {
+      final selection = widget.plan.selections[i];
+      if (selection.phase != target.phase) continue;
+      if (i > currentIndex) {
+        targetIndex = i;
+        break;
+      }
+      if (targetIndex < 0) targetIndex = i;
+    }
+
+    if (targetIndex >= 0 && targetIndex < widget.plan.tracks.length) {
+      await widget.player.playAt(targetIndex);
+    }
+
+    if (mounted) setState(() {});
   }
 
   SpinningCurvePoint? _pointAt(Duration elapsed) {
@@ -279,13 +323,28 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                 ),
                 const SizedBox(height: 12),
                 Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.skip_next),
-                    title: const Text('Als Nächstes'),
-                    subtitle: Text(
-                      nextPhase == null
-                          ? 'Sessionende'
-                          : _phaseLabel(nextPhase),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag_outlined),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            nextPhase == null
+                                ? 'Sessionende'
+                                : 'Als Nächstes: ${_phaseLabel(nextPhase)}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton.icon(
+                          onPressed:
+                              nextPhase == null ? null : _startNextPhase,
+                          icon: const Icon(Icons.skip_next),
+                          label: const Text('Phase starten'),
+                        ),
+                      ],
                     ),
                   ),
                 ),
