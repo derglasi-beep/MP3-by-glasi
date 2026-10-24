@@ -737,7 +737,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                                                     .maxHeartRate! <=
                                                                 0
                                                         ? 'bpm'
-                                                        : 'bpm · ${(liveBpm / widget.session.maxHeartRate! * 100).round()} %',
+                                                        : '${(liveBpm / widget.session.maxHeartRate! * 100).round()} % · $liveBpm bpm',
                                                   ),
                                                 ),
                                               ],
