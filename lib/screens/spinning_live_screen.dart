@@ -725,12 +725,20 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                                             FontWeight.bold,
                                                       ),
                                                 ),
-                                                const Padding(
-                                                  padding: EdgeInsets.only(
+                                                Padding(
+                                                  padding: const EdgeInsets.only(
                                                     left: 6,
                                                     bottom: 6,
                                                   ),
-                                                  child: Text('bpm'),
+                                                  child: Text(
+                                                    widget.session.maxHeartRate ==
+                                                                null ||
+                                                            widget.session
+                                                                    .maxHeartRate! <=
+                                                                0
+                                                        ? 'bpm'
+                                                        : 'bpm · ${(liveBpm / widget.session.maxHeartRate! * 100).round()} %',
+                                                  ),
                                                 ),
                                               ],
                                             ),
