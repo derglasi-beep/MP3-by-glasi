@@ -426,9 +426,11 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
             );
           }
 
+          final trendEntries = entries.take(8).toList(growable: false);
+
           return ListView.separated(
             padding: const EdgeInsets.all(14),
-            itemCount: entries.length + 2,
+            itemCount: entries.length + 3,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, index) {
               if (index == 0) {
@@ -446,6 +448,14 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
               }
 
               if (index == 1) {
+                return _HistoryTrendCard(
+                  entries: trendEntries,
+                  dominantZone: _dominantZone,
+                  heartRateValue: _heartRateValue,
+                );
+              }
+
+              if (index == 2) {
                 return SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -458,7 +468,7 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                 );
               }
 
-              final entry = entries[index - 2];
+              final entry = entries[index - 3];
               final totalZoneSeconds = entry.zoneSeconds.values
                   .fold<int>(0, (sum, value) => sum + value);
               final dominantZone = _dominantZone(entry.zoneSeconds);
