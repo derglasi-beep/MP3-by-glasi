@@ -959,37 +959,108 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 onTap: () => widget.player.playAt(i),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip: 'Nach oben',
-                                      onPressed: widget.session.completed || i == 0
-                                          ? null
-                                          : () => _moveTrack(i, -1),
-                                      icon: const Icon(Icons.arrow_upward),
-                                    ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip: 'Nach unten',
-                                      onPressed: widget.session.completed ||
-                                              i == queue.length - 1
-                                          ? null
-                                          : () => _moveTrack(i, 1),
-                                      icon: const Icon(Icons.arrow_downward),
-                                    ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip: 'Aus Session entfernen',
-                                      onPressed: widget.session.completed
-                                          ? null
-                                          : () => _removeTrackFromSession(i),
-                                      icon: const Icon(
-                                        Icons.remove_circle_outline,
-                                      ),
-                                    ),
-                                  ],
+                                trailing: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final narrow =
+                                        MediaQuery.sizeOf(context).width < 520;
+                                    if (narrow) {
+                                      return PopupMenuButton<String>(
+                                        tooltip: 'Titelaktionen',
+                                        onSelected: (value) {
+                                          switch (value) {
+                                            case 'up':
+                                              _moveTrack(i, -1);
+                                              break;
+                                            case 'down':
+                                              _moveTrack(i, 1);
+                                              break;
+                                            case 'remove':
+                                              _removeTrackFromSession(i);
+                                              break;
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
+                                          PopupMenuItem(
+                                            value: 'up',
+                                            enabled: !widget.session.completed &&
+                                                i > 0,
+                                            child: const ListTile(
+                                              dense: true,
+                                              leading:
+                                                  Icon(Icons.arrow_upward),
+                                              title: Text('Nach oben'),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'down',
+                                            enabled: !widget.session.completed &&
+                                                i < queue.length - 1,
+                                            child: const ListTile(
+                                              dense: true,
+                                              leading:
+                                                  Icon(Icons.arrow_downward),
+                                              title: Text('Nach unten'),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'remove',
+                                            enabled:
+                                                !widget.session.completed,
+                                            child: const ListTile(
+                                              dense: true,
+                                              leading: Icon(
+                                                Icons.remove_circle_outline,
+                                              ),
+                                              title: Text(
+                                                'Aus Session entfernen',
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          tooltip: 'Nach oben',
+                                          onPressed:
+                                              widget.session.completed || i == 0
+                                                  ? null
+                                                  : () => _moveTrack(i, -1),
+                                          icon:
+                                              const Icon(Icons.arrow_upward),
+                                        ),
+                                        IconButton(
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          tooltip: 'Nach unten',
+                                          onPressed: widget.session.completed ||
+                                                  i == queue.length - 1
+                                              ? null
+                                              : () => _moveTrack(i, 1),
+                                          icon:
+                                              const Icon(Icons.arrow_downward),
+                                        ),
+                                        IconButton(
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          tooltip:
+                                              'Aus Session entfernen',
+                                          onPressed: widget.session.completed
+                                              ? null
+                                              : () =>
+                                                  _removeTrackFromSession(i),
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ),
                         ],
@@ -1001,27 +1072,67 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.flag_outlined),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            nextPhase == null
-                                ? 'Sessionende'
-                                : 'Als Nächstes: ${_phaseLabel(nextPhase)}',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: widget.session.completed || nextPhase == null
-                              ? null
-                              : _startNextPhase,
-                          icon: const Icon(Icons.skip_next),
-                          label: const Text('Phase starten'),
-                        ),
-                      ],
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final narrow = constraints.maxWidth < 520;
+                        final label = nextPhase == null
+                            ? 'Sessionende'
+                            : 'Als Nächstes: ${_phaseLabel(nextPhase)}';
+
+                        if (narrow) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.flag_outlined),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      label,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              FilledButton.icon(
+                                onPressed: widget.session.completed ||
+                                        nextPhase == null
+                                    ? null
+                                    : _startNextPhase,
+                                icon: const Icon(Icons.skip_next),
+                                label: const Text('Phase starten'),
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            const Icon(Icons.flag_outlined),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                label,
+                                style:
+                                    Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.icon(
+                              onPressed: widget.session.completed ||
+                                      nextPhase == null
+                                  ? null
+                                  : _startNextPhase,
+                              icon: const Icon(Icons.skip_next),
+                              label: const Text('Phase starten'),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
