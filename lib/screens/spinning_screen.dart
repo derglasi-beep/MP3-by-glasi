@@ -478,15 +478,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
     );
 
     if (accepted != true) {
-      controller.dispose();
-      ageController.dispose();
       return;
     }
 
     final parsed = int.tryParse(controller.text.trim());
     final value = parsed == null ? null : parsed.clamp(80, 240).toInt();
-    controller.dispose();
-    ageController.dispose();
 
     await customBpmProfiles.saveMaxHeartRate(value);
     if (!mounted) return;
