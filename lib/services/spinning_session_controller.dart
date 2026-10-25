@@ -64,8 +64,17 @@ class SpinningSessionController {
         _heardTracks[current.id] = current;
       }
 
-      final bpm = heartRateSensor.state.bpm;
-      if (bpm == null || bpm <= 0) return;
+      final sensorState = heartRateSensor.state;
+      final bpm = sensorState.bpm;
+      final measuredAt = sensorState.measuredAt;
+      final measurementIsFresh = measuredAt != null &&
+          DateTime.now().difference(measuredAt) <= const Duration(seconds: 4);
+      if (sensorState.status != HeartRateSensorStatus.connected ||
+          bpm == null ||
+          bpm <= 0 ||
+          !measurementIsFresh) {
+        return;
+      }
 
       _heartRateSamples++;
       _heartRateTotal += bpm;
