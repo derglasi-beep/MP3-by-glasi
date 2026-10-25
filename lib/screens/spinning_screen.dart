@@ -2075,17 +2075,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Spinning DJ'),
-        actions: [
-          IconButton(
-            tooltip: 'Session-Historie',
-            icon: const Icon(Icons.history),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const SpinningHistoryScreen(),
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -2189,6 +2178,19 @@ class _SpinningScreenState extends State<SpinningScreen> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const SpinningHistoryScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.history),
+            label: const Text('Session-Historie'),
+          ),
         ),
         const SizedBox(height: 14),
         Align(
