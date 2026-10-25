@@ -62,6 +62,10 @@ class HeartRateSensorService {
   BleCharacteristic? _heartRateCharacteristic;
   BleDevice? _connectedDevice;
   Timer? _scanTimer;
+  Timer? _reconnectTimer;
+  bool _manualDisconnect = false;
+  bool _disposed = false;
+  int _reconnectAttempt = 0;
 
   HeartRateSensorState _state = const HeartRateSensorState.disconnected();
 
@@ -146,8 +150,20 @@ class HeartRateSensorService {
   }
 
   Future<void> connect(BleDevice device) async {
+    _manualDisconnect = false;
+    _reconnectAttempt = 0;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     await stopScan();
-    await disconnect();
+    await _disconnectCurrent(emitState: false);
+    await _connectDevice(device, isReconnect: false);
+  }
+
+  Future<void> _connectDevice(
+    BleDevice device, {
+    required bool isReconnect,
+  }) async {
+    if (_disposed || _manualDisconnect) return;
 
     _emit(
       HeartRateSensorState(
@@ -159,11 +175,23 @@ class HeartRateSensorService {
 
     try {
       await device.connect(timeout: const Duration(seconds: 15));
+      if (_disposed || _manualDisconnect) {
+        try {
+          await device.disconnect(timeout: const Duration(seconds: 5));
+        } catch (_) {}
+        return;
+      }
+
       _connectedDevice = device;
+      await _connectionSub?.cancel();
       _connectionSub = device.connectionStream.listen((connected) {
-        if (!connected && _connectedDevice?.deviceId == device.deviceId) {
-          _emit(const HeartRateSensorState.disconnected());
+        if (connected ||
+            _disposed ||
+            _manualDisconnect ||
+            _connectedDevice?.deviceId != device.deviceId) {
+          return;
         }
+        unawaited(_handleUnexpectedDisconnect(device));
       });
 
       await device.discoverServices(timeout: const Duration(seconds: 15));
@@ -174,6 +202,7 @@ class HeartRateSensorService {
       );
       _heartRateCharacteristic = characteristic;
 
+      await _valueSub?.cancel();
       _valueSub = characteristic.onValueReceived.listen((value) {
         final bpm = decodeHeartRate(value);
         if (bpm == null) return;
@@ -191,6 +220,9 @@ class HeartRateSensorService {
         timeout: const Duration(seconds: 10),
       );
 
+      _reconnectAttempt = 0;
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
       _emit(
         HeartRateSensorState(
           status: HeartRateSensorStatus.connected,
@@ -199,7 +231,12 @@ class HeartRateSensorService {
         ),
       );
     } catch (error) {
-      await disconnect();
+      await _disconnectCurrent(emitState: false);
+      if (isReconnect && !_manualDisconnect && !_disposed) {
+        _scheduleReconnect(device, error: error);
+        return;
+      }
+
       _emit(
         HeartRateSensorState(
           status: HeartRateSensorStatus.error,
@@ -211,7 +248,61 @@ class HeartRateSensorService {
     }
   }
 
+  Future<void> _handleUnexpectedDisconnect(BleDevice device) async {
+    await _disconnectCurrent(emitState: false);
+    if (_disposed || _manualDisconnect) return;
+    _scheduleReconnect(device);
+  }
+
+  void _scheduleReconnect(BleDevice device, {Object? error}) {
+    if (_disposed || _manualDisconnect || _reconnectTimer != null) return;
+
+    const delays = <Duration>[
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+    ];
+    if (_reconnectAttempt >= delays.length) {
+      _emit(
+        HeartRateSensorState(
+          status: HeartRateSensorStatus.error,
+          deviceName: _displayName(device),
+          deviceId: device.deviceId,
+          error: error == null
+              ? 'HF-Sensor getrennt. Automatische Wiederverbindung fehlgeschlagen.'
+              : _errorMessage(error),
+        ),
+      );
+      return;
+    }
+
+    final delay = delays[_reconnectAttempt];
+    _reconnectAttempt++;
+    _emit(
+      HeartRateSensorState(
+        status: HeartRateSensorStatus.connecting,
+        deviceName: _displayName(device),
+        deviceId: device.deviceId,
+        error: 'Verbindung unterbrochen – Wiederverbindung läuft …',
+      ),
+    );
+
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      if (_disposed || _manualDisconnect) return;
+      unawaited(_connectDevice(device, isReconnect: true));
+    });
+  }
+
   Future<void> disconnect() async {
+    _manualDisconnect = true;
+    _reconnectAttempt = 0;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    await _disconnectCurrent(emitState: true);
+  }
+
+  Future<void> _disconnectCurrent({required bool emitState}) async {
     final characteristic = _heartRateCharacteristic;
     _heartRateCharacteristic = null;
     try {
@@ -231,7 +322,7 @@ class HeartRateSensorService {
       } catch (_) {}
     }
 
-    if (_state.status != HeartRateSensorStatus.error) {
+    if (emitState) {
       _emit(const HeartRateSensorState.disconnected());
     }
   }
@@ -264,9 +355,13 @@ class HeartRateSensorService {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
+    _manualDisconnect = true;
     _scanTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     await stopScan();
-    await disconnect();
+    await _disconnectCurrent(emitState: false);
     await _devicesController.close();
     await _stateController.close();
   }
