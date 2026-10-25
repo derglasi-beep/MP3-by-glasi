@@ -16,6 +16,7 @@ class HeartRateSensorState {
   final String? deviceName;
   final String? deviceId;
   final int? bpm;
+  final DateTime? measuredAt;
   final String? error;
 
   const HeartRateSensorState({
@@ -23,6 +24,7 @@ class HeartRateSensorState {
     this.deviceName,
     this.deviceId,
     this.bpm,
+    this.measuredAt,
     this.error,
   });
 
@@ -34,6 +36,7 @@ class HeartRateSensorState {
     String? deviceName,
     String? deviceId,
     int? bpm,
+    DateTime? measuredAt,
     String? error,
     bool clearError = false,
   }) =>
@@ -42,6 +45,7 @@ class HeartRateSensorState {
         deviceName: deviceName ?? this.deviceName,
         deviceId: deviceId ?? this.deviceId,
         bpm: bpm ?? this.bpm,
+        measuredAt: measuredAt ?? this.measuredAt,
         error: clearError ? null : (error ?? this.error),
       );
 }
@@ -212,6 +216,7 @@ class HeartRateSensorService {
             deviceName: _displayName(device),
             deviceId: device.deviceId,
             bpm: bpm,
+            measuredAt: DateTime.now(),
           ),
         );
       });
