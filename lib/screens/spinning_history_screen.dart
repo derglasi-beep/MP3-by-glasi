@@ -316,6 +316,55 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     }
   }
 
+  ({
+    int totalDurationSeconds,
+    int totalHeartRateSeconds,
+    int? averageHeartRate,
+    int? maxHeartRate,
+    Map<int, int> zoneSeconds,
+  }) _aggregateHistory(List<SpinningSessionHistoryEntry> entries) {
+    var totalDurationSeconds = 0;
+    var totalHeartRateSeconds = 0;
+    var weightedHeartRateTotal = 0;
+    var weightedHeartRateSeconds = 0;
+    int? maxHeartRate;
+    final zones = <int, int>{
+      for (var zone = 1; zone <= 5; zone++) zone: 0,
+    };
+
+    for (final entry in entries) {
+      totalDurationSeconds += entry.durationSeconds;
+      final recorded = entry.zoneSeconds.values
+          .fold<int>(0, (sum, value) => sum + value);
+      totalHeartRateSeconds += recorded;
+
+      if (entry.averageHeartRate != null && recorded > 0) {
+        weightedHeartRateTotal += entry.averageHeartRate! * recorded;
+        weightedHeartRateSeconds += recorded;
+      }
+
+      final entryMax = entry.maxHeartRate;
+      if (entryMax != null &&
+          (maxHeartRate == null || entryMax > maxHeartRate)) {
+        maxHeartRate = entryMax;
+      }
+
+      for (var zone = 1; zone <= 5; zone++) {
+        zones[zone] = (zones[zone] ?? 0) + (entry.zoneSeconds[zone] ?? 0);
+      }
+    }
+
+    return (
+      totalDurationSeconds: totalDurationSeconds,
+      totalHeartRateSeconds: totalHeartRateSeconds,
+      averageHeartRate: weightedHeartRateSeconds <= 0
+          ? null
+          : (weightedHeartRateTotal / weightedHeartRateSeconds).round(),
+      maxHeartRate: maxHeartRate,
+      zoneSeconds: zones,
+    );
+  }
+
   Future<void> _clearHistory() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -364,6 +413,7 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
           }
 
           final entries = snapshot.data ?? const <SpinningSessionHistoryEntry>[];
+          final aggregate = _aggregateHistory(entries);
           if (entries.isEmpty) {
             return const Center(
               child: Padding(
@@ -378,10 +428,24 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
 
           return ListView.separated(
             padding: const EdgeInsets.all(14),
-            itemCount: entries.length + 1,
+            itemCount: entries.length + 2,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, index) {
               if (index == 0) {
+                return _HistoryOverviewCard(
+                  sessionCount: entries.length,
+                  totalDurationText:
+                      _duration(aggregate.totalDurationSeconds),
+                  averageHeartRate: aggregate.averageHeartRate,
+                  maxHeartRate: aggregate.maxHeartRate,
+                  totalHeartRateSeconds: aggregate.totalHeartRateSeconds,
+                  zoneSeconds: aggregate.zoneSeconds,
+                  durationText: _duration,
+                  percentText: _percent,
+                );
+              }
+
+              if (index == 1) {
                 return SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -394,7 +458,7 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                 );
               }
 
-              final entry = entries[index - 1];
+              final entry = entries[index - 2];
               final totalZoneSeconds = entry.zoneSeconds.values
                   .fold<int>(0, (sum, value) => sum + value);
               final dominantZone = _dominantZone(entry.zoneSeconds);
@@ -547,6 +611,94 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _HistoryOverviewCard extends StatelessWidget {
+  final int sessionCount;
+  final String totalDurationText;
+  final int? averageHeartRate;
+  final int? maxHeartRate;
+  final int totalHeartRateSeconds;
+  final Map<int, int> zoneSeconds;
+  final String Function(int) durationText;
+  final String Function(int, int) percentText;
+
+  const _HistoryOverviewCard({
+    required this.sessionCount,
+    required this.totalDurationText,
+    required this.averageHeartRate,
+    required this.maxHeartRate,
+    required this.totalHeartRateSeconds,
+    required this.zoneSeconds,
+    required this.durationText,
+    required this.percentText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Gesamtauswertung',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _SummaryChip(
+                  icon: Icons.fitness_center,
+                  label: 'Sessions',
+                  value: '$sessionCount',
+                ),
+                _SummaryChip(
+                  icon: Icons.timer_outlined,
+                  label: 'Gesamtzeit',
+                  value: totalDurationText,
+                ),
+                _SummaryChip(
+                  icon: Icons.monitor_heart_outlined,
+                  label: 'Ø Puls',
+                  value: averageHeartRate == null
+                      ? '—'
+                      : '$averageHeartRate bpm',
+                ),
+                _SummaryChip(
+                  icon: Icons.favorite,
+                  label: 'Max Puls',
+                  value: maxHeartRate == null ? '—' : '$maxHeartRate bpm',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'HF-Zonen gesamt',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            for (var zone = 1; zone <= 5; zone++) ...[
+              _ZoneRow(
+                zone: zone,
+                seconds: zoneSeconds[zone] ?? 0,
+                totalSeconds: totalHeartRateSeconds,
+                durationText: durationText(zoneSeconds[zone] ?? 0),
+                percentText: percentText(
+                  zoneSeconds[zone] ?? 0,
+                  totalHeartRateSeconds,
+                ),
+              ),
+              if (zone < 5) const SizedBox(height: 6),
+            ],
+          ],
+        ),
       ),
     );
   }
