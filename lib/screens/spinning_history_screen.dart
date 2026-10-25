@@ -197,6 +197,125 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     }
   }
 
+  String _allSessionsCsv(
+    List<SpinningSessionHistoryEntry> entries,
+  ) {
+    final rows = <List<Object?>>[
+      [
+        'Datum',
+        'Status',
+        'Dauer',
+        'HFmax',
+        'Ø Puls bpm',
+        'Ø Puls % HFmax',
+        'Max Puls bpm',
+        'Max Puls % HFmax',
+        'HF erfasst',
+        'HF Abdeckung %',
+        'Zone 1 Zeit',
+        'Zone 1 %',
+        'Zone 2 Zeit',
+        'Zone 2 %',
+        'Zone 3 Zeit',
+        'Zone 3 %',
+        'Zone 4 Zeit',
+        'Zone 4 %',
+        'Zone 5 Zeit',
+        'Zone 5 %',
+        'Hauptzone',
+        'Titelanzahl',
+      ],
+      for (final entry in entries)
+        (() {
+          final totalZoneSeconds = entry.zoneSeconds.values
+              .fold<int>(0, (sum, value) => sum + value);
+          final dominantZone = _dominantZone(entry.zoneSeconds);
+          int? heartRatePercent(int? bpm) {
+            final max = entry.configuredMaxHeartRate;
+            if (bpm == null || max == null || max <= 0) return null;
+            return (bpm / max * 100).round();
+          }
+
+          return <Object?>[
+            _date(entry.startedAt),
+            entry.completed ? 'abgeschlossen' : 'beendet',
+            _duration(entry.durationSeconds),
+            entry.configuredMaxHeartRate,
+            entry.averageHeartRate,
+            heartRatePercent(entry.averageHeartRate),
+            entry.maxHeartRate,
+            heartRatePercent(entry.maxHeartRate),
+            _duration(totalZoneSeconds),
+            entry.durationSeconds <= 0
+                ? 0
+                : (totalZoneSeconds / entry.durationSeconds * 100)
+                    .clamp(0, 100)
+                    .round(),
+            for (var zone = 1; zone <= 5; zone++) ...[
+              _duration(entry.zoneSeconds[zone] ?? 0),
+              totalZoneSeconds <= 0
+                  ? 0
+                  : ((entry.zoneSeconds[zone] ?? 0) /
+                          totalZoneSeconds *
+                          100)
+                      .round(),
+            ],
+            dominantZone == null ? null : 'Zone $dominantZone',
+            entry.tracks.length,
+          ];
+        })(),
+    ];
+
+    return rows
+        .map((row) => row.map(_csvCell).join(';'))
+        .join('\r\n');
+  }
+
+  Future<void> _exportAllSessions(
+    List<SpinningSessionHistoryEntry> entries,
+  ) async {
+    if (entries.isEmpty) return;
+
+    try {
+      final csv = _allSessionsCsv(entries);
+      final encoded = utf8.encode(csv);
+      final bytes = Uint8List.fromList(<int>[0xEF, 0xBB, 0xBF, ...encoded]);
+      final now = DateTime.now();
+      final date =
+          '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Alle Spinning-Sessions exportieren',
+        fileName: 'MP3-by-Glasi-Spinning-Historie-$date.csv',
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: bytes,
+      );
+
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              '${entries.length} Sessions wurden als CSV exportiert.',
+            ),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Gesamtexport fehlgeschlagen: $error'),
+          ),
+        );
+    }
+  }
+
   Future<void> _clearHistory() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -259,10 +378,23 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
 
           return ListView.separated(
             padding: const EdgeInsets.all(14),
-            itemCount: entries.length,
+            itemCount: entries.length + 1,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, index) {
-              final entry = entries[index];
+              if (index == 0) {
+                return SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _exportAllSessions(entries),
+                    icon: const Icon(Icons.download_for_offline_outlined),
+                    label: Text(
+                      'Alle Sessions exportieren (${entries.length})',
+                    ),
+                  ),
+                );
+              }
+
+              final entry = entries[index - 1];
               final totalZoneSeconds = entry.zoneSeconds.values
                   .fold<int>(0, (sum, value) => sum + value);
               final dominantZone = _dominantZone(entry.zoneSeconds);
