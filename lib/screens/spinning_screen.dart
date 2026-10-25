@@ -343,24 +343,42 @@ class _SpinningScreenState extends State<SpinningScreen> {
     final controller = TextEditingController(
       text: _maxHeartRate?.toString() ?? '',
     );
+    final ageController = TextEditingController();
+    var sex = 'none';
 
-    Future<void> calculateFromAge() async {
-      final ageController = TextEditingController();
-      var sex = 'none';
-
-      final accepted = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('HFmax berechnen'),
-            content: SizedBox(
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('HFmax einstellen'),
+          content: SingleChildScrollView(
+            child: SizedBox(
               width: 420,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Maximale Herzfrequenz',
+                      hintText: 'z. B. 185',
+                      helperText:
+                          'Optional. Wird für Zielbereiche in Puls-bpm verwendet.',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'HFmax schätzen',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
                     controller: ageController,
-                    autofocus: true,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Alter',
@@ -368,9 +386,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       border: OutlineInputBorder(),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    initialValue: sex,
+                    value: sex,
                     decoration: const InputDecoration(
                       labelText: 'Geschlecht',
                       border: OutlineInputBorder(),
@@ -396,6 +414,40 @@ class _SpinningScreenState extends State<SpinningScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        final age = int.tryParse(
+                          ageController.text.trim(),
+                        );
+                        if (age == null || age < 10 || age > 100) {
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Bitte ein Alter zwischen 10 und 100 eingeben.',
+                                ),
+                              ),
+                            );
+                          return;
+                        }
+
+                        final estimate = switch (sex) {
+                          'male' => 208.609 - (0.716 * age),
+                          'female' => 209.273 - (0.804 * age),
+                          _ => 208 - (0.7 * age),
+                        };
+                        controller.text =
+                            estimate.round().clamp(80, 240).toString();
+                        setDialogState(() {});
+                      },
+                      icon: const Icon(Icons.calculate_outlined),
+                      label: const Text('Berechnen und übernehmen'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   const Text(
                     'Das Ergebnis ist ein Schätzwert. Eine gemessene HFmax '
                     'kann individuell deutlich abweichen.',
@@ -403,98 +455,38 @@ class _SpinningScreenState extends State<SpinningScreen> {
                 ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Abbrechen'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Berechnen'),
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Abbrechen'),
+            ),
+            TextButton(
+              onPressed: () {
+                controller.clear();
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Löschen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Speichern'),
+            ),
+          ],
         ),
-      );
-
-      if (accepted != true) {
-        ageController.dispose();
-        return;
-      }
-
-      final age = int.tryParse(ageController.text.trim());
-      ageController.dispose();
-      if (age == null || age < 10 || age > 100) return;
-
-      final estimate = switch (sex) {
-        'male' => 208.609 - (0.716 * age),
-        'female' => 209.273 - (0.804 * age),
-        _ => 208 - (0.7 * age),
-      };
-      controller.text = estimate.round().clamp(80, 240).toString();
-    }
-
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('HFmax einstellen'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Maximale Herzfrequenz',
-                  hintText: 'z. B. 185',
-                  helperText:
-                      'Optional. Wird für Zielbereiche in Puls-bpm verwendet.',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: calculateFromAge,
-                  icon: const Icon(Icons.calculate_outlined),
-                  label: const Text('Aus Alter berechnen'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Abbrechen'),
-          ),
-          TextButton(
-            onPressed: () {
-              controller.clear();
-              Navigator.pop(dialogContext, true);
-            },
-            child: const Text('Löschen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Speichern'),
-          ),
-        ],
       ),
     );
 
     if (accepted != true) {
       controller.dispose();
+      ageController.dispose();
       return;
     }
 
     final parsed = int.tryParse(controller.text.trim());
     final value = parsed == null ? null : parsed.clamp(80, 240).toInt();
     controller.dispose();
+    ageController.dispose();
 
     await customBpmProfiles.saveMaxHeartRate(value);
     if (!mounted) return;
