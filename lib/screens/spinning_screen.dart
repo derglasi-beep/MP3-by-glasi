@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -2035,7 +2036,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
       p.tracks,
       preserveCurrent: false,
     );
-    await widget.player.play();
     if (!mounted) return;
 
     final session = SpinningSessionController(
@@ -2048,6 +2048,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       heartRateSensor: widget.heartRateSensor,
     );
     widget.onSessionChanged(session);
+    unawaited(widget.player.play());
 
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
