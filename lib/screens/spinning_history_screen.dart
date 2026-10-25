@@ -666,46 +666,49 @@ class _HistoryTrendCard extends StatelessWidget {
                 builder: (context) {
                   final entry = entries[i];
                   final zone = dominantZone(entry.zoneSeconds);
-                  return Row(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 48,
-                        child: Text(
-                          _shortDate(entry.startedAt),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            _shortDate(entry.startedAt),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              zone == null ? '—' : 'Zone $zone',
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Ø ${heartRateValue(entry.averageHeartRate, entry.configuredMaxHeartRate)}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        entry.maxHeartRate == null
-                            ? 'max —'
-                            : 'max ${heartRateValue(entry.maxHeartRate, entry.configuredMaxHeartRate)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          zone == null ? '—' : 'Z$zone',
-                          style: Theme.of(context).textTheme.labelMedium,
-                        ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            'Ø ${heartRateValue(entry.averageHeartRate, entry.configuredMaxHeartRate)}',
+                          ),
+                          Text(
+                            entry.maxHeartRate == null
+                                ? 'Max —'
+                                : 'Max ${heartRateValue(entry.maxHeartRate, entry.configuredMaxHeartRate)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ],
                   );
