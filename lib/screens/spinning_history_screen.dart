@@ -56,6 +56,24 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     return '$percent % · $bpm bpm';
   }
 
+  String _percent(int part, int total) {
+    if (total <= 0) return '0 %';
+    return '${(part / total * 100).round()} %';
+  }
+
+  int? _dominantZone(Map<int, int> zoneSeconds) {
+    int? bestZone;
+    var bestSeconds = 0;
+    for (var zone = 1; zone <= 5; zone++) {
+      final seconds = zoneSeconds[zone] ?? 0;
+      if (seconds > bestSeconds) {
+        bestSeconds = seconds;
+        bestZone = zone;
+      }
+    }
+    return bestZone;
+  }
+
   Future<void> _clearHistory() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -124,6 +142,12 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
               final entry = entries[index];
               final totalZoneSeconds = entry.zoneSeconds.values
                   .fold<int>(0, (sum, value) => sum + value);
+              final dominantZone = _dominantZone(entry.zoneSeconds);
+              final heartRateCoverage = entry.durationSeconds <= 0
+                  ? 0
+                  : (totalZoneSeconds / entry.durationSeconds * 100)
+                      .clamp(0, 100)
+                      .round();
 
               return Card(
                 child: ExpansionTile(
@@ -143,6 +167,38 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                   ),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _SummaryChip(
+                          icon: Icons.timer_outlined,
+                          label: 'Dauer',
+                          value: _duration(entry.durationSeconds),
+                        ),
+                        _SummaryChip(
+                          icon: Icons.monitor_heart_outlined,
+                          label: 'HF erfasst',
+                          value: totalZoneSeconds <= 0
+                              ? '—'
+                              : '${_duration(totalZoneSeconds)} · $heartRateCoverage %',
+                        ),
+                        _SummaryChip(
+                          icon: Icons.stacked_bar_chart,
+                          label: 'Hauptzone',
+                          value: dominantZone == null
+                              ? '—'
+                              : 'Zone $dominantZone · ${_percent(entry.zoneSeconds[dominantZone] ?? 0, totalZoneSeconds)}',
+                        ),
+                        _SummaryChip(
+                          icon: Icons.queue_music,
+                          label: 'Titel',
+                          value: '${entry.tracks.length}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                     if (entry.averageHeartRate != null ||
                         entry.maxHeartRate != null) ...[
                       Row(
@@ -183,6 +239,10 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                         seconds: entry.zoneSeconds[zone] ?? 0,
                         totalSeconds: totalZoneSeconds,
                         durationText: _duration(entry.zoneSeconds[zone] ?? 0),
+                        percentText: _percent(
+                          entry.zoneSeconds[zone] ?? 0,
+                          totalZoneSeconds,
+                        ),
                       ),
                       if (zone < 5) const SizedBox(height: 6),
                     ],
@@ -228,6 +288,50 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
   }
 }
 
+class _SummaryChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _SummaryChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: .55),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 7),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
 class _HistoryValue extends StatelessWidget {
   final String label;
   final String value;
@@ -249,12 +353,14 @@ class _ZoneRow extends StatelessWidget {
   final int seconds;
   final int totalSeconds;
   final String durationText;
+  final String percentText;
 
   const _ZoneRow({
     required this.zone,
     required this.seconds,
     required this.totalSeconds,
     required this.durationText,
+    required this.percentText,
   });
 
   @override
@@ -273,6 +379,15 @@ class _ZoneRow extends StatelessWidget {
           child: LinearProgressIndicator(value: fraction.clamp(0.0, 1.0)),
         ),
         const SizedBox(width: 10),
+        SizedBox(
+          width: 58,
+          child: Text(
+            percentText,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(width: 8),
         SizedBox(
           width: 64,
           child: Text(durationText, textAlign: TextAlign.right),
