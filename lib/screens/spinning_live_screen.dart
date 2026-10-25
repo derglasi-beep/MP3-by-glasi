@@ -172,9 +172,11 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   }
 
   Future<void> _endSession() async {
-    await widget.session.end();
+    unawaited(widget.session.end());
     widget.onSessionEnded();
-    if (mounted) Navigator.of(context).pop(true);
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _addTrackToSession() async {
