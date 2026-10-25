@@ -18,8 +18,8 @@ class SpinningSessionController {
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
   final HeartRateSensorService heartRateSensor;
 
-  final Stopwatch _watch = Stopwatch();
   Duration _offset = Duration.zero;
+  DateTime? _runningSince;
   StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _statsTimer;
   final DateTime startedAt = DateTime.now();
@@ -47,7 +47,7 @@ class SpinningSessionController {
     }
 
     if (player.audio.playing) {
-      _watch.start();
+      _runningSince = DateTime.now();
     }
 
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -56,7 +56,7 @@ class SpinningSessionController {
         unawaited(complete());
         return;
       }
-      if (!_watch.isRunning) return;
+      if (_runningSince == null) return;
 
       final current = player.currentTrack;
       if (current != null) {
@@ -81,26 +81,40 @@ class SpinningSessionController {
 
     _playerStateSub = player.playerStateStream.listen((state) {
       if (ended || completed) {
-        _watch.stop();
+        _commitRunningTime();
         return;
       }
 
       if (state.playing) {
-        if (!_watch.isRunning && elapsed < plan.duration) {
-          _watch.start();
+        if (_runningSince == null && elapsed < plan.duration) {
+          _runningSince = DateTime.now();
         }
       } else {
-        _watch.stop();
+        _commitRunningTime();
       }
     });
   }
 
   Duration get elapsed {
-    final value = _offset + _watch.elapsed;
+    var value = _offset;
+    final runningSince = _runningSince;
+    if (runningSince != null) {
+      value += DateTime.now().difference(runningSince);
+    }
     return value > plan.duration ? plan.duration : value;
   }
 
-  bool get isRunning => _watch.isRunning;
+  bool get isRunning => _runningSince != null;
+
+  void _commitRunningTime() {
+    final runningSince = _runningSince;
+    if (runningSince == null) return;
+    _offset += DateTime.now().difference(runningSince);
+    if (_offset > plan.duration) {
+      _offset = plan.duration;
+    }
+    _runningSince = null;
+  }
 
   SpinningPhase? phaseForTrack(Track track) => phaseByTrackId[track.id];
 
@@ -163,20 +177,18 @@ class SpinningSessionController {
   void jumpTo(Duration position) {
     final clampedMs =
         position.inMilliseconds.clamp(0, plan.duration.inMilliseconds).toInt();
-    final wasRunning = _watch.isRunning;
-    _watch
-      ..stop()
-      ..reset();
+    final wasRunning = _runningSince != null;
+    _runningSince = null;
     _offset = Duration(milliseconds: clampedMs);
-    if (wasRunning && _offset < plan.duration && !ended) {
-      _watch.start();
+    if (wasRunning && _offset < plan.duration && !ended && !completed) {
+      _runningSince = DateTime.now();
     }
   }
 
   Future<void> complete() async {
     if (completed || ended) return;
     completed = true;
-    _watch.stop();
+    _runningSince = null;
     _offset = plan.duration;
     await player.pause();
     await _saveHistory(wasCompleted: true);
@@ -185,13 +197,13 @@ class SpinningSessionController {
   Future<void> end() async {
     if (ended) return;
     ended = true;
-    _watch.stop();
+    _commitRunningTime();
     await player.pause();
     await _saveHistory(wasCompleted: false);
   }
 
   Future<void> dispose() async {
-    _watch.stop();
+    _commitRunningTime();
     _statsTimer?.cancel();
     await _playerStateSub?.cancel();
   }
