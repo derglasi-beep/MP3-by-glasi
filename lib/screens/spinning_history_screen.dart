@@ -95,6 +95,8 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     final rows = <List<Object?>>[
       ['MP3 by Glasi - Spinning Session'],
       ['Datum', _date(entry.startedAt)],
+      ['Name', entry.name],
+      ['Notiz', entry.note],
       ['Status', entry.completed ? 'abgeschlossen' : 'beendet'],
       ['Dauer', _duration(entry.durationSeconds)],
       ['HFmax', entry.configuredMaxHeartRate],
@@ -203,6 +205,8 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     final rows = <List<Object?>>[
       [
         'Datum',
+        'Name',
+        'Notiz',
         'Status',
         'Dauer',
         'HFmax',
@@ -238,6 +242,8 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
 
           return <Object?>[
             _date(entry.startedAt),
+            entry.name,
+            entry.note,
             entry.completed ? 'abgeschlossen' : 'beendet',
             _duration(entry.durationSeconds),
             entry.configuredMaxHeartRate,
@@ -365,6 +371,71 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
     );
   }
 
+  Future<void> _editSessionDetails(
+    SpinningSessionHistoryEntry entry,
+  ) async {
+    final nameController = TextEditingController(text: entry.name);
+    final noteController = TextEditingController(text: entry.note);
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Session benennen'),
+        content: SingleChildScrollView(
+          child: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'z. B. Bergintervalle',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  minLines: 3,
+                  maxLines: 6,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Notiz',
+                    hintText: 'Wie lief das Training?',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (accepted != true) return;
+
+    await _history.updateDetails(
+      id: entry.id,
+      name: nameController.text,
+      note: noteController.text,
+    );
+    if (!mounted) return;
+    setState(_reload);
+  }
+
   Future<void> _clearHistory() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -486,8 +557,10 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                         : Icons.stop_circle_outlined,
                   ),
                   title: Text(
-                    '${_duration(entry.durationSeconds)} · '
-                    '${entry.completed ? 'abgeschlossen' : 'beendet'}',
+                    entry.name.trim().isEmpty
+                        ? '${_duration(entry.durationSeconds)} · '
+                            '${entry.completed ? 'abgeschlossen' : 'beendet'}'
+                        : entry.name,
                   ),
                   subtitle: Text(
                     '${_date(entry.startedAt)}'
@@ -496,6 +569,40 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                   ),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   children: [
+                    if (entry.name.trim().isNotEmpty ||
+                        entry.note.trim().isNotEmpty) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          entry.name.trim().isEmpty
+                              ? 'Session-Notiz'
+                              : entry.name,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      if (entry.note.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(entry.note),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                    ],
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _editSessionDetails(entry),
+                        icon: const Icon(Icons.edit_note),
+                        label: Text(
+                          entry.name.trim().isEmpty &&
+                                  entry.note.trim().isEmpty
+                              ? 'Name / Notiz hinzufügen'
+                              : 'Name / Notiz bearbeiten',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
