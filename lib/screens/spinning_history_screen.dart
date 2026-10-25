@@ -626,6 +626,100 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
   }
 }
 
+class _HistoryTrendCard extends StatelessWidget {
+  final List<SpinningSessionHistoryEntry> entries;
+  final int? Function(Map<int, int>) dominantZone;
+  final String Function(int?, int?) heartRateValue;
+
+  const _HistoryTrendCard({
+    required this.entries,
+    required this.dominantZone,
+    required this.heartRateValue,
+  });
+
+  String _shortDate(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}.'
+        '${local.month.toString().padLeft(2, '0')}.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Letzte Trainings',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Trend der letzten ${entries.length} Sessions',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < entries.length; i++) ...[
+              Builder(
+                builder: (context) {
+                  final entry = entries[i];
+                  final zone = dominantZone(entry.zoneSeconds);
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          _shortDate(entry.startedAt),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Ø ${heartRateValue(entry.averageHeartRate, entry.configuredMaxHeartRate)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        entry.maxHeartRate == null
+                            ? 'max —'
+                            : 'max ${heartRateValue(entry.maxHeartRate, entry.configuredMaxHeartRate)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          zone == null ? '—' : 'Z$zone',
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              if (i < entries.length - 1) const Divider(height: 16),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _HistoryOverviewCard extends StatelessWidget {
   final int sessionCount;
   final String totalDurationText;
