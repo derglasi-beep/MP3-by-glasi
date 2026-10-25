@@ -12,6 +12,8 @@ class SpinningSessionHistoryEntry {
   final Map<int, int> zoneSeconds;
   final List<SpinningHistoryTrack> tracks;
   final bool completed;
+  final String name;
+  final String note;
 
   const SpinningSessionHistoryEntry({
     required this.id,
@@ -23,6 +25,8 @@ class SpinningSessionHistoryEntry {
     required this.zoneSeconds,
     required this.tracks,
     required this.completed,
+    this.name = '',
+    this.note = '',
   });
 
   factory SpinningSessionHistoryEntry.fromJson(Map<String, dynamic> json) {
@@ -65,6 +69,8 @@ class SpinningSessionHistoryEntry {
       zoneSeconds: zones,
       tracks: tracks,
       completed: json['completed'] == true,
+      name: json['name']?.toString() ?? '',
+      note: json['note']?.toString() ?? '',
     );
   }
 
@@ -81,6 +87,8 @@ class SpinningSessionHistoryEntry {
         },
         'tracks': tracks.map((track) => track.toJson()).toList(growable: false),
         'completed': completed,
+        'name': name,
+        'note': note,
       };
 }
 
@@ -147,6 +155,39 @@ class SpinningSessionHistoryService {
     if (next.length > _maxEntries) {
       next.removeRange(_maxEntries, next.length);
     }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key,
+      jsonEncode(next.map((item) => item.toJson()).toList(growable: false)),
+    );
+  }
+
+  Future<void> updateDetails({
+    required String id,
+    required String name,
+    required String note,
+  }) async {
+    final entries = await load();
+    final next = <SpinningSessionHistoryEntry>[
+      for (final entry in entries)
+        if (entry.id == id)
+          SpinningSessionHistoryEntry(
+            id: entry.id,
+            startedAt: entry.startedAt,
+            durationSeconds: entry.durationSeconds,
+            averageHeartRate: entry.averageHeartRate,
+            maxHeartRate: entry.maxHeartRate,
+            configuredMaxHeartRate: entry.configuredMaxHeartRate,
+            zoneSeconds: entry.zoneSeconds,
+            tracks: entry.tracks,
+            completed: entry.completed,
+            name: name.trim(),
+            note: note.trim(),
+          )
+        else
+          entry,
+    ];
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
