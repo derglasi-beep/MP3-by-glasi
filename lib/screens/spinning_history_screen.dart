@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../services/spinning_session_history_service.dart';
@@ -72,6 +76,125 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
       }
     }
     return bestZone;
+  }
+
+  String _csvCell(Object? value) {
+    final text = value?.toString() ?? '';
+    if (text.contains(';') ||
+        text.contains('"') ||
+        text.contains('\n') ||
+        text.contains('\r')) {
+      return '"${text.replaceAll('"', '""')}"';
+    }
+    return text;
+  }
+
+  String _sessionCsv(SpinningSessionHistoryEntry entry) {
+    final totalZoneSeconds = entry.zoneSeconds.values
+        .fold<int>(0, (sum, value) => sum + value);
+    final rows = <List<Object?>>[
+      ['MP3 by Glasi - Spinning Session'],
+      ['Datum', _date(entry.startedAt)],
+      ['Status', entry.completed ? 'abgeschlossen' : 'beendet'],
+      ['Dauer', _duration(entry.durationSeconds)],
+      ['HFmax', entry.configuredMaxHeartRate],
+      ['Ø Puls bpm', entry.averageHeartRate],
+      [
+        'Ø Puls % HFmax',
+        entry.averageHeartRate == null ||
+                entry.configuredMaxHeartRate == null ||
+                entry.configuredMaxHeartRate! <= 0
+            ? null
+            : (entry.averageHeartRate! /
+                    entry.configuredMaxHeartRate! *
+                    100)
+                .round(),
+      ],
+      ['Max Puls bpm', entry.maxHeartRate],
+      [
+        'Max Puls % HFmax',
+        entry.maxHeartRate == null ||
+                entry.configuredMaxHeartRate == null ||
+                entry.configuredMaxHeartRate! <= 0
+            ? null
+            : (entry.maxHeartRate! /
+                    entry.configuredMaxHeartRate! *
+                    100)
+                .round(),
+      ],
+      ['HF erfasst', _duration(totalZoneSeconds)],
+      [
+        'HF Abdeckung %',
+        entry.durationSeconds <= 0
+            ? 0
+            : (totalZoneSeconds / entry.durationSeconds * 100)
+                .clamp(0, 100)
+                .round(),
+      ],
+      [],
+      ['Zone', 'Zeit', 'Anteil %'],
+      for (var zone = 1; zone <= 5; zone++)
+        [
+          'Zone $zone',
+          _duration(entry.zoneSeconds[zone] ?? 0),
+          totalZoneSeconds <= 0
+              ? 0
+              : ((entry.zoneSeconds[zone] ?? 0) /
+                      totalZoneSeconds *
+                      100)
+                  .round(),
+        ],
+      [],
+      ['Titel', 'Interpret'],
+      for (final track in entry.tracks) [track.title, track.artist],
+    ];
+
+    return rows
+        .map((row) => row.map(_csvCell).join(';'))
+        .join('\r\n');
+  }
+
+  Future<void> _exportSession(
+    SpinningSessionHistoryEntry entry,
+  ) async {
+    try {
+      final local = entry.startedAt.toLocal();
+      final date =
+          '${local.year.toString().padLeft(4, '0')}-'
+          '${local.month.toString().padLeft(2, '0')}-'
+          '${local.day.toString().padLeft(2, '0')}_'
+          '${local.hour.toString().padLeft(2, '0')}-'
+          '${local.minute.toString().padLeft(2, '0')}';
+      final csv = _sessionCsv(entry);
+      final encoded = utf8.encode(csv);
+      final bytes = Uint8List.fromList(<int>[0xEF, 0xBB, 0xBF, ...encoded]);
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Spinning-Session exportieren',
+        fileName: 'MP3-by-Glasi-Spinning-$date.csv',
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: bytes,
+      );
+
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Session wurde als CSV exportiert.'),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('CSV-Export fehlgeschlagen: $error'),
+          ),
+        );
+    }
   }
 
   Future<void> _clearHistory() async {
@@ -246,6 +369,15 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                       ),
                       if (zone < 5) const SizedBox(height: 6),
                     ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _exportSession(entry),
+                        icon: const Icon(Icons.download_outlined),
+                        label: const Text('Session als CSV exportieren'),
+                      ),
+                    ),
                     const SizedBox(height: 14),
                     Align(
                       alignment: Alignment.centerLeft,
