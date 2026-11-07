@@ -280,6 +280,47 @@ class SpinningPlaylistService {
       elapsed += _planningDuration(chosen);
     }
 
+    // A full-length song can carry the running time past the last
+    // phase boundary. Reserve a separate Cool-down song nonetheless, so
+    // manual or automatic phase navigation can always reach it.
+    final hasCooldown = selections.any(
+      (selection) => selection.phase == SpinningPhase.cooldown,
+    );
+    final cooldownDuration =
+        phaseDurations[SpinningPhase.cooldown] ?? Duration.zero;
+    if (!hasCooldown && cooldownDuration > Duration.zero) {
+      final cooldownStart = duration - cooldownDuration;
+      final cooldownPoint = _curveAt(curve, cooldownStart);
+      final candidates = usable.where((track) {
+        if (used.contains(track.id)) return false;
+        final allowed = phaseEligibility[track.id];
+        return allowed == null ||
+            allowed.isEmpty ||
+            allowed.contains(SpinningPhase.cooldown);
+      }).toList();
+      candidates.sort((a, b) =>
+          _score(b, cooldownPoint, previous, cooldownDuration).compareTo(
+            _score(a, cooldownPoint, previous, cooldownDuration),
+          ));
+      if (candidates.isNotEmpty) {
+        final chosen = candidates.first;
+        selected.add(chosen);
+        selections.add(
+          SpinningSelection(
+            track: chosen,
+            targetBpm: cooldownPoint.targetBpm,
+            phase: SpinningPhase.cooldown,
+            score: _score(
+              chosen,
+              cooldownPoint,
+              previous,
+              cooldownDuration,
+            ),
+          ),
+        );
+      }
+    }
+
     return SpinningPlan(
       duration: duration,
       tracks: selected,
