@@ -2029,6 +2029,66 @@ class _SpinningScreenState extends State<SpinningScreen> {
     _replacePlanTracks(next);
   }
 
+  Future<void> _editSongHeartRateLimit(Track track) async {
+    final controller = TextEditingController(
+      text: _songHeartRateLimits[track.id]?.toString() ?? '',
+    );
+    String? validation;
+    final value = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('Puls-Limit für diesen Titel'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Maximal % HFmax (optional)',
+                  hintText: 'z. B. 75',
+                  helperText: 'Leer lassen für die Phasenvorgabe.',
+                  errorText: validation,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                final parsed = text.isEmpty ? null : int.tryParse(text);
+                if (text.isNotEmpty &&
+                    (parsed == null || parsed < 40 || parsed > 100)) {
+                  refresh(() => validation = 'Bitte 40–100 % eingeben.');
+                  return;
+                }
+                Navigator.pop(dialogContext, parsed ?? 0);
+              },
+              child: const Text('Übernehmen'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || value == null) return;
+    setState(() {
+      if (value == 0) {
+        _songHeartRateLimits.remove(track.id);
+      } else {
+        _songHeartRateLimits[track.id] = value;
+      }
+    });
+  }
+
   Future<void> _start() async {
     final p = plan;
     if (p == null || p.tracks.isEmpty) return;
@@ -2546,6 +2606,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             : '${track.artist} · ${_bpmText(track.bpm!)} · '
                                 '${_phaseLabel(selection.phase)} · '
                                 'Ziel ${_displayBpm(selection.targetBpm).round()} BPM'
+                                '${_songHeartRateLimits[track.id] == null ? '' : ' · max ${_songHeartRateLimits[track.id]} % HFmax'}'
                                 '${_isEligibleForPhase(track, selection.phase) ? '' : ' · ⚠ nicht für diese Phase markiert'}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -2553,6 +2614,17 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Maximalpuls für Titel',
+                            onPressed: () => _editSongHeartRateLimit(track),
+                            icon: Icon(
+                              Icons.monitor_heart_outlined,
+                              color: _songHeartRateLimits.containsKey(track.id)
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                            ),
+                          ),
                           ReorderableDragStartListener(
                             index: i,
                             child: Tooltip(
