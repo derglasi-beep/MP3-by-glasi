@@ -10,6 +10,9 @@ class SpinningSessionHistoryEntry {
   final int? maxHeartRate;
   final int? configuredMaxHeartRate;
   final Map<int, int> zoneSeconds;
+  // Null for sessions recorded before target-limit tracking was available.
+  final int? aboveTargetSeconds;
+  final int? targetMeasuredSeconds;
   final List<SpinningHistoryTrack> tracks;
   final bool completed;
   final String name;
@@ -23,6 +26,8 @@ class SpinningSessionHistoryEntry {
     required this.maxHeartRate,
     required this.configuredMaxHeartRate,
     required this.zoneSeconds,
+    this.aboveTargetSeconds,
+    this.targetMeasuredSeconds,
     required this.tracks,
     required this.completed,
     this.name = '',
@@ -67,6 +72,8 @@ class SpinningSessionHistoryEntry {
       configuredMaxHeartRate:
           (json['configuredMaxHeartRate'] as num?)?.toInt(),
       zoneSeconds: zones,
+      aboveTargetSeconds: (json['aboveTargetSeconds'] as num?)?.toInt(),
+      targetMeasuredSeconds: (json['targetMeasuredSeconds'] as num?)?.toInt(),
       tracks: tracks,
       completed: json['completed'] == true,
       name: json['name']?.toString() ?? '',
@@ -81,6 +88,8 @@ class SpinningSessionHistoryEntry {
         'averageHeartRate': averageHeartRate,
         'maxHeartRate': maxHeartRate,
         'configuredMaxHeartRate': configuredMaxHeartRate,
+        'aboveTargetSeconds': aboveTargetSeconds,
+        'targetMeasuredSeconds': targetMeasuredSeconds,
         'zoneSeconds': {
           for (final entry in zoneSeconds.entries)
             entry.key.toString(): entry.value,
@@ -180,6 +189,8 @@ class SpinningSessionHistoryService {
             maxHeartRate: entry.maxHeartRate,
             configuredMaxHeartRate: entry.configuredMaxHeartRate,
             zoneSeconds: entry.zoneSeconds,
+            aboveTargetSeconds: entry.aboveTargetSeconds,
+            targetMeasuredSeconds: entry.targetMeasuredSeconds,
             tracks: entry.tracks,
             completed: entry.completed,
             name: name.trim(),
