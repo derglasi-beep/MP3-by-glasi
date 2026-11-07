@@ -837,6 +837,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                             context,
                             liveBpm,
                             targetPercent,
+                            persistentOverTarget: _pulseWarningActive,
                           );
 
                     return Card(
