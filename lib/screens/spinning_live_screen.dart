@@ -332,6 +332,63 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _editTrackPulseLimit(Track track) async {
+    final controller = TextEditingController(
+      text: widget.session.maxPercentForTrack(track)?.toString() ?? '',
+    );
+    String? errorText;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('Maximalpuls für Titel'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Maximal % HFmax (optional)',
+                    hintText: 'z. B. 75',
+                    helperText: 'Leer lassen für die Phasenvorgabe.',
+                    errorText: errorText,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final raw = controller.text.trim();
+                final parsed = raw.isEmpty ? null : int.tryParse(raw);
+                if (raw.isNotEmpty &&
+                    (parsed == null || parsed < 40 || parsed > 100)) {
+                  refresh(() => errorText = 'Bitte 40–100 % eingeben.');
+                  return;
+                }
+                Navigator.pop(dialogContext, parsed ?? 0);
+              },
+              child: const Text('Übernehmen'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    widget.session.setTrackMaxPercent(track, result == 0 ? null : result);
+    setState(() {});
+  }
+
   Future<void> _removeTrackFromSession(int index) async {
     if (index < 0 || index >= widget.player.queue.length) return;
     final track = widget.player.queue[index];
@@ -1011,9 +1068,25 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                             case 'remove':
                                               _removeTrackFromSession(i);
                                               break;
+                                            case 'limit':
+                                              _editTrackPulseLimit(queue[i]);
+                                              break;
                                           }
                                         },
                                         itemBuilder: (context) => [
+                                          PopupMenuItem(
+                                            value: 'limit',
+                                            enabled: !widget.session.completed,
+                                            child: ListTile(
+                                              dense: true,
+                                              leading: const Icon(Icons.monitor_heart_outlined),
+                                              title: Text(
+                                                widget.session.maxPercentForTrack(queue[i]) == null
+                                                    ? 'Maximalpuls festlegen'
+                                                    : 'Maximalpuls ändern',
+                                              ),
+                                            ),
+                                          ),
                                           PopupMenuItem(
                                             value: 'up',
                                             enabled: !widget.session.completed &&
@@ -1057,6 +1130,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                     return Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: 'Maximalpuls für Titel',
+                                          onPressed: widget.session.completed
+                                              ? null
+                                              : () => _editTrackPulseLimit(queue[i]),
+                                          icon: const Icon(Icons.monitor_heart_outlined),
+                                        ),
                                         IconButton(
                                           visualDensity:
                                               VisualDensity.compact,
