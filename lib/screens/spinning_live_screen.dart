@@ -445,7 +445,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     }
 
     return switch (phase) {
-      SpinningPhase.warmup => (min: 65, max: 69),
+      SpinningPhase.warmup => (min: 60, max: 69),
       SpinningPhase.build => (min: 60, max: 70),
       SpinningPhase.load => (min: 70, max: 80),
       SpinningPhase.peak => (min: 80, max: 90),
@@ -557,7 +557,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       };
 
   String _standardHeartRate(SpinningPhase phase) => switch (phase) {
-        SpinningPhase.warmup => '65–69 % HFmax',
+        SpinningPhase.warmup => '60–69 % HFmax',
         SpinningPhase.build => '60–70 % HFmax',
         SpinningPhase.load => '70–80 % HFmax',
         SpinningPhase.peak => '80–90 % HFmax',
