@@ -20,6 +20,8 @@ class SpinningSessionController {
 
   Duration _offset = Duration.zero;
   DateTime? _runningSince;
+  late final List<Duration> _phaseBoundaries;
+  int _nextBoundaryIndex = 0;
   StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _statsTimer;
   final DateTime startedAt = DateTime.now();
@@ -45,6 +47,9 @@ class SpinningSessionController {
     for (final selection in plan.selections) {
       phaseByTrackId[selection.track.id] = selection.phase;
     }
+
+    _phaseBoundaries = _buildPhaseBoundaries();
+    player.onTrackCompleted = _onTrackCompleted;
 
     if (player.audio.playing) {
       _runningSince = DateTime.now();
@@ -104,13 +109,111 @@ class SpinningSessionController {
     });
   }
 
-  Duration get elapsed {
+  // Session time waits at each phase boundary until the playing song ends.
+  // Only song completion advances the active boundary; the current song is
+  // never cut off merely because the planned phase duration elapsed.
+  Duration get _rawElapsed {
     var value = _offset;
-    final runningSince = _runningSince;
-    if (runningSince != null) {
-      value += DateTime.now().difference(runningSince);
-    }
+    final since = _runningSince;
+    if (since != null) value += DateTime.now().difference(since);
     return value > plan.duration ? plan.duration : value;
+  }
+
+  Duration get elapsed {
+    final raw = _rawElapsed;
+    if (_nextBoundaryIndex >= _phaseBoundaries.length) return raw;
+    final boundary = _phaseBoundaries[_nextBoundaryIndex];
+    if (raw < boundary) return raw;
+    return boundary - const Duration(milliseconds: 1);
+  }
+
+  List<Duration> _buildPhaseBoundaries() {
+    final boundaries = <Duration>[];
+    var cursor = Duration.zero;
+    final profile = customProfile;
+    if (profile != null && profile.segments.isNotEmpty) {
+      final durations = SpinningPlaylistService()
+          .scaledCustomSegmentDurations(profile, plan.duration);
+      for (final duration in durations) {
+        cursor += duration;
+        if (cursor > Duration.zero && cursor <= plan.duration) {
+          boundaries.add(cursor);
+        }
+      }
+    } else {
+      for (final phase in const <SpinningPhase>[
+        SpinningPhase.warmup,
+        SpinningPhase.build,
+        SpinningPhase.load,
+        SpinningPhase.peak,
+        SpinningPhase.cooldown,
+      ]) {
+        cursor += plan.phaseDurations[phase] ?? Duration.zero;
+        if (cursor > Duration.zero && cursor <= plan.duration) {
+          boundaries.add(cursor);
+        }
+      }
+    }
+    if (boundaries.isEmpty || boundaries.last != plan.duration) {
+      boundaries.add(plan.duration);
+    }
+    return boundaries.toSet().toList()..sort();
+  }
+
+  int? _onTrackCompleted(int previousIndex) {
+    if (completed || ended) return null;
+    if (_nextBoundaryIndex >= _phaseBoundaries.length ||
+        _rawElapsed < _phaseBoundaries[_nextBoundaryIndex]) {
+      return null;
+    }
+
+    final boundary = _phaseBoundaries[_nextBoundaryIndex];
+    _nextBoundaryIndex++;
+    _offset = boundary;
+    _runningSince = player.audio.playing ? DateTime.now() : null;
+
+    // Reaching the planned session end also waits for the final song.
+    if (boundary >= plan.duration) {
+      unawaited(complete());
+      return -1;
+    }
+
+    final phase = _phaseAt(boundary);
+    if (phase == null) return null;
+    for (var index = previousIndex + 1; index < player.queue.length; index++) {
+      if (phaseForTrack(player.queue[index]) == phase) return index;
+    }
+    // No suitable upcoming track: preserve normal playback rather than
+    // jumping backwards or repeating an earlier title.
+    return null;
+  }
+
+  SpinningPhase? _phaseAt(Duration position) {
+    final profile = customProfile;
+    if (profile != null && profile.segments.isNotEmpty) {
+      final durations = SpinningPlaylistService()
+          .scaledCustomSegmentDurations(profile, plan.duration);
+      var cursor = Duration.zero;
+      for (var index = 0; index < durations.length; index++) {
+        cursor += durations[index];
+        if (position < cursor && index < profile.segments.length) {
+          return profile.segments[index].phase;
+        }
+      }
+      return null;
+    }
+    var cursor = Duration.zero;
+    for (final phase in const <SpinningPhase>[
+      SpinningPhase.warmup,
+      SpinningPhase.build,
+      SpinningPhase.load,
+      SpinningPhase.peak,
+      SpinningPhase.cooldown,
+    ]) {
+      cursor += plan.phaseDurations[phase] ?? Duration.zero;
+      if (position < cursor) return phase;
+    }
+    return null;
   }
 
   bool get isRunning => _runningSince != null;
@@ -189,6 +292,12 @@ class SpinningSessionController {
     final wasRunning = _runningSince != null;
     _runningSince = null;
     _offset = Duration(milliseconds: clampedMs);
+    _nextBoundaryIndex = _phaseBoundaries.indexWhere(
+      (boundary) => boundary > _offset,
+    );
+    if (_nextBoundaryIndex < 0) {
+      _nextBoundaryIndex = _phaseBoundaries.length;
+    }
     if (wasRunning && _offset < plan.duration && !ended && !completed) {
       _runningSince = DateTime.now();
     }
@@ -197,6 +306,9 @@ class SpinningSessionController {
   Future<void> complete() async {
     if (completed || ended) return;
     completed = true;
+    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+      player.onTrackCompleted = null;
+    }
     _runningSince = null;
     _offset = plan.duration;
     await player.pause();
@@ -206,12 +318,18 @@ class SpinningSessionController {
   Future<void> end() async {
     if (ended) return;
     ended = true;
+    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+      player.onTrackCompleted = null;
+    }
     _commitRunningTime();
     await player.pause();
     await _saveHistory(wasCompleted: false);
   }
 
   Future<void> dispose() async {
+    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+      player.onTrackCompleted = null;
+    }
     _commitRunningTime();
     _statsTimer?.cancel();
     await _playerStateSub?.cancel();
