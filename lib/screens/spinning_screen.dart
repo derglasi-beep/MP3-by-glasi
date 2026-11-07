@@ -2611,9 +2611,72 @@ class _SpinningScreenState extends State<SpinningScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
+                      trailing: MediaQuery.orientationOf(context) ==
+                              Orientation.portrait
+                          ? PopupMenuButton<String>(
+                              tooltip: 'Titelaktionen',
+                              onSelected: (action) {
+                                switch (action) {
+                                  case 'limit':
+                                    _editSongHeartRateLimit(track);
+                                    break;
+                                  case 'up':
+                                    _movePlanTrackBy(i, -1);
+                                    break;
+                                  case 'down':
+                                    _movePlanTrackBy(i, 1);
+                                    break;
+                                  case 'remove':
+                                    _removePlanTrack(i);
+                                    break;
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: 'limit',
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: const Icon(Icons.monitor_heart_outlined),
+                                    title: Text(
+                                      _songHeartRateLimits[track.id] == null
+                                          ? 'Maximalpuls festlegen'
+                                          : 'Maximalpuls ändern (' +
+                                              _songHeartRateLimits[track.id].toString() +
+                                              ' %)',
+                                    ),
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'up',
+                                  enabled: i > 0,
+                                  child: const ListTile(
+                                    dense: true,
+                                    leading: Icon(Icons.arrow_upward),
+                                    title: Text('Nach oben'),
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'down',
+                                  enabled: i < p.tracks.length - 1,
+                                  child: const ListTile(
+                                    dense: true,
+                                    leading: Icon(Icons.arrow_downward),
+                                    title: Text('Nach unten'),
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'remove',
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: Icon(Icons.remove_circle_outline),
+                                    title: Text('Entfernen'),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             tooltip: 'Maximalpuls für Titel',
@@ -2664,7 +2727,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             icon: const Icon(Icons.remove_circle_outline),
                           ),
                         ],
-                      ),
+                              ],
+                            ),
                     );
                   },
                 ),
