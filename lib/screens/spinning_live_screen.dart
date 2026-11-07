@@ -1046,14 +1046,26 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                       : 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                subtitle: Text(
-                                  '${queue[i].artist} · ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}'
-                                  '${widget.session.maxPercentForTrack(queue[i]) == null ? '' : ' · max ${widget.session.maxPercentForTrack(queue[i])} % HFmax'}',
-                                  maxLines: MediaQuery.orientationOf(context) ==
-                                          Orientation.portrait
-                                      ? 2
-                                      : 1,
-                                  overflow: TextOverflow.ellipsis,
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Phase: ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}'
+                                      '${widget.session.maxPercentForTrack(queue[i]) == null ? '' : ' · max ${widget.session.maxPercentForTrack(queue[i])} % HFmax'}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      queue[i].artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                                 onTap: () => widget.player.playAt(i),
                                 trailing: LayoutBuilder(
