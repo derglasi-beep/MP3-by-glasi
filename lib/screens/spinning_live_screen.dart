@@ -608,9 +608,12 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                         widget.plan.duration.inMilliseconds)
                     .clamp(0.0, 1.0);
             final currentTrack = widget.player.currentTrack;
-            final hfText = custom == null
-                ? _standardHeartRate(currentPhase)
-                : _customHeartRate(custom.segment);
+            final songMax = widget.session.maxPercentForTrack(currentTrack);
+            final hfText = songMax == null
+                ? (custom == null
+                    ? _standardHeartRate(currentPhase)
+                    : _customHeartRate(custom.segment))
+                : 'Max $songMax % HFmax (Titel)';
             final phaseTitle = phaseWindow.label;
             final targetBpm = point == null
                 ? null
@@ -684,8 +687,18 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     final sensorState = sensorSnapshot.data ??
                         const HeartRateSensorState.disconnected();
                     final liveBpm = sensorState.bpm;
-                    final targetPercent =
+                    final phaseTarget =
                         _heartRateRange(currentPhase, custom?.segment);
+                    final trackLimit =
+                        widget.session.maxPercentForTrack(currentTrack);
+                    final targetPercent = trackLimit == null
+                        ? phaseTarget
+                        : (
+                            min: phaseTarget.min > trackLimit
+                                ? trackLimit
+                                : phaseTarget.min,
+                            max: trackLimit,
+                          );
                     final connected =
                         sensorState.status == HeartRateSensorStatus.connected;
                     final connecting =
@@ -974,7 +987,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
-                                  '${queue[i].artist} · ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}',
+                                  '${queue[i].artist} · ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}'
+                                  '${widget.session.maxPercentForTrack(queue[i]) == null ? '' : ' · max ${widget.session.maxPercentForTrack(queue[i])} % HFmax'}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
