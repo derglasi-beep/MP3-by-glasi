@@ -1040,13 +1040,19 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                 ),
                                 title: Text(
                                   queue[i].title,
-                                  maxLines: 1,
+                                  maxLines: MediaQuery.orientationOf(context) ==
+                                          Orientation.portrait
+                                      ? 2
+                                      : 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
                                   '${queue[i].artist} · ${_phaseLabel(widget.session.phaseForTrack(queue[i]) ?? _phaseWindowAt(_sessionElapsed).phase)}'
                                   '${widget.session.maxPercentForTrack(queue[i]) == null ? '' : ' · max ${widget.session.maxPercentForTrack(queue[i])} % HFmax'}',
-                                  maxLines: 1,
+                                  maxLines: MediaQuery.orientationOf(context) ==
+                                          Orientation.portrait
+                                      ? 2
+                                      : 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 onTap: () => widget.player.playAt(i),
