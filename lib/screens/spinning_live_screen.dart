@@ -32,6 +32,7 @@ class SpinningLiveScreen extends StatefulWidget {
 class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   final SpinningPlaylistService planner = SpinningPlaylistService();
   Timer? _ticker;
+  bool _phaseSwitching = false;
   StreamSubscription<dynamic>? _trackSub;
 
   @override
@@ -143,32 +144,53 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   }
 
   Future<void> _startNextPhase() async {
-    final elapsed = _sessionElapsed;
-    final current = _phaseWindowAt(elapsed);
-    final targetPosition = _nextPhaseStart(elapsed);
+    if (_phaseSwitching || widget.session.completed || widget.session.ended) {
+      return;
+    }
+    final current = _phaseWindowAt(_sessionElapsed);
+    final targetPosition = current.end;
     final targetPhase = current.nextPhase;
-    if (targetPosition == null || targetPhase == null) return;
+    if (targetPhase == null) return;
 
-    widget.session.jumpTo(targetPosition);
-
-    var targetQueueIndex = -1;
+    // Manual skipping moves forward through the current session queue.
+    // Never fall back to an earlier track, which could restart old phases.
     final currentIndex = widget.player.currentIndex;
-    for (var i = 0; i < widget.player.queue.length; i++) {
-      final track = widget.player.queue[i];
-      if (widget.session.phaseForTrack(track) != targetPhase) continue;
-      if (i > currentIndex) {
+    var targetQueueIndex = -1;
+    for (var i = currentIndex + 1; i < widget.player.queue.length; i++) {
+      if (widget.session.phaseForTrack(widget.player.queue[i]) == targetPhase) {
         targetQueueIndex = i;
         break;
       }
-      if (targetQueueIndex < 0) targetQueueIndex = i;
+    }
+    if (targetQueueIndex < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kein weiterer Titel für diese Phase vorhanden.'),
+        ),
+      );
+      return;
     }
 
-    if (targetQueueIndex >= 0 &&
-        targetQueueIndex < widget.player.queue.length) {
-      await widget.player.playAt(targetQueueIndex);
+    _phaseSwitching = true;
+    try {
+      // Loading a track must finish before advancing the session clock.
+      // Do not wait for play() itself: its Future can stay pending while
+      // the entire song is playing on Android.
+      await widget.player.playAt(
+        targetQueueIndex,
+        awaitPlayback: false,
+      );
+      if (!mounted) return;
+      widget.session.jumpTo(targetPosition);
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Phasenwechsel fehlgeschlagen: $error')),
+      );
+    } finally {
+      _phaseSwitching = false;
     }
-
-    if (mounted) setState(() {});
   }
 
   Future<void> _endSession() async {
