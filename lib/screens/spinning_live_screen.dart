@@ -33,6 +33,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   final SpinningPlaylistService planner = SpinningPlaylistService();
   Timer? _ticker;
   bool _phaseSwitching = false;
+  DateTime? _aboveTargetSince;
+  String? _pulseTargetKey;
   StreamSubscription<dynamic>? _trackSub;
 
   @override
@@ -40,6 +42,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     super.initState();
 
     _trackSub = widget.player.currentTrackStream.listen((_) {
+      _aboveTargetSince = null;
+      _pulseTargetKey = null;
       if (mounted) setState(() {});
     });
 
@@ -49,6 +53,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
           !widget.session.completed) {
         await widget.session.complete();
       }
+      _updatePulseWarning();
       if (mounted) setState(() {});
     });
   }
@@ -510,6 +515,53 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     };
   }
 
+  void _updatePulseWarning() {
+    final state = widget.session.heartRateSensor.state;
+    final now = DateTime.now();
+    final measuredAt = state.measuredAt;
+    final fresh = state.status == HeartRateSensorStatus.connected &&
+        measuredAt != null &&
+        !measuredAt.isAfter(now) &&
+        now.difference(measuredAt) <= const Duration(seconds: 4);
+    final maxHeartRate = widget.session.maxHeartRate;
+    final bpm = state.bpm;
+    if (!fresh ||
+        bpm == null ||
+        bpm <= 0 ||
+        maxHeartRate == null ||
+        maxHeartRate <= 0 ||
+        widget.session.completed ||
+        widget.session.ended ||
+        !widget.session.isRunning) {
+      _aboveTargetSince = null;
+      _pulseTargetKey = null;
+      return;
+    }
+
+    final elapsed = _sessionElapsed;
+    final phase = _phaseWindowAt(elapsed);
+    final custom = _customSegmentAt(elapsed);
+    final range = _heartRateRange(phase.phase, custom?.segment);
+    final track = widget.player.currentTrack;
+    final ceiling = widget.session.maxPercentForTrack(track) ?? range.max;
+    final key = '${track?.id ?? ''}|${phase.start.inMilliseconds}|${ceiling}';
+    if (_pulseTargetKey != key) {
+      _pulseTargetKey = key;
+      _aboveTargetSince = null;
+    }
+
+    if (bpm / maxHeartRate * 100 > ceiling) {
+      _aboveTargetSince ??= now;
+    } else {
+      _aboveTargetSince = null;
+    }
+  }
+
+  bool get _pulseWarningActive =>
+      _aboveTargetSince != null &&
+      DateTime.now().difference(_aboveTargetSince!) >=
+          const Duration(seconds: 5);
+
   int? _heartRateZoneForBpm(int bpm) {
     final maxHeartRate = widget.session.maxHeartRate;
     if (maxHeartRate == null || maxHeartRate <= 0) return null;
@@ -529,8 +581,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
   }) _heartRateFeedback(
     BuildContext context,
     int bpm,
-    ({int min, int max}) targetPercent,
-  ) {
+    ({int min, int max}) targetPercent, {
+    required bool persistentOverTarget,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final maxHeartRate = widget.session.maxHeartRate;
     if (maxHeartRate == null || maxHeartRate <= 0) {
@@ -554,12 +607,19 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       );
     }
     if (bpm > maxBpm) {
-      return (
-        label: 'Über Ziel',
-        detail: 'Ziel $minBpm–$maxBpm bpm',
-        icon: Icons.north,
-        color: scheme.error,
-      );
+      return persistentOverTarget
+          ? (
+              label: 'Puls zu hoch – Tempo reduzieren',
+              detail: 'Obergrenze $maxBpm bpm · seit mindestens 5 Sekunden überschritten',
+              icon: Icons.warning_amber_rounded,
+              color: scheme.error,
+            )
+          : (
+              label: 'Kurz über Ziel',
+              detail: 'Obergrenze $maxBpm bpm · Warnung nach 5 Sekunden',
+              icon: Icons.trending_up,
+              color: Colors.orange,
+            );
     }
     return (
       label: 'Im Zielbereich',
@@ -743,7 +803,13 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                   builder: (context, sensorSnapshot) {
                     final sensorState = sensorSnapshot.data ??
                         const HeartRateSensorState.disconnected();
-                    final liveBpm = sensorState.bpm;
+                    final measuredAt = sensorState.measuredAt;
+                    final now = DateTime.now();
+                    final freshPulse = measuredAt != null &&
+                        !measuredAt.isAfter(now) &&
+                        now.difference(measuredAt) <=
+                            const Duration(seconds: 4);
+                    final liveBpm = freshPulse ? sensorState.bpm : null;
                     final phaseTarget =
                         _heartRateRange(currentPhase, custom?.segment);
                     final trackLimit =
