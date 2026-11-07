@@ -617,7 +617,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                         Text(
                           widget.session.completed
                               ? 'Training abgeschlossen'
-                              : 'noch ${_clock(phaseRemaining)}',
+                              : widget.session.waitingForSongEnd
+                                  ? 'Song läuft aus – danach nächste Phase'
+                                  : 'noch ${_clock(phaseRemaining)}',
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(height: 18),
