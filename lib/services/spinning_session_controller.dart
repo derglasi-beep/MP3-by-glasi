@@ -218,6 +218,13 @@ class SpinningSessionController {
 
   bool get isRunning => _runningSince != null;
 
+  bool get waitingForSongEnd =>
+      !completed &&
+      !ended &&
+      _runningSince != null &&
+      _nextBoundaryIndex < _phaseBoundaries.length &&
+      _rawElapsed >= _phaseBoundaries[_nextBoundaryIndex];
+
   void _commitRunningTime() {
     final runningSince = _runningSince;
     if (runningSince == null) return;
@@ -306,7 +313,7 @@ class SpinningSessionController {
   Future<void> complete() async {
     if (completed || ended) return;
     completed = true;
-    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+    if (player.onTrackCompleted == _onTrackCompleted) {
       player.onTrackCompleted = null;
     }
     _runningSince = null;
@@ -318,7 +325,7 @@ class SpinningSessionController {
   Future<void> end() async {
     if (ended) return;
     ended = true;
-    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+    if (player.onTrackCompleted == _onTrackCompleted) {
       player.onTrackCompleted = null;
     }
     _commitRunningTime();
@@ -327,7 +334,7 @@ class SpinningSessionController {
   }
 
   Future<void> dispose() async {
-    if (identical(player.onTrackCompleted, _onTrackCompleted)) {
+    if (player.onTrackCompleted == _onTrackCompleted) {
       player.onTrackCompleted = null;
     }
     _commitRunningTime();
