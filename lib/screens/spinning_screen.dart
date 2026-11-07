@@ -214,6 +214,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   String? _activeCustomProfileId;
   int? _maxHeartRate;
   SpinningPlan? plan;
+  final Map<String, int> _songHeartRateLimits = <String, int>{};
   final Map<String, Set<SpinningPhase>> _phaseEligibility =
       <String, Set<SpinningPhase>>{};
 
@@ -2046,6 +2047,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
       heartRateSensor: widget.heartRateSensor,
+      maxHeartRatePercentByTrackId: _songHeartRateLimits,
     );
     widget.onSessionChanged(session);
     unawaited(widget.player.play());
