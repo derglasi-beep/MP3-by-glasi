@@ -125,8 +125,12 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                 .round(),
       ],
       ['HF erfasst', _duration(totalZoneSeconds)],
+      ['Über HF-Ziel', entry.aboveTargetSeconds == null ? null : _duration(entry.aboveTargetSeconds!)],
+      ['HF-Ziel ausgewertet', entry.targetMeasuredSeconds == null ? null : _duration(entry.targetMeasuredSeconds!)],
       [
         'HF Abdeckung %',
+        'Über HF-Ziel',
+        'HF-Ziel ausgewertet',
         entry.durationSeconds <= 0
             ? 0
             : (totalZoneSeconds / entry.durationSeconds * 100)
@@ -257,6 +261,12 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                 : (totalZoneSeconds / entry.durationSeconds * 100)
                     .clamp(0, 100)
                     .round(),
+            entry.aboveTargetSeconds == null
+                ? null
+                : _duration(entry.aboveTargetSeconds!),
+            entry.targetMeasuredSeconds == null
+                ? null
+                : _duration(entry.targetMeasuredSeconds!),
             for (var zone = 1; zone <= 5; zone++) ...[
               _duration(entry.zoneSeconds[zone] ?? 0),
               totalZoneSeconds <= 0
@@ -632,6 +642,13 @@ class _SpinningHistoryScreenState extends State<SpinningHistoryScreen> {
                           label: 'Titel',
                           value: '${entry.tracks.length}',
                         ),
+                        if (entry.aboveTargetSeconds != null)
+                          _SummaryChip(
+                            icon: Icons.monitor_heart_outlined,
+                            label: 'Über HF-Ziel',
+                            value: '${_duration(entry.aboveTargetSeconds!)}'
+                                '${entry.targetMeasuredSeconds == null || entry.targetMeasuredSeconds == 0 ? '' : ' · ${_percent(entry.aboveTargetSeconds!, entry.targetMeasuredSeconds!)}'}',
+                          ),
                       ],
                     ),
                     const SizedBox(height: 16),
