@@ -22,6 +22,7 @@ class AudioPlayerService {
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
   bool _completionInProgress = false;
+  int _navigationRevision = 0;
   // Optional session-specific selection at a natural song ending.
   // Return -1 to stop after the current song, null for normal navigation.
   int? Function(int currentIndex)? onTrackCompleted;
@@ -83,8 +84,15 @@ class AudioPlayerService {
 
   Future<void> _handleCompletion() async {
     if (_completionInProgress) return;
+    final revision = _navigationRevision;
     _completionInProgress = true;
     try {
+      // A manual jump may replace the completed audio source before the
+      // completion callback gets to navigate to another track.
+      if (audio.processingState != ProcessingState.completed ||
+          revision != _navigationRevision) {
+        return;
+      }
       await next(fromCompletion: true);
     } catch (e) {
       _publishError(e);
@@ -135,18 +143,30 @@ class AudioPlayerService {
     _publishQueue();
   }
 
-  Future<void> playAt(int index) async {
+  Future<void> playAt(
+    int index, {
+    bool awaitPlayback = true,
+  }) async {
     if (index < 0 || index >= queue.length) return;
+    _navigationRevision++;
     if (index == currentIndex &&
         audio.processingState != ProcessingState.idle &&
         audio.processingState != ProcessingState.completed) {
-      await play();
+      if (awaitPlayback) {
+        await play();
+      } else {
+        unawaited(play());
+      }
       return;
     }
 
     currentIndex = index;
     await _load();
-    await play();
+    if (awaitPlayback) {
+      await play();
+    } else {
+      unawaited(play());
+    }
     _publishQueue();
   }
 
