@@ -137,12 +137,6 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     );
   }
 
-  Duration? _nextPhaseStart(Duration elapsed) {
-    final current = _phaseWindowAt(elapsed);
-    if (current.nextPhase == null) return null;
-    return current.end;
-  }
-
   Future<void> _startNextPhase() async {
     if (_phaseSwitching || widget.session.completed || widget.session.ended) {
       return;
