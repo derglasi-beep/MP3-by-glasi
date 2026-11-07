@@ -22,6 +22,9 @@ class AudioPlayerService {
   bool shuffle = false;
   LoopMode loopMode = LoopMode.off;
   bool _completionInProgress = false;
+  // Optional session-specific selection at a natural song ending.
+  // Return -1 to stop after the current song, null for normal navigation.
+  int? Function(int currentIndex)? onTrackCompleted;
   double _playerVolume = .8;
   double _preamp = 0;
   double _bass = 0;
@@ -639,6 +642,17 @@ class AudioPlayerService {
 
   Future<void> next({bool fromCompletion = false}) async {
     if (queue.isEmpty) return;
+
+    if (fromCompletion && onTrackCompleted != null) {
+      final target = onTrackCompleted!(currentIndex);
+      if (target == -1) return;
+      if (target != null && target >= 0 && target < queue.length) {
+        currentIndex = target;
+        await _load();
+        await play();
+        return;
+      }
+    }
 
     if (loopMode == LoopMode.one && fromCompletion) {
       await audio.seek(Duration.zero);
