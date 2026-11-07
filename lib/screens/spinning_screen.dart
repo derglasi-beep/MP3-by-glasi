@@ -2597,19 +2597,38 @@ class _SpinningScreenState extends State<SpinningScreen> {
                       leading: CircleAvatar(child: Text('${i + 1}')),
                       title: Text(
                         track.title,
-                        maxLines: 1,
+                        maxLines: MediaQuery.orientationOf(context) ==
+                                Orientation.portrait
+                            ? 2
+                            : 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(
-                        selection == null
-                            ? track.artist
-                            : '${track.artist} · ${_bpmText(track.bpm!)} · '
-                                '${_phaseLabel(selection.phase)} · '
-                                'Ziel ${_displayBpm(selection.targetBpm).round()} BPM'
-                                '${_songHeartRateLimits[track.id] == null ? '' : ' · max ${_songHeartRateLimits[track.id]} % HFmax'}'
-                                '${_isEligibleForPhase(track, selection.phase) ? '' : ' · ⚠ nicht für diese Phase markiert'}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            selection == null
+                                ? 'Phase: nicht zugeordnet'
+                                : 'Phase: ${_phaseLabel(selection.phase)}'
+                                    '${_songHeartRateLimits[track.id] == null ? '' : ' · max ${_songHeartRateLimits[track.id]} % HFmax'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            selection == null
+                                ? track.artist
+                                : '${track.artist} · ${_bpmText(track.bpm!)} · '
+                                    'Ziel ${_displayBpm(selection.targetBpm).round()} BPM'
+                                    '${_isEligibleForPhase(track, selection.phase) ? '' : ' · ⚠ nicht für diese Phase markiert'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                       trailing: MediaQuery.orientationOf(context) ==
                               Orientation.portrait
