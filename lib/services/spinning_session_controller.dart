@@ -29,6 +29,8 @@ class SpinningSessionController {
   final Set<String> _heardTrackIds = <String>{};
   final Map<String, Track> _heardTracks = <String, Track>{};
   final Map<int, int> _zoneSeconds = <int, int>{};
+  int _aboveTargetSeconds = 0;
+  int _targetMeasuredSeconds = 0;
   int _heartRateSamples = 0;
   int _heartRateTotal = 0;
   int? _heartRateMax;
@@ -93,6 +95,21 @@ class SpinningSessionController {
       final zone = _zoneForHeartRate(bpm);
       if (zone != null) {
         _zoneSeconds[zone] = (_zoneSeconds[zone] ?? 0) + 1;
+      }
+
+      final max = maxHeartRate;
+      if (max != null && max > 0) {
+        final ceiling = current == null
+            ? null
+            : maxPercentForTrack(current);
+        final phaseCeiling = _targetCeilingAt(elapsed);
+        final effectiveCeiling = ceiling ?? phaseCeiling;
+        if (effectiveCeiling != null) {
+          _targetMeasuredSeconds++;
+          if (bpm / max * 100 > effectiveCeiling) {
+            _aboveTargetSeconds++;
+          }
+        }
       }
     });
 
@@ -259,6 +276,37 @@ class SpinningSessionController {
     phaseByTrackId.remove(track.id);
   }
 
+  int? _targetCeilingAt(Duration position) {
+    final profile = customProfile;
+    if (profile != null && profile.segments.isNotEmpty) {
+      final durations = SpinningPlaylistService()
+          .scaledCustomSegmentDurations(profile, plan.duration);
+      var cursor = Duration.zero;
+      for (var index = 0;
+          index < durations.length && index < profile.segments.length;
+          index++) {
+        cursor += durations[index];
+        if (position < cursor || index == durations.length - 1) {
+          final segment = profile.segments[index];
+          if (segment.maxHeartRatePercent != null) {
+            return segment.maxHeartRatePercent;
+          }
+          return _standardPhaseCeiling(segment.phase);
+        }
+      }
+    }
+    final phase = _phaseAt(position);
+    return phase == null ? null : _standardPhaseCeiling(phase);
+  }
+
+  int _standardPhaseCeiling(SpinningPhase phase) => switch (phase) {
+        SpinningPhase.warmup => 69,
+        SpinningPhase.build => 70,
+        SpinningPhase.load => 80,
+        SpinningPhase.peak => 90,
+        SpinningPhase.cooldown => 65,
+      };
+
   int? _zoneForHeartRate(int bpm) {
     final max = maxHeartRate;
     if (max == null || max <= 0) return null;
@@ -297,6 +345,8 @@ class SpinningSessionController {
         averageHeartRate: average,
         maxHeartRate: _heartRateMax,
         configuredMaxHeartRate: maxHeartRate,
+        aboveTargetSeconds: _aboveTargetSeconds,
+        targetMeasuredSeconds: _targetMeasuredSeconds,
         zoneSeconds: {
           for (var zone = 1; zone <= 5; zone++)
             zone: _zoneSeconds[zone] ?? 0,
