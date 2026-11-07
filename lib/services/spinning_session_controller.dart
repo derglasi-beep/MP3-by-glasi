@@ -17,6 +17,7 @@ class SpinningSessionController {
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
   final HeartRateSensorService heartRateSensor;
+  final Map<String, int> maxHeartRatePercentByTrackId;
 
   Duration _offset = Duration.zero;
   DateTime? _runningSince;
@@ -43,7 +44,9 @@ class SpinningSessionController {
     required this.maxHeartRate,
     required this.library,
     required this.heartRateSensor,
-  }) {
+    Map<String, int> maxHeartRatePercentByTrackId = const {},
+  }) : maxHeartRatePercentByTrackId =
+           Map<String, int>.from(maxHeartRatePercentByTrackId) {
     for (final selection in plan.selections) {
       phaseByTrackId[selection.track.id] = selection.phase;
     }
@@ -236,6 +239,17 @@ class SpinningSessionController {
   }
 
   SpinningPhase? phaseForTrack(Track track) => phaseByTrackId[track.id];
+
+  int? maxPercentForTrack(Track? track) =>
+      track == null ? null : maxHeartRatePercentByTrackId[track.id];
+
+  void setTrackMaxPercent(Track track, int? percent) {
+    if (percent == null) {
+      maxHeartRatePercentByTrackId.remove(track.id);
+    } else {
+      maxHeartRatePercentByTrackId[track.id] = percent;
+    }
+  }
 
   void setTrackPhase(Track track, SpinningPhase phase) {
     phaseByTrackId[track.id] = phase;
