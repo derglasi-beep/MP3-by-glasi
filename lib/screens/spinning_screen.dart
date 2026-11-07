@@ -2726,7 +2726,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             onPressed: () => _removePlanTrack(i),
                             icon: const Icon(Icons.remove_circle_outline),
                           ),
-                        ],
                               ],
                             ),
                     );
