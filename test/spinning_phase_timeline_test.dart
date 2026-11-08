@@ -32,6 +32,53 @@ void main() {
     );
   });
 
+  test('interval mode alternates effort and recovery without losing blocks', () {
+    final library = [
+      for (var index = 0; index < 45; index++)
+        Track(
+          id: 'interval-song-$index',
+          path: '/fake/interval-$index.mp3',
+          title: 'Interval Song $index',
+          artist: 'Artist $index',
+          bpm: 140,
+          duration: const Duration(minutes: 3),
+        ),
+    ];
+    for (final minutes in [30, 45, 60]) {
+      final planner = SpinningPlaylistService();
+      final plan = planner.build(
+        library: library,
+        duration: Duration(minutes: minutes),
+        profile: SpinningTrainingProfile.interval,
+        phases: SpinningPlaylistService.intervalPhases,
+      );
+      final windows = SpinningSessionController.phaseWindowsFor(plan, null);
+      final expected = windows.map((window) => window.phase).toList();
+      final actual = <SpinningPhase>[];
+      for (final selection in plan.selections) {
+        if (actual.isEmpty || actual.last != selection.phase) {
+          actual.add(selection.phase);
+        }
+      }
+      expect(expected.first, SpinningPhase.warmup);
+      expect(expected.last, SpinningPhase.cooldown);
+      expect(actual, orderedEquals(expected));
+      for (var index = 1; index < expected.length - 1; index++) {
+        if (expected[index] == SpinningPhase.peak ||
+            expected[index] == SpinningPhase.load) {
+          expect(expected[index - 1], SpinningPhase.build);
+        }
+      }
+      expect(
+        SpinningPlaylistService.heartRateRange(
+          SpinningTrainingProfile.interval,
+          SpinningPhase.peak,
+        ).max,
+        89,
+      );
+    }
+  });
+
   test('repeated curve phases keep their original sequence', () {
     const minute = Duration(minutes: 1);
     const phases = <SpinningPhase>[
