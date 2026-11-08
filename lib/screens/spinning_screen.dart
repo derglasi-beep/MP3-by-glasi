@@ -215,6 +215,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
   bool useSpinningLibrary = true;
   SpinningTrainingProfile trainingProfile = SpinningTrainingProfile.cadence;
   TimedIntervalPreset intervalPreset = TimedIntervalPreset.songs;
+  TimedIntervalConfig intervalConfig =
+      TimedIntervalConfig.forPreset(TimedIntervalPreset.thirtyThirty);
   List<CustomBpmProfile> _customProfiles = const <CustomBpmProfile>[];
   String? _activeCustomProfileId;
   int? _maxHeartRate;
@@ -2100,6 +2102,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
       sprintMode: sprintMode,
       trainingProfile: trainingProfile,
       intervalPreset: intervalPreset,
+      intervalConfig: intervalPreset == TimedIntervalPreset.songs
+          ? null : intervalConfig,
       maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
       heartRateSensor: widget.heartRateSensor,
@@ -2309,7 +2313,10 @@ class _SpinningScreenState extends State<SpinningScreen> {
             ],
             onChanged: (value) {
               if (value == null) return;
-              setState(() => intervalPreset = value);
+              setState(() {
+                intervalPreset = value;
+                intervalConfig = TimedIntervalConfig.forPreset(value);
+              });
             },
           ),
           const SizedBox(height: 6),
@@ -2317,6 +2324,68 @@ class _SpinningScreenState extends State<SpinningScreen> {
             intervalPreset.description,
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          if (intervalPreset != TimedIntervalPreset.songs &&
+              _activeCustomProfile == null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Belastung: ${intervalConfig.workSeconds} Sekunden',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            Slider(
+              value: intervalConfig.workSeconds.toDouble(),
+              min: 10, max: 120, divisions: 22,
+              label: '${intervalConfig.workSeconds} s',
+              onChanged: (value) => setState(() {
+                intervalConfig = intervalConfig.copyWith(
+                    workSeconds: (value / 5).round() * 5);
+              }),
+            ),
+            Text(
+              'Aktive Erholung: ${intervalConfig.recoverySeconds} Sekunden',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            Slider(
+              value: intervalConfig.recoverySeconds.toDouble(),
+              min: 10, max: 180, divisions: 34,
+              label: '${intervalConfig.recoverySeconds} s',
+              onChanged: (value) => setState(() {
+                intervalConfig = intervalConfig.copyWith(
+                    recoverySeconds: (value / 5).round() * 5);
+              }),
+            ),
+            Text(
+              'Wiederholungen je Block: ${intervalConfig.roundsPerBlock}',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            Slider(
+              value: intervalConfig.roundsPerBlock.toDouble(),
+              min: 2, max: 16, divisions: 14,
+              label: '${intervalConfig.roundsPerBlock}',
+              onChanged: (value) => setState(() {
+                intervalConfig = intervalConfig.copyWith(
+                    roundsPerBlock: value.round());
+              }),
+            ),
+            Text(
+              'Anstrengung: ${intervalConfig.effortRpe}/10 (RPE)',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            Slider(
+              value: intervalConfig.effortRpe.toDouble(),
+              min: 5, max: 10, divisions: 5,
+              label: '${intervalConfig.effortRpe}/10',
+              onChanged: (value) => setState(() {
+                intervalConfig = intervalConfig.copyWith(
+                    effortRpe: value.round());
+              }),
+            ),
+            Text(
+              'Nach jedem Block folgen 2 Minuten lockere Erholung. '
+              'Die RPE-Einstellung beschreibt deine gefühlte Belastung; '
+              'der HFmax-Grenzwert bleibt unverändert.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
           if (intervalPreset != TimedIntervalPreset.songs)
             const Padding(
               padding: EdgeInsets.only(top: 4),
