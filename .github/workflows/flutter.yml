@@ -19,5 +19,5 @@ jobs:
       # Normalize formatting in the CI workspace before semantic checks.
       # Existing sources are not yet entirely dartfmt-clean.
       - run: dart format lib test
-      - run: flutter analyze
       - run: flutter test
+      - run: flutter analyze
