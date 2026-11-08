@@ -62,7 +62,7 @@ class SpinningSessionController {
       phaseByTrackId[selection.track.id] = selection.phase;
     }
 
-    _phaseWindows = _buildPhaseWindows();
+    _phaseWindows = phaseWindowsFor(plan, customProfile);
     player.onTrackCompleted = _onTrackCompleted;
     _trackSub = player.currentTrackStream.listen((_) {
       _syncWindowToCurrentTrack();
@@ -147,7 +147,10 @@ class SpinningSessionController {
         : _offset + DateTime.now().difference(since);
   }
 
-  List<SpinningPhaseWindow> _buildPhaseWindows() {
+  static List<SpinningPhaseWindow> phaseWindowsFor(
+    SpinningPlan plan,
+    CustomBpmProfile? customProfile,
+  ) {
     final segments = <({SpinningPhase phase, Duration start, Duration end, String label})>[];
     final custom = customProfile;
     if (custom != null && custom.segments.isNotEmpty) {
@@ -227,7 +230,7 @@ class SpinningSessionController {
     ];
   }
 
-  String _phaseLabel(SpinningPhase phase) => switch (phase) {
+  static String _phaseLabel(SpinningPhase phase) => switch (phase) {
         SpinningPhase.warmup => 'Warm-up',
         SpinningPhase.build => 'Aufbau',
         SpinningPhase.load => 'Belastung',
