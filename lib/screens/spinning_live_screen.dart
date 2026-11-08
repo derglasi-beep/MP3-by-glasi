@@ -97,10 +97,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     try {
       // The track tag selects the new phase; real elapsed workout time
       // must not jump forward just because the user skipped a phase.
-      await widget.player.playAt(
-        targetQueueIndex,
-        awaitPlayback: false,
-      );
+      await widget.player.playAt(targetQueueIndex);
       if (!mounted) return;
       setState(() {});
     } catch (error) {
