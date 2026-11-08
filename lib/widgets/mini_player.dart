@@ -115,7 +115,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         builder: (_, state) => StreamBuilder<Duration>(
                           stream: player.positionStream,
                           builder: (_, position) {
-                            final playing = state.data?.playing ?? false;
                             final duration = player.audio.duration;
                             final currentPosition =
                                 position.data ?? player.audio.position;
