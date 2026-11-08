@@ -55,6 +55,7 @@ class _CurveCard extends StatelessWidget {
           switch (profile) {
             SpinningTrainingProfile.heartRate => 'Herz-Trainingskurve',
             SpinningTrainingProfile.power => 'Watt-Trainingskurve',
+            SpinningTrainingProfile.interval => 'Intervall-Trainingskurve',
             SpinningTrainingProfile.cadence => 'BPM-/Cadence-Kurve',
           },
           style: Theme.of(context).textTheme.titleMedium,
@@ -66,6 +67,8 @@ class _CurveCard extends StatelessWidget {
               'Weicher Verlauf mit Belastungswellen und Erholungsphasen.',
             SpinningTrainingProfile.power =>
               'Klarere Belastungsblöcke und Intervalle.',
+            SpinningTrainingProfile.interval =>
+              'Wechsel zwischen aktiver Erholung und intensiven Intervallen.',
             SpinningTrainingProfile.cadence =>
               'Ausgewogene Wellen zwischen Aufbau, Belastung und Peak.',
           },
@@ -544,6 +547,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
           'Ruhigerer Ausdaueraufbau mit längerer Belastungsphase und kürzerem Peak.',
         SpinningTrainingProfile.power =>
           'Kräftigeres Intervallprofil mit mehr Belastungs- und Peak-Anteil.',
+        SpinningTrainingProfile.interval =>
+          'Gezielte Wechsel aus Belastung und aktiver Erholung. Jeder Abschnitt läuft mit ganzen Songs; Peak maximal 89 % HFmax.',
       };
 
   void _setPlan(SpinningPlan? next) {
@@ -2240,7 +2245,9 @@ class _SpinningScreenState extends State<SpinningScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        SegmentedButton<SpinningTrainingProfile>(
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<SpinningTrainingProfile>(
           segments: const [
             ButtonSegment<SpinningTrainingProfile>(
               value: SpinningTrainingProfile.cadence,
@@ -2257,6 +2264,11 @@ class _SpinningScreenState extends State<SpinningScreen> {
               icon: Icon(Icons.bolt),
               label: Text('Watt'),
             ),
+            ButtonSegment<SpinningTrainingProfile>(
+              value: SpinningTrainingProfile.interval,
+              icon: Icon(Icons.sync_alt),
+              label: Text('Intervall'),
+            ),
           ],
           selected: {trainingProfile},
           onSelectionChanged: (values) {
@@ -2267,6 +2279,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
             });
             library.saveSpinningTrainingProfile(next.name);
           },
+          ),
         ),
         const SizedBox(height: 6),
         Text(
