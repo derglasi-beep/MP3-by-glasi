@@ -741,6 +741,7 @@ class AudioPlayerService {
   }
 
   Future<void> toggleShuffle() async {
+    if (onTrackCompleted != null) return;
     shuffle = !shuffle;
     if (!shuffle) _history.clear();
     await audio.setShuffleModeEnabled(false);
@@ -749,6 +750,7 @@ class AudioPlayerService {
   }
 
   Future<void> toggleRepeat() async {
+    if (onTrackCompleted != null) return;
     loopMode = switch (loopMode) {
       LoopMode.off => LoopMode.all,
       LoopMode.all => LoopMode.one,
