@@ -375,9 +375,9 @@ class SpinningSessionController {
 
   int _standardPhaseCeiling(SpinningPhase phase) => switch (phase) {
         SpinningPhase.warmup => 69,
-        SpinningPhase.build => 70,
-        SpinningPhase.load => 80,
-        SpinningPhase.peak => 90,
+        SpinningPhase.build => 79,
+        SpinningPhase.load => 89,
+        SpinningPhase.peak => 95,
         SpinningPhase.cooldown => 65,
       };
 
