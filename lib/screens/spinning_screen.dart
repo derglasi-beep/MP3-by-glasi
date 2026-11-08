@@ -537,13 +537,6 @@ class _SpinningScreenState extends State<SpinningScreen> {
     ];
   }
 
-  String _trainingProfileLabel(SpinningTrainingProfile profile) =>
-      switch (profile) {
-        SpinningTrainingProfile.cadence => 'BPM',
-        SpinningTrainingProfile.heartRate => 'Herz',
-        SpinningTrainingProfile.power => 'Watt',
-      };
-
   String _trainingProfileDescription() => switch (trainingProfile) {
         SpinningTrainingProfile.cadence =>
           'Ausgewogene Cadence-/BPM-Kurve mit klassischem Aufbau und Peak.',
