@@ -4,6 +4,34 @@ import 'package:mp3_by_glasi/services/spinning_playlist_service.dart';
 import 'package:mp3_by_glasi/services/spinning_session_controller.dart';
 
 void main() {
+  test('heart-training pulse targets stay moderate throughout the session', () {
+    final expected = <SpinningPhase, ({int min, int max})>{
+      SpinningPhase.warmup: (min: 60, max: 65),
+      SpinningPhase.build: (min: 65, max: 69),
+      SpinningPhase.load: (min: 70, max: 79),
+      SpinningPhase.peak: (min: 80, max: 85),
+      SpinningPhase.cooldown: (min: 60, max: 65),
+    };
+
+    for (final phase in SpinningPhase.values) {
+      expect(
+        SpinningPlaylistService.heartRateRange(
+          SpinningTrainingProfile.heartRate,
+          phase,
+        ),
+        expected[phase],
+      );
+    }
+
+    expect(
+      SpinningPlaylistService.heartRateRange(
+        SpinningTrainingProfile.cadence,
+        SpinningPhase.peak,
+      ).max,
+      95,
+    );
+  });
+
   test('repeated curve phases keep their original sequence', () {
     const minute = Duration(minutes: 1);
     const phases = <SpinningPhase>[
