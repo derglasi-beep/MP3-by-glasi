@@ -633,9 +633,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final phaseWindow = _phaseWindowAt(elapsed);
             final currentPhase = phaseWindow.phase;
             final custom = _customSegmentAt(phaseWindow.start);
-            final phaseRemaining = phaseWindow.end - elapsed > Duration.zero
-                ? phaseWindow.end - elapsed
-                : Duration.zero;
+            final phaseRemaining = widget.session.phaseRemaining;
             final nextPhase = phaseWindow.nextPhase;
             final progress = widget.plan.duration.inMilliseconds <= 0
                 ? 0.0
