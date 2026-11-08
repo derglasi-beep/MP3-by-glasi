@@ -227,57 +227,102 @@ class SpinningPlaylistService {
     var elapsed = Duration.zero;
     Track? previous;
 
-    while (elapsed < duration && selected.length < usable.length) {
-      final point = _curveAt(curve, elapsed);
-      var candidates = usable.where((track) {
-        if (used.contains(track.id)) return false;
-        final allowed = phaseEligibility[track.id];
-        return allowed == null || allowed.isEmpty || allowed.contains(point.phase);
-      }).toList();
+    // Preserve every actual curve block, including phases that recur later
+    // (for example Build -> Load -> Build -> Peak). The old loop sampled
+    // only at song start times and silently skipped short intervening blocks.
+    final blocks = <({Duration start, Duration end, SpinningPhase phase})>[];
+    if (curve.isNotEmpty) {
+      var blockStart = Duration.zero;
+      var blockPhase = curve.first.phase;
+      for (final point in curve) {
+        if (point.phase == blockPhase) continue;
+        if (point.position > blockStart) {
+          blocks.add((
+            start: blockStart,
+            end: point.position,
+            phase: blockPhase,
+          ));
+        }
+        blockStart = point.position;
+        blockPhase = point.phase;
+      }
+      if (blockStart < duration) {
+        blocks.add((
+          start: blockStart,
+          end: duration,
+          phase: blockPhase,
+        ));
+      }
+    }
 
-      // Compatibility fallback: old spinning selections have no phase tags yet.
-      // If a phase has no classified candidates, unclassified tracks may still
-      // fill the gap instead of producing an unexpectedly short session.
-      if (candidates.isEmpty) {
-        candidates = usable.where((track) {
+    for (final block in blocks) {
+      var firstInBlock = true;
+      // The overall song duration stays close to the plan; overshoot in one
+      // block reduces the number of extra songs in later blocks. We still
+      // reserve one song per block whenever enough eligible music exists.
+      while (selected.length < usable.length &&
+          (firstInBlock ||
+              elapsed + const Duration(seconds: 60) < block.end)) {
+        final position = block.start +
+            (elapsed > block.start
+                ? (elapsed - block.start)
+                    .clamp(Duration.zero, block.end - block.start)
+                : Duration.zero);
+        var point = _curveAt(curve, position);
+        if (point.phase != block.phase) {
+          point = _curveAt(curve, block.start);
+        }
+        var candidates = usable.where((track) {
           if (used.contains(track.id)) return false;
           final allowed = phaseEligibility[track.id];
-          return allowed == null || allowed.isEmpty;
+          return allowed == null ||
+              allowed.isEmpty ||
+              allowed.contains(block.phase);
         }).toList();
-      }
-      if (candidates.isEmpty) break;
 
-      candidates.sort((a, b) => _score(b, point, previous, duration - elapsed)
-          .compareTo(_score(a, point, previous, duration - elapsed)));
-
-      final topCount = min(8, candidates.length);
-      final top = candidates.take(topCount).toList();
-
-      if (previous != null) {
-        final differentArtists = top
-            .where((track) =>
-                track.artist.trim().toLowerCase() !=
-                previous!.artist.trim().toLowerCase())
-            .toList();
-        if (differentArtists.isNotEmpty) {
-          top
-            ..clear()
-            ..addAll(differentArtists);
+        // Keep backwards compatibility for libraries without phase tagging.
+        if (candidates.isEmpty) {
+          candidates = usable.where((track) {
+            if (used.contains(track.id)) return false;
+            final allowed = phaseEligibility[track.id];
+            return allowed == null || allowed.isEmpty;
+          }).toList();
         }
-      }
+        if (candidates.isEmpty) break;
 
-      final chosen = top[_random.nextInt(top.length)];
-      final score = _score(chosen, point, previous, duration - elapsed);
-      selected.add(chosen);
-      selections.add(SpinningSelection(
-        track: chosen,
-        targetBpm: point.targetBpm,
-        phase: point.phase,
-        score: score,
-      ));
-      used.add(chosen.id);
-      previous = chosen;
-      elapsed += _planningDuration(chosen);
+        final remaining = block.end > elapsed
+            ? block.end - elapsed
+            : Duration.zero;
+        candidates.sort((a, b) => _score(b, point, previous, remaining)
+            .compareTo(_score(a, point, previous, remaining)));
+
+        final topCount = min(8, candidates.length);
+        final top = candidates.take(topCount).toList();
+        if (previous != null) {
+          final distinctArtists = top.where((track) =>
+              track.artist.trim().toLowerCase() !=
+              previous!.artist.trim().toLowerCase()).toList();
+          if (distinctArtists.isNotEmpty) {
+            top
+              ..clear()
+              ..addAll(distinctArtists);
+          }
+        }
+
+        final chosen = top[_random.nextInt(top.length)];
+        final score = _score(chosen, point, previous, remaining);
+        selected.add(chosen);
+        selections.add(SpinningSelection(
+          track: chosen,
+          targetBpm: point.targetBpm,
+          phase: block.phase,
+          score: score,
+        ));
+        used.add(chosen.id);
+        previous = chosen;
+        elapsed += _planningDuration(chosen);
+        firstInBlock = false;
+      }
     }
 
     // A full-length song can carry the running time past the last
