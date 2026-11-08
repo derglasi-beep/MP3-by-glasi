@@ -189,6 +189,30 @@ class SpinningPlaylistService {
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 110, share: .15),
   ];
 
+  /// HFmax-Ziele der Standardprofile. Herztraining setzt bewusst auf
+  /// moderate Ausdauerbelastung statt Spitzen in Zone 5.
+  static ({int min, int max}) heartRateRange(
+    SpinningTrainingProfile profile,
+    SpinningPhase phase,
+  ) {
+    if (profile == SpinningTrainingProfile.heartRate) {
+      return switch (phase) {
+        SpinningPhase.warmup => (min: 60, max: 65),
+        SpinningPhase.build => (min: 65, max: 69),
+        SpinningPhase.load => (min: 70, max: 79),
+        SpinningPhase.peak => (min: 80, max: 85),
+        SpinningPhase.cooldown => (min: 60, max: 65),
+      };
+    }
+    return switch (phase) {
+      SpinningPhase.warmup => (min: 60, max: 69),
+      SpinningPhase.build => (min: 70, max: 79),
+      SpinningPhase.load => (min: 80, max: 89),
+      SpinningPhase.peak => (min: 90, max: 95),
+      SpinningPhase.cooldown => (min: 60, max: 65),
+    };
+  }
+
   static List<SpinningPhaseSpec> phasesForProfile(
     SpinningTrainingProfile profile,
   ) =>
