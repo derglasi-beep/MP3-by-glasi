@@ -269,8 +269,9 @@ class SpinningSessionController {
     final window = _phaseWindows[_activeWindowIndex];
     final currentIndex = player.currentIndex;
     SpinningPhase? next;
-    final activePhase = phaseForTrack(player.currentTrack ?? 
-        (player.queue.isNotEmpty ? player.queue.first : throw StateError('Empty Spinning queue')));
+    final currentTrack = player.currentTrack;
+    final activePhase =
+        currentTrack == null ? null : phaseForTrack(currentTrack);
     for (var i = currentIndex + 1; i < player.queue.length; i++) {
       final phase = phaseForTrack(player.queue[i]);
       if (phase != null && phase != activePhase) {
