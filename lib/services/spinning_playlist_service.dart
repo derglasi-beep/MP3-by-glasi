@@ -184,8 +184,8 @@ class SpinningPlaylistService {
   static const intervalPhases = <SpinningPhaseSpec>[
     SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
     SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aktive Erholung', minBpm: 100, maxBpm: 120, share: .32),
-    SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Belastung', minBpm: 125, maxBpm: 145, share: .26),
-    SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Intensives Intervall', minBpm: 140, maxBpm: 155, share: .12),
+    SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Bergfahrt', minBpm: 125, maxBpm: 145, share: .26),
+    SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Schnelles Intervall', minBpm: 150, maxBpm: 165, share: .12),
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 108, share: .15),
   ];
 
