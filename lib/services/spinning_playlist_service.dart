@@ -268,6 +268,9 @@ class SpinningPlaylistService {
     final used = <String>{};
     var elapsed = Duration.zero;
     Track? previous;
+    // The same recovery song is replayed from the beginning in each interval
+    // recovery block, giving all recoveries exactly the same music duration.
+    Track? intervalRecoveryTrack;
 
     // Preserve every actual curve block, including phases that recur later
     // (for example Build -> Load -> Build -> Peak). The old loop sampled
@@ -298,13 +301,18 @@ class SpinningPlaylistService {
     }
 
     for (final block in blocks) {
+      final intervalRecovery = profile == SpinningTrainingProfile.interval &&
+          curveOverride == null &&
+          block.phase == SpinningPhase.build;
       var firstInBlock = true;
       // The overall song duration stays close to the plan; overshoot in one
       // block reduces the number of extra songs in later blocks. We still
       // reserve one song per block whenever enough eligible music exists.
-      while (selected.length < usable.length &&
+      while ((selected.length < usable.length ||
+              (intervalRecovery && intervalRecoveryTrack != null)) &&
           (firstInBlock ||
-              elapsed + const Duration(seconds: 60) < block.end)) {
+              (!intervalRecovery &&
+                  elapsed + const Duration(seconds: 60) < block.end))) {
         final rawPosition = elapsed > block.start ? elapsed : block.start;
         final position =
             rawPosition < block.end ? rawPosition : block.start;
@@ -312,44 +320,64 @@ class SpinningPlaylistService {
         if (point.phase != block.phase) {
           point = _curveAt(curve, block.start);
         }
-        var candidates = usable.where((track) {
-          if (used.contains(track.id)) return false;
-          final allowed = phaseEligibility[track.id];
-          return allowed == null ||
-              allowed.isEmpty ||
-              allowed.contains(block.phase);
-        }).toList();
-
-        // Keep backwards compatibility for libraries without phase tagging.
-        if (candidates.isEmpty) {
-          candidates = usable.where((track) {
-            if (used.contains(track.id)) return false;
-            final allowed = phaseEligibility[track.id];
-            return allowed == null || allowed.isEmpty;
-          }).toList();
-        }
-        if (candidates.isEmpty) break;
-
         final remaining = block.end > elapsed
             ? block.end - elapsed
             : Duration.zero;
-        candidates.sort((a, b) => _score(b, point, previous, remaining)
-            .compareTo(_score(a, point, previous, remaining)));
+        Track chosen;
+        if (intervalRecovery && intervalRecoveryTrack != null) {
+          chosen = intervalRecoveryTrack;
+        } else {
+          var candidates = usable.where((track) {
+            if (used.contains(track.id)) return false;
+            final allowed = phaseEligibility[track.id];
+            return allowed == null ||
+                allowed.isEmpty ||
+                allowed.contains(block.phase);
+          }).toList();
 
-        final topCount = min(8, candidates.length);
-        final top = candidates.take(topCount).toList();
-        if (previous != null) {
-          final distinctArtists = top.where((track) =>
-              track.artist.trim().toLowerCase() !=
-              previous!.artist.trim().toLowerCase()).toList();
-          if (distinctArtists.isNotEmpty) {
-            top
-              ..clear()
-              ..addAll(distinctArtists);
+          // Keep backwards compatibility for libraries without phase tagging.
+          if (candidates.isEmpty) {
+            candidates = usable.where((track) {
+              if (used.contains(track.id)) return false;
+              final allowed = phaseEligibility[track.id];
+              return allowed == null || allowed.isEmpty;
+            }).toList();
+          }
+          if (candidates.isEmpty) break;
+
+          if (intervalRecovery) {
+            // Prefer a short, reliably repeatable song for recovery.
+            // Longer or variable-length work tracks remain unrestricted.
+            candidates.sort((a, b) {
+              double recoveryScore(Track track) {
+                final seconds = _planningDuration(track).inSeconds;
+                final durationPenalty = (seconds - 180).abs() / 120;
+                return _score(track, point, previous, remaining) -
+                    durationPenalty * .2;
+              }
+              return recoveryScore(b).compareTo(recoveryScore(a));
+            });
+            chosen = candidates.first;
+            intervalRecoveryTrack = chosen;
+          } else {
+            candidates.sort((a, b) => _score(b, point, previous, remaining)
+                .compareTo(_score(a, point, previous, remaining)));
+
+            final topCount = min(8, candidates.length);
+            final top = candidates.take(topCount).toList();
+            if (previous != null) {
+              final distinctArtists = top.where((track) =>
+                  track.artist.trim().toLowerCase() !=
+                  previous!.artist.trim().toLowerCase()).toList();
+              if (distinctArtists.isNotEmpty) {
+                top
+                  ..clear()
+                  ..addAll(distinctArtists);
+              }
+            }
+            chosen = top[_random.nextInt(top.length)];
           }
         }
-
-        final chosen = top[_random.nextInt(top.length)];
         final score = _score(chosen, point, previous, remaining);
         selected.add(chosen);
         selections.add(SpinningSelection(
