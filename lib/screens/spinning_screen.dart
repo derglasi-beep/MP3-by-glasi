@@ -639,13 +639,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   }
 
   ({int min, int max}) _standardHeartRateRange(SpinningPhase phase) =>
-      switch (phase) {
-        SpinningPhase.warmup => (min: 60, max: 69),
-        SpinningPhase.build => (min: 70, max: 79),
-        SpinningPhase.load => (min: 80, max: 89),
-        SpinningPhase.peak => (min: 90, max: 95),
-        SpinningPhase.cooldown => (min: 60, max: 65),
-      };
+      SpinningPlaylistService.heartRateRange(trainingProfile, phase);
 
   String _standardHeartRateText(SpinningPhase phase) {
     final range = _standardHeartRateRange(phase);
@@ -2097,6 +2091,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       plan: p,
       customProfile: _activeCustomProfile,
       sprintMode: sprintMode,
+      trainingProfile: trainingProfile,
       maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
       heartRateSensor: widget.heartRateSensor,
