@@ -62,6 +62,52 @@ void main() {
     expect(blockRest.instruction, contains('Widerstand'));
   });
 
+  test('custom interval settings drive exact work and recovery times', () {
+    const config = TimedIntervalConfig(
+      workSeconds: 45,
+      recoverySeconds: 75,
+      roundsPerBlock: 3,
+      effortRpe: 6,
+    );
+    final schedule = TimedIntervalSchedule.build(
+      const Duration(minutes: 30),
+      TimedIntervalPreset.thirtyThirty,
+      config: config,
+    );
+    final firstWork = schedule.steps.firstWhere(
+      (step) => step.phase == SpinningPhase.peak,
+    );
+    final firstRecovery = schedule.steps.firstWhere(
+      (step) => step.phase == SpinningPhase.build,
+    );
+    expect(firstWork.end - firstWork.start, const Duration(seconds: 45));
+    expect(firstRecovery.end - firstRecovery.start,
+        const Duration(seconds: 75));
+    expect(firstWork.instruction, contains('RPE 6/10'));
+    final blockRest = schedule.steps.firstWhere(
+      (step) => step.label == 'Blockpause',
+    );
+    expect(blockRest.round, 3);
+    expect(blockRest.end - blockRest.start, const Duration(minutes: 2));
+    expect(schedule.steps.last.end, const Duration(minutes: 30));
+  });
+
+  test('invalid interval settings are rejected', () {
+    expect(
+      () => TimedIntervalSchedule.build(
+        const Duration(minutes: 30),
+        TimedIntervalPreset.tabata,
+        config: const TimedIntervalConfig(
+          workSeconds: 0,
+          recoverySeconds: 10,
+          roundsPerBlock: 8,
+          effortRpe: 9,
+        ),
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('song mode has no independent interval timer', () {
     final schedule = TimedIntervalSchedule.build(
       const Duration(minutes: 30),
