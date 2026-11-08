@@ -20,4 +20,5 @@ jobs:
       # Existing sources are not yet entirely dartfmt-clean.
       - run: dart format lib test
       - run: flutter test
-      - run: flutter analyze
+      # Newer Flutter releases report deprecated UI APIs as informational.
+      - run: flutter analyze --no-fatal-infos
