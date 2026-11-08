@@ -263,11 +263,9 @@ class SpinningPlaylistService {
       while (selected.length < usable.length &&
           (firstInBlock ||
               elapsed + const Duration(seconds: 60) < block.end)) {
-        final position = block.start +
-            (elapsed > block.start
-                ? (elapsed - block.start)
-                    .clamp(Duration.zero, block.end - block.start)
-                : Duration.zero);
+        final rawPosition = elapsed > block.start ? elapsed : block.start;
+        final position =
+            rawPosition < block.end ? rawPosition : block.start;
         var point = _curveAt(curve, position);
         if (point.phase != block.phase) {
           point = _curveAt(curve, block.start);
