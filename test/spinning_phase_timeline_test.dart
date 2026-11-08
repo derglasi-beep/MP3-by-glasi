@@ -79,6 +79,46 @@ void main() {
     }
   });
 
+  test('interval recovery reuses the same song and length every time', () {
+    final library = [
+      for (var index = 0; index < 45; index++)
+        Track(
+          id: 'music-$index',
+          path: '/fake/music-$index.mp3',
+          title: 'Music $index',
+          artist: 'Artist $index',
+          bpm: index.isEven ? 108 : 155,
+          duration: Duration(seconds: 160 + index * 6),
+        ),
+    ];
+
+    for (final minutes in [30, 45, 60]) {
+      final plan = SpinningPlaylistService().build(
+        library: library,
+        duration: Duration(minutes: minutes),
+        profile: SpinningTrainingProfile.interval,
+        phases: SpinningPlaylistService.intervalPhases,
+      );
+      final recovery = plan.selections
+          .where((selection) => selection.phase == SpinningPhase.build)
+          .toList();
+      expect(recovery.length, greaterThanOrEqualTo(3));
+      expect(recovery.map((selection) => selection.track.id).toSet().length, 1);
+
+      final first = recovery.first.track;
+      expect(
+        recovery.every((selection) => selection.track.duration == first.duration),
+        isTrue,
+      );
+      final work = plan.selections
+          .where((selection) => selection.phase == SpinningPhase.load ||
+              selection.phase == SpinningPhase.peak)
+          .toList();
+      expect(work, isNotEmpty);
+      expect(work.every((selection) => selection.track.id != first.id), isTrue);
+    }
+  });
+
   test('repeated curve phases keep their original sequence', () {
     const minute = Duration(minutes: 1);
     const phases = <SpinningPhase>[
