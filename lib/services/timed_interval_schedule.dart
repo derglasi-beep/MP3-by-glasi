@@ -26,6 +26,47 @@ extension TimedIntervalPresetLabels on TimedIntervalPreset {
       };
 }
 
+/// Optional workout parameters. Defaults preserve the named presets.
+class TimedIntervalConfig {
+  final int workSeconds;
+  final int recoverySeconds;
+  final int roundsPerBlock;
+  final int effortRpe;
+
+  const TimedIntervalConfig({
+    required this.workSeconds,
+    required this.recoverySeconds,
+    required this.roundsPerBlock,
+    required this.effortRpe,
+  });
+
+  factory TimedIntervalConfig.forPreset(TimedIntervalPreset preset) =>
+      switch (preset) {
+        TimedIntervalPreset.songs => const TimedIntervalConfig(
+            workSeconds: 30, recoverySeconds: 30,
+            roundsPerBlock: 8, effortRpe: 7),
+        TimedIntervalPreset.thirtyThirty => const TimedIntervalConfig(
+            workSeconds: 30, recoverySeconds: 30,
+            roundsPerBlock: 10, effortRpe: 7),
+        TimedIntervalPreset.sprint => const TimedIntervalConfig(
+            workSeconds: 20, recoverySeconds: 100,
+            roundsPerBlock: 6, effortRpe: 9),
+        TimedIntervalPreset.tabata => const TimedIntervalConfig(
+            workSeconds: 20, recoverySeconds: 10,
+            roundsPerBlock: 8, effortRpe: 9),
+      };
+
+  TimedIntervalConfig copyWith({
+    int? workSeconds, int? recoverySeconds,
+    int? roundsPerBlock, int? effortRpe,
+  }) => TimedIntervalConfig(
+    workSeconds: workSeconds ?? this.workSeconds,
+    recoverySeconds: recoverySeconds ?? this.recoverySeconds,
+    roundsPerBlock: roundsPerBlock ?? this.roundsPerBlock,
+    effortRpe: effortRpe ?? this.effortRpe,
+  );
+}
+
 class TimedIntervalStep {
   final Duration start;
   final Duration end;
@@ -55,7 +96,18 @@ class TimedIntervalSchedule {
     required this.preset,
   });
 
-  static TimedIntervalSchedule build(Duration duration, TimedIntervalPreset preset) {
+  static TimedIntervalSchedule build(
+    Duration duration,
+    TimedIntervalPreset preset, {
+    TimedIntervalConfig? config,
+  }) {
+    final settings = config ?? TimedIntervalConfig.forPreset(preset);
+    if (settings.workSeconds < 5 || settings.workSeconds > 600 ||
+        settings.recoverySeconds < 5 || settings.recoverySeconds > 600 ||
+        settings.roundsPerBlock < 1 || settings.roundsPerBlock > 40 ||
+        settings.effortRpe < 5 || settings.effortRpe > 10) {
+      throw ArgumentError('Ungültige Intervall-Einstellungen');
+    }
     if (duration <= Duration.zero || preset == TimedIntervalPreset.songs) {
       return TimedIntervalSchedule(
         steps: const [],
@@ -99,13 +151,8 @@ class TimedIntervalSchedule {
       0,
     );
 
-    final workSeconds = preset == TimedIntervalPreset.thirtyThirty ? 30 : 20;
-    final recoverySeconds = switch (preset) {
-      TimedIntervalPreset.thirtyThirty => 30,
-      TimedIntervalPreset.sprint => 100,
-      TimedIntervalPreset.tabata => 10,
-      TimedIntervalPreset.songs => 0,
-    };
+    final workSeconds = settings.workSeconds;
+    final recoverySeconds = settings.recoverySeconds;
     var round = 0;
     while (position < workEnd) {
       round++;
@@ -118,24 +165,21 @@ class TimedIntervalSchedule {
         preset == TimedIntervalPreset.thirtyThirty
             ? 'Belastung $round'
             : 'Sprint $round',
-        preset == TimedIntervalPreset.thirtyThirty
-            ? 'Kräftig treten · RPE 7–8/10'
-            : 'Kurze intensive Belastung · RPE 8–9/10',
+        'Belastung · RPE ${settings.effortRpe}/10',
         round,
       );
       position = next;
       if (position >= workEnd) break;
 
-      final longTabataBreak =
-          preset == TimedIntervalPreset.tabata && round % 8 == 0;
+      final blockBreak = round % settings.roundsPerBlock == 0;
       next = position +
-          Duration(seconds: longTabataBreak ? 120 : recoverySeconds);
+          Duration(seconds: blockBreak ? 120 : recoverySeconds);
       if (next > workEnd) next = workEnd;
       add(
         position,
         next,
         SpinningPhase.build,
-        longTabataBreak ? 'Blockpause' : 'Aktive Erholung',
+        blockBreak ? 'Blockpause' : 'Aktive Erholung',
         'Widerstand reduzieren · locker treten · RPE 2–3/10',
         round,
       );
