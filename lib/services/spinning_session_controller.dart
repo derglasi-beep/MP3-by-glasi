@@ -357,6 +357,12 @@ class SpinningSessionController {
   int? _onTrackCompleted(int previousIndex) {
     if (completed || ended) return -1;
     if (previousIndex >= player.queue.length - 1) {
+      // A clock-driven workout must not end early when its playlist runs
+      // short. Replay only the final song until the planned time is met;
+      // never restart the full playlist or change interval timing.
+      if (usesTimedIntervals && elapsed < plan.duration) {
+        return previousIndex;
+      }
       unawaited(complete());
       return -1;
     }
