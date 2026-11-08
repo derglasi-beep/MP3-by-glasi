@@ -2567,7 +2567,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       child: ListView.builder(
                       controller: _libraryScrollController,
                       itemExtent: 72,
-                      scrollCacheExtent: 72,
+                      cacheExtent: 72,
                       itemCount: visibleTracks.length,
                       itemBuilder: (_, i) {
                         final t = visibleTracks[i];
