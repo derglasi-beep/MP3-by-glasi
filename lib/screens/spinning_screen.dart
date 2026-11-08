@@ -11,6 +11,7 @@ import '../services/heart_rate_sensor_service.dart';
 import '../services/library_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
+import '../services/timed_interval_schedule.dart';
 import '../services/spinning_transfer_service.dart';
 import 'spinning_history_screen.dart';
 import 'spinning_live_screen.dart';
@@ -213,6 +214,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   bool sprintMode = false;
   bool useSpinningLibrary = true;
   SpinningTrainingProfile trainingProfile = SpinningTrainingProfile.cadence;
+  TimedIntervalPreset intervalPreset = TimedIntervalPreset.songs;
   List<CustomBpmProfile> _customProfiles = const <CustomBpmProfile>[];
   String? _activeCustomProfileId;
   int? _maxHeartRate;
@@ -2097,6 +2099,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
       customProfile: _activeCustomProfile,
       sprintMode: sprintMode,
       trainingProfile: trainingProfile,
+      intervalPreset: intervalPreset,
       maxHeartRate: _activeCustomProfile?.maxHeartRate ?? _maxHeartRate,
       library: widget.tracks,
       heartRateSensor: widget.heartRateSensor,
@@ -2287,6 +2290,49 @@ class _SpinningScreenState extends State<SpinningScreen> {
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
+        if (trainingProfile == SpinningTrainingProfile.interval) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<TimedIntervalPreset>(
+            key: ValueKey(intervalPreset),
+            initialValue: intervalPreset,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Intervallsteuerung',
+            ),
+            items: [
+              for (final preset in TimedIntervalPreset.values)
+                DropdownMenuItem(
+                  value: preset,
+                  child: Text(preset.label),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => intervalPreset = value);
+            },
+          ),
+          const SizedBox(height: 6),
+          Text(
+            intervalPreset.description,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (intervalPreset != TimedIntervalPreset.songs)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Der Intervall-Timer pausiert mit der Musik und wechselt '
+                'sekundengenau – ohne Titelwechsel. Eigene HF-Grenzen pro '
+                'Song bleiben gültig. Kein automatischer Widerstandswechsel.',
+              ),
+            ),
+          if (intervalPreset != TimedIntervalPreset.songs &&
+              _activeCustomProfile != null)
+            const Text(
+              'Hinweis: Ein eigenes Trainingsprofil hat Vorrang. '
+              'Zeitintervalle gelten nur ohne eigene Vorlage.',
+            ),
+        ],
         const SizedBox(height: 8),
         ListTile(
           contentPadding: EdgeInsets.zero,
