@@ -49,10 +49,6 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted) return;
-      if (_sessionElapsed >= widget.plan.duration &&
-          !widget.session.completed) {
-        await widget.session.complete();
-      }
       _updatePulseWarning();
       if (mounted) setState(() {});
     });
@@ -67,80 +63,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
   Duration get _sessionElapsed => widget.session.elapsed;
 
-  ({
-    SpinningPhase phase,
-    String label,
-    Duration start,
-    Duration end,
-    SpinningPhase? nextPhase,
-  }) _phaseWindowAt(Duration elapsed) {
-    final custom = widget.customProfile;
-    if (custom != null) {
-      final durations =
-          planner.scaledCustomSegmentDurations(custom, widget.plan.duration);
-      if (durations.length == custom.segments.length) {
-        var cursor = Duration.zero;
-        for (var i = 0; i < custom.segments.length; i++) {
-          final segment = custom.segments[i];
-          final end = cursor + durations[i];
-          if (elapsed < end || i == custom.segments.length - 1) {
-            return (
-              phase: segment.phase,
-              label: segment.label,
-              start: cursor,
-              end: end,
-              nextPhase: i + 1 < custom.segments.length
-                  ? custom.segments[i + 1].phase
-                  : null,
-            );
-          }
-          cursor = end;
-        }
-      }
-    }
-
-    const order = <SpinningPhase>[
-      SpinningPhase.warmup,
-      SpinningPhase.build,
-      SpinningPhase.load,
-      SpinningPhase.peak,
-      SpinningPhase.cooldown,
-    ];
-    var cursor = Duration.zero;
-    for (var i = 0; i < order.length; i++) {
-      final phase = order[i];
-      final phaseDuration =
-          widget.plan.phaseDurations[phase] ?? Duration.zero;
-      if (phaseDuration <= Duration.zero) continue;
-      final end = cursor + phaseDuration;
-      if (elapsed < end || i == order.length - 1) {
-        SpinningPhase? next;
-        for (var j = i + 1; j < order.length; j++) {
-          if ((widget.plan.phaseDurations[order[j]] ?? Duration.zero) >
-              Duration.zero) {
-            next = order[j];
-            break;
-          }
-        }
-        return (
-          phase: phase,
-          label: _phaseLabel(phase),
-          start: cursor,
-          end: end,
-          nextPhase: next,
-        );
-      }
-      cursor = end;
-    }
-
-    return (
-      phase: SpinningPhase.cooldown,
-      label: _phaseLabel(SpinningPhase.cooldown),
-      start: widget.plan.duration,
-      end: widget.plan.duration,
-      nextPhase: null,
-    );
-  }
+  SpinningPhaseWindow _phaseWindowAt(Duration elapsed) =>
+      widget.session.currentPhaseWindow;
 
   Future<void> _startNextPhase() async {
     if (_phaseSwitching || widget.session.completed || widget.session.ended) {
@@ -714,7 +638,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final point = _pointAt(elapsed);
             final phaseWindow = _phaseWindowAt(elapsed);
             final currentPhase = phaseWindow.phase;
-            final custom = _customSegmentAt(elapsed);
+            final custom = _customSegmentAt(phaseWindow.start);
             final phaseRemaining = phaseWindow.end - elapsed > Duration.zero
                 ? phaseWindow.end - elapsed
                 : Duration.zero;
@@ -732,9 +656,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     : _customHeartRate(custom.segment))
                 : 'Max $songMax % HFmax (Titel)';
             final phaseTitle = phaseWindow.label;
-            final targetBpm = point == null
-                ? null
-                : _displayBpm(point.targetBpm).round();
+            final selection = widget.plan.selections.where(
+              (item) => item.track.id == currentTrack?.id,
+            );
+            final targetBpm = selection.isNotEmpty
+                ? _displayBpm(selection.first.targetBpm).round()
+                : point == null
+                    ? null
+                    : _displayBpm(point.targetBpm).round();
 
             return ListView(
               padding: const EdgeInsets.all(16),
