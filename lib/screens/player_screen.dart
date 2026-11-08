@@ -1407,22 +1407,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         _suppressAutomaticBpm = true;
       }
 
+      // Network shares have higher read latency. Smaller metadata batches
+      // return progress sooner, while throttling updates avoids rebuilding
+      // the entire player for every discovered file.
+      final progressClock = Stopwatch()..start();
+      var lastUiUpdateMs = -200;
+      void reportProgress(int done, int total, {bool force = false}) {
+        if (!mounted) return;
+        final now = progressClock.elapsedMilliseconds;
+        if (!force && now - lastUiUpdateMs < 200) return;
+        lastUiUpdateMs = now;
+        setState(() {
+          scanDone = done;
+          scanTotal = total;
+        });
+      }
+
       final found = await scanner.scanDirectory(
         p,
         loadArtwork: !Platform.isWindows,
+        metadataBatchSize: isWindowsNetworkPath ? 16 : 96,
         onDiscoveryProgress: (count) {
-          if (!mounted) return;
-          setState(() {
-            scanDone = count;
-            scanTotal = 0;
-          });
+          reportProgress(count, 0);
         },
         onMetadataProgress: (done, total) {
-          if (!mounted) return;
-          setState(() {
-            scanDone = done;
-            scanTotal = total;
-          });
+          reportProgress(done, total, force: done == total);
         },
       );
 
