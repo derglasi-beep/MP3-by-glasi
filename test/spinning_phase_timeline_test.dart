@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mp3_by_glasi/models/track.dart';
 import 'package:mp3_by_glasi/services/spinning_playlist_service.dart';
 import 'package:mp3_by_glasi/services/spinning_session_controller.dart';
 
@@ -39,6 +40,38 @@ void main() {
     expect(windows.last.end, plan.duration);
     expect(windows[2].nextPhase, SpinningPhase.build);
     expect(windows.last.nextPhase, isNull);
+  });
+
+  test('automatic playlist includes every repeated curve block', () {
+    final library = [
+      for (var index = 0; index < 60; index++)
+        Track(
+          id: 'song-$index',
+          path: '/fake/song-$index.mp3',
+          title: 'Song $index',
+          artist: 'Artist $index',
+          bpm: 124,
+          duration: const Duration(minutes: 4),
+        ),
+    ];
+
+    final plan = SpinningPlaylistService().build(
+      library: library,
+      duration: const Duration(minutes: 45),
+    );
+    final expected = SpinningSessionController.phaseWindowsFor(plan, null)
+        .map((window) => window.phase)
+        .toList();
+    final actual = <SpinningPhase>[];
+    for (final selection in plan.selections) {
+      if (actual.isEmpty || actual.last != selection.phase) {
+        actual.add(selection.phase);
+      }
+    }
+
+    expect(expected, isNotEmpty);
+    expect(actual, orderedEquals(expected));
+    expect(actual.last, SpinningPhase.cooldown);
   });
 
   test('custom segments retain repeated phases and durations', () {
