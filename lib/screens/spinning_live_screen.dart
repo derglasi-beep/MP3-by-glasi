@@ -71,7 +71,6 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       return;
     }
     final current = _phaseWindowAt(_sessionElapsed);
-    final targetPosition = current.end;
     final targetPhase = current.nextPhase;
     if (targetPhase == null) return;
 
@@ -96,15 +95,13 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     _phaseSwitching = true;
     try {
-      // Loading a track must finish before advancing the session clock.
-      // Do not wait for play() itself: its Future can stay pending while
-      // the entire song is playing on Android.
+      // The track tag selects the new phase; real elapsed workout time
+      // must not jump forward just because the user skipped a phase.
       await widget.player.playAt(
         targetQueueIndex,
         awaitPlayback: false,
       );
       if (!mounted) return;
-      widget.session.jumpTo(targetPosition);
       setState(() {});
     } catch (error) {
       if (!mounted) return;
