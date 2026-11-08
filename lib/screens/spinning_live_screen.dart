@@ -424,13 +424,10 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       );
     }
 
-    return switch (phase) {
-      SpinningPhase.warmup => (min: 60, max: 69),
-      SpinningPhase.build => (min: 70, max: 79),
-      SpinningPhase.load => (min: 80, max: 89),
-      SpinningPhase.peak => (min: 90, max: 95),
-      SpinningPhase.cooldown => (min: 60, max: 65),
-    };
+    return SpinningPlaylistService.heartRateRange(
+      widget.session.trainingProfile,
+      phase,
+    );
   }
 
   void _updatePulseWarning() {
@@ -458,7 +455,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
 
     final elapsed = _sessionElapsed;
     final phase = _phaseWindowAt(elapsed);
-    final custom = _customSegmentAt(elapsed);
+    final custom = _customSegmentAt(phase.start);
     final range = _heartRateRange(phase.phase, custom?.segment);
     final track = widget.player.currentTrack;
     final ceiling = widget.session.maxPercentForTrack(track) ?? range.max;
@@ -591,13 +588,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
         SpinningPhase.cooldown => 'Cool-down',
       };
 
-  String _standardHeartRate(SpinningPhase phase) => switch (phase) {
-        SpinningPhase.warmup => '60–69 % HFmax',
-        SpinningPhase.build => '70–79 % HFmax',
-        SpinningPhase.load => '80–89 % HFmax',
-        SpinningPhase.peak => '90–95 % HFmax',
-        SpinningPhase.cooldown => '65→60 % HFmax',
-      };
+  String _standardHeartRate(SpinningPhase phase) {
+    final range = _heartRateRange(phase, null);
+    if (phase == SpinningPhase.cooldown) {
+      return '${range.max}→${range.min} % HFmax';
+    }
+    return '${range.min}–${range.max} % HFmax';
+  }
+
 
   String _customHeartRate(CustomBpmSegment segment) {
     final min = segment.minHeartRatePercent;
