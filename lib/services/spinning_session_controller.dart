@@ -24,6 +24,7 @@ class SpinningSessionController {
   final bool sprintMode;
   final SpinningTrainingProfile trainingProfile;
   final TimedIntervalPreset intervalPreset;
+  final TimedIntervalConfig? intervalConfig;
   late final TimedIntervalSchedule timedSchedule;
   final int? maxHeartRate;
   final List<Track> library;
@@ -61,6 +62,7 @@ class SpinningSessionController {
     required this.sprintMode,
     this.trainingProfile = SpinningTrainingProfile.cadence,
     this.intervalPreset = TimedIntervalPreset.songs,
+    this.intervalConfig,
     required this.maxHeartRate,
     required this.library,
     required this.heartRateSensor,
@@ -72,10 +74,13 @@ class SpinningSessionController {
     }
 
     _phaseWindows = phaseWindowsFor(plan, customProfile);
-    timedSchedule = TimedIntervalSchedule.build(plan.duration,
-        trainingProfile == SpinningTrainingProfile.interval && customProfile == null
-            ? intervalPreset
-            : TimedIntervalPreset.songs);
+    timedSchedule = TimedIntervalSchedule.build(
+      plan.duration,
+      trainingProfile == SpinningTrainingProfile.interval && customProfile == null
+          ? intervalPreset
+          : TimedIntervalPreset.songs,
+      config: intervalConfig,
+    );
     _previousShuffle = player.shuffle;
     _previousLoopMode = player.loopMode;
     player.shuffle = false;
