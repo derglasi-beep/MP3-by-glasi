@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import '../models/track.dart';
@@ -169,7 +168,7 @@ class PlaylistTransferService {
 
       final split = pendingLabel == null
           ? null
-          : _splitArtistTitle(pendingLabel!);
+          : _splitArtistTitle(pendingLabel);
       entries.add(
         PlaylistImportEntry(
           raw: pendingLabel?.isNotEmpty == true ? pendingLabel! : line,
