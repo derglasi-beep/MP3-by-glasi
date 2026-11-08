@@ -152,10 +152,7 @@ class AudioPlayerService {
     _publishQueue();
   }
 
-  Future<void> playAt(
-    int index, {
-    bool awaitPlayback = true,
-  }) async {
+  Future<void> playAt(int index) async {
     if (index < 0 || index >= queue.length) return;
     _navigationRevision++;
     if (index == currentIndex &&
