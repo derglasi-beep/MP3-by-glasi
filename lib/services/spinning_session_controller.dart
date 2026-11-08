@@ -31,6 +31,7 @@ class SpinningSessionController {
   DateTime? _runningSince;
   late final List<SpinningPhaseWindow> _phaseWindows;
   int _activeWindowIndex = 0;
+  Duration _phaseStartedAtElapsed = Duration.zero;
   StreamSubscription<Track?>? _trackSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _statsTimer;
@@ -262,6 +263,14 @@ class SpinningSessionController {
       }
       if (found >= 0) windowIndex = found;
     }
+    final previousPhase = _phaseWindows[_activeWindowIndex].phase;
+    final current = player.currentTrack;
+    final currentPhase =
+        current == null ? null : phaseForTrack(current);
+    if (windowIndex != _activeWindowIndex ||
+        (currentPhase != null && currentPhase != previousPhase)) {
+      _phaseStartedAtElapsed = elapsed;
+    }
     _activeWindowIndex = windowIndex;
   }
 
@@ -311,12 +320,19 @@ class SpinningSessionController {
 
   bool get isRunning => _runningSince != null;
 
+  Duration get phaseRemaining {
+    final window = currentPhaseWindow;
+    final duration = window.end - window.start;
+    final spent = elapsed - _phaseStartedAtElapsed;
+    return duration > spent ? duration - spent : Duration.zero;
+  }
+
   bool get waitingForSongEnd =>
       !completed &&
       !ended &&
       isRunning &&
       currentPhaseWindow.nextPhase != null &&
-      elapsed >= currentPhaseWindow.end;
+      phaseRemaining == Duration.zero;
 
   void _commitRunningTime() {
     final runningSince = _runningSince;
