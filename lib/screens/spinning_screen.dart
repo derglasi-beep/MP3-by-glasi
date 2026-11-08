@@ -390,7 +390,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
                   ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    value: sex,
+                    initialValue: sex,
                     decoration: const InputDecoration(
                       labelText: 'Geschlecht',
                       border: OutlineInputBorder(),
