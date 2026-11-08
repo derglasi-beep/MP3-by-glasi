@@ -776,7 +776,7 @@ class SpinningPlaylistService {
       if (previousTarget != null) {
         final blend = profile == SpinningTrainingProfile.heartRate ? .72 : .45;
         anchors[0] = (
-          previousTarget! * blend + anchors.first * (1 - blend)
+          previousTarget * blend + anchors.first * (1 - blend)
         ).clamp(min, max).toDouble();
       }
 
