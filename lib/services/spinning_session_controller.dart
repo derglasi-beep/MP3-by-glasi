@@ -307,7 +307,8 @@ class SpinningSessionController {
                   customProfile == null
               ? switch (activePhase) {
                   SpinningPhase.build => 'Aktive Erholung',
-                  SpinningPhase.peak => 'Intensives Intervall',
+                  SpinningPhase.peak => 'Schnelles Intervall',
+                  SpinningPhase.load => 'Bergfahrt',
                   _ => _phaseLabel(activePhase),
                 }
               : _phaseLabel(activePhase),
