@@ -82,6 +82,12 @@ class AudioPlayerService {
     if (!_errorController.isClosed) _errorController.add(message);
   }
 
+  void _startPlayback() {
+    unawaited(play().catchError((Object error, StackTrace stack) {
+      _publishError(error);
+    }));
+  }
+
   Future<void> _handleCompletion() async {
     if (_completionInProgress) return;
     final revision = _navigationRevision;
@@ -107,6 +113,9 @@ class AudioPlayerService {
     bool load = true,
     bool preserveCurrent = true,
   }) async {
+    // Keep external library refreshes from replacing a running Spinning queue.
+    if (onTrackCompleted != null) return;
+    _navigationRevision++;
     final oldTrack = currentTrack;
     final oldPosition = audio.position;
     final wasPlaying = audio.playing;
@@ -135,7 +144,7 @@ class AudioPlayerService {
       await _load();
       if (preserveCurrent && oldTrack != null && preservedIndex >= 0) {
         await seek(oldPosition);
-        if (wasPlaying) await play();
+        if (wasPlaying) _startPlayback();
       }
     } else {
       _trackController.add(currentTrack);
@@ -153,20 +162,16 @@ class AudioPlayerService {
         audio.processingState != ProcessingState.idle &&
         audio.processingState != ProcessingState.completed) {
       if (awaitPlayback) {
-        await play();
+        _startPlayback();
       } else {
-        unawaited(play());
+        _startPlayback();
       }
       return;
     }
 
     currentIndex = index;
     await _load();
-    if (awaitPlayback) {
-      await play();
-    } else {
-      unawaited(play());
-    }
+    _startPlayback();
     _publishQueue();
   }
 
@@ -258,6 +263,7 @@ class AudioPlayerService {
   }
 
   Future<void> clearQueue() async {
+    if (onTrackCompleted != null) return;
     queue.clear();
     _history.clear();
     currentIndex = -1;
@@ -662,28 +668,29 @@ class AudioPlayerService {
 
   Future<void> next({bool fromCompletion = false}) async {
     if (queue.isEmpty) return;
+    _navigationRevision++;
 
-    if (fromCompletion && onTrackCompleted != null) {
-      final target = onTrackCompleted!(currentIndex);
+    // During Spinning the session owns navigation. No shuffle, repeat or
+    // implicit jumps to a later phase, including from headset/lock-screen.
+    final sessionNext = onTrackCompleted;
+    if (sessionNext != null) {
+      final target = sessionNext(currentIndex);
       if (target == -1) return;
-      if (target != null && target >= 0 && target < queue.length) {
-        currentIndex = target;
-        await _load();
-        await play();
-        return;
-      }
+      final nextIndex = target ?? currentIndex + 1;
+      if (nextIndex < 0 || nextIndex >= queue.length) return;
+      currentIndex = nextIndex;
+      await _load();
+      _startPlayback();
+      _publishQueue();
+      return;
     }
 
     if (loopMode == LoopMode.one && fromCompletion) {
       await audio.seek(Duration.zero);
-      await play();
+      _startPlayback();
       return;
     }
-
-    if (shuffle && currentIndex >= 0) {
-      _history.add(currentIndex);
-    }
-
+    if (shuffle && currentIndex >= 0) _history.add(currentIndex);
     if (shuffle && queue.length > 1) {
       currentIndex = _nextShuffleIndex();
     } else if (currentIndex < queue.length - 1) {
@@ -696,19 +703,26 @@ class AudioPlayerService {
       await audio.seek(Duration.zero);
       return;
     }
-
     await _load();
-    await play();
+    _startPlayback();
+    _publishQueue();
   }
 
   Future<void> previous() async {
     if (queue.isEmpty) return;
+    _navigationRevision++;
     if (audio.position > const Duration(seconds: 3)) {
       await seek(Duration.zero);
       return;
     }
 
-    if (shuffle && _history.isNotEmpty) {
+    if (onTrackCompleted != null) {
+      if (currentIndex <= 0) {
+        await seek(Duration.zero);
+        return;
+      }
+      currentIndex--;
+    } else if (shuffle && _history.isNotEmpty) {
       currentIndex = _history.removeLast();
     } else if (currentIndex > 0) {
       currentIndex--;
@@ -720,7 +734,8 @@ class AudioPlayerService {
     }
 
     await _load();
-    await play();
+    _startPlayback();
+    _publishQueue();
   }
 
   Future<void> toggleShuffle() async {
