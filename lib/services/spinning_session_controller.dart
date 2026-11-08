@@ -21,6 +21,7 @@ class SpinningSessionController {
   final SpinningPlan plan;
   final CustomBpmProfile? customProfile;
   final bool sprintMode;
+  final SpinningTrainingProfile trainingProfile;
   final int? maxHeartRate;
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
@@ -55,6 +56,7 @@ class SpinningSessionController {
     required this.plan,
     required this.customProfile,
     required this.sprintMode,
+    this.trainingProfile = SpinningTrainingProfile.cadence,
     required this.maxHeartRate,
     required this.library,
     required this.heartRateSensor,
@@ -373,13 +375,8 @@ class SpinningSessionController {
     return _standardPhaseCeiling(currentPhaseWindow.phase);
   }
 
-  int _standardPhaseCeiling(SpinningPhase phase) => switch (phase) {
-        SpinningPhase.warmup => 69,
-        SpinningPhase.build => 79,
-        SpinningPhase.load => 89,
-        SpinningPhase.peak => 95,
-        SpinningPhase.cooldown => 65,
-      };
+  int _standardPhaseCeiling(SpinningPhase phase) =>
+      SpinningPlaylistService.heartRateRange(trainingProfile, phase).max;
 
   int? _zoneForHeartRate(int bpm) {
     final max = maxHeartRate;
