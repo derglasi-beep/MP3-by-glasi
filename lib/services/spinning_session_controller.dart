@@ -7,6 +7,7 @@ import 'audio_player_service.dart';
 import 'heart_rate_sensor_service.dart';
 import 'spinning_playlist_service.dart';
 import 'spinning_session_history_service.dart';
+import 'timed_interval_schedule.dart';
 
 typedef SpinningPhaseWindow = ({
   SpinningPhase phase,
@@ -22,6 +23,8 @@ class SpinningSessionController {
   final CustomBpmProfile? customProfile;
   final bool sprintMode;
   final SpinningTrainingProfile trainingProfile;
+  final TimedIntervalPreset intervalPreset;
+  late final TimedIntervalSchedule timedSchedule;
   final int? maxHeartRate;
   final List<Track> library;
   final Map<String, SpinningPhase> phaseByTrackId = <String, SpinningPhase>{};
@@ -57,6 +60,7 @@ class SpinningSessionController {
     required this.customProfile,
     required this.sprintMode,
     this.trainingProfile = SpinningTrainingProfile.cadence,
+    this.intervalPreset = TimedIntervalPreset.songs,
     required this.maxHeartRate,
     required this.library,
     required this.heartRateSensor,
@@ -68,6 +72,10 @@ class SpinningSessionController {
     }
 
     _phaseWindows = phaseWindowsFor(plan, customProfile);
+    timedSchedule = TimedIntervalSchedule.build(plan.duration,
+        trainingProfile == SpinningTrainingProfile.interval && customProfile == null
+            ? intervalPreset
+            : TimedIntervalPreset.songs);
     _previousShuffle = player.shuffle;
     _previousLoopMode = player.loopMode;
     player.shuffle = false;
@@ -276,7 +284,33 @@ class SpinningSessionController {
     _activeWindowIndex = windowIndex;
   }
 
+  bool get usesTimedIntervals => timedSchedule.steps.isNotEmpty;
+
+  TimedIntervalStep? get currentTimedStep =>
+      usesTimedIntervals ? timedSchedule.stepAt(elapsed) : null;
+
+  TimedIntervalStep? get nextTimedStep =>
+      usesTimedIntervals ? timedSchedule.nextAfter(elapsed) : null;
+
+  ({int min, int max}) get currentHeartRateRange =>
+      SpinningPlaylistService.heartRateRange(
+        trainingProfile,
+        usesTimedIntervals
+            ? (currentTimedStep?.phase ?? SpinningPhase.cooldown)
+            : currentPhaseWindow.phase,
+      );
+
   SpinningPhaseWindow get currentPhaseWindow {
+    if (usesTimedIntervals) {
+      final step = currentTimedStep!;
+      return (
+        phase: step.phase,
+        label: step.label,
+        start: step.start,
+        end: step.end,
+        nextPhase: nextTimedStep?.phase,
+      );
+    }
     if (_phaseWindows.isEmpty) {
       return (
         phase: SpinningPhase.warmup,
@@ -333,6 +367,7 @@ class SpinningSessionController {
   bool get isRunning => _runningSince != null;
 
   Duration get phaseRemaining {
+    if (usesTimedIntervals) return timedSchedule.remainingAt(elapsed);
     final window = currentPhaseWindow;
     final duration = window.end - window.start;
     final spent = elapsed - _phaseStartedAtElapsed;
@@ -340,6 +375,7 @@ class SpinningSessionController {
   }
 
   bool get waitingForSongEnd =>
+      !usesTimedIntervals &&
       !completed &&
       !ended &&
       isRunning &&
@@ -375,6 +411,10 @@ class SpinningSessionController {
   }
 
   int? _targetCeilingAt(Duration position) {
+    if (usesTimedIntervals) {
+      final phase = timedSchedule.stepAt(position)?.phase;
+      return phase == null ? null : _standardPhaseCeiling(phase);
+    }
     final profile = customProfile;
     if (profile != null &&
         _activeWindowIndex < profile.segments.length) {
