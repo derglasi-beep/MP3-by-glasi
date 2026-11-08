@@ -8,6 +8,14 @@ import 'heart_rate_sensor_service.dart';
 import 'spinning_playlist_service.dart';
 import 'spinning_session_history_service.dart';
 
+typedef SpinningPhaseWindow = ({
+  SpinningPhase phase,
+  String label,
+  Duration start,
+  Duration end,
+  SpinningPhase? nextPhase,
+});
+
 class SpinningSessionController {
   final AudioPlayerService player;
   final SpinningPlan plan;
@@ -21,8 +29,9 @@ class SpinningSessionController {
 
   Duration _offset = Duration.zero;
   DateTime? _runningSince;
-  late final List<Duration> _phaseBoundaries;
-  int _nextBoundaryIndex = 0;
+  late final List<SpinningPhaseWindow> _phaseWindows;
+  int _activeWindowIndex = 0;
+  StreamSubscription<Track?>? _trackSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _statsTimer;
   final DateTime startedAt = DateTime.now();
@@ -53,8 +62,12 @@ class SpinningSessionController {
       phaseByTrackId[selection.track.id] = selection.phase;
     }
 
-    _phaseBoundaries = _buildPhaseBoundaries();
+    _phaseWindows = _buildPhaseWindows();
     player.onTrackCompleted = _onTrackCompleted;
+    _trackSub = player.currentTrackStream.listen((_) {
+      _syncWindowToCurrentTrack();
+    });
+    _syncWindowToCurrentTrack();
 
     if (player.audio.playing) {
       _runningSince = DateTime.now();
@@ -62,10 +75,6 @@ class SpinningSessionController {
 
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (ended || completed) return;
-      if (elapsed >= plan.duration) {
-        unawaited(complete());
-        return;
-      }
       if (_runningSince == null) return;
 
       final current = player.currentTrack;
@@ -129,38 +138,61 @@ class SpinningSessionController {
     });
   }
 
-  // Session time waits at each phase boundary until the playing song ends.
-  // Only song completion advances the active boundary; the current song is
-  // never cut off merely because the planned phase duration elapsed.
-  Duration get _rawElapsed {
-    var value = _offset;
-    final since = _runningSince;
-    if (since != null) value += DateTime.now().difference(since);
-    return value > plan.duration ? plan.duration : value;
-  }
-
+  // The music clock tracks real playback time, including any song overrun.
+  // Phase changes happen only when the next tagged song starts.
   Duration get elapsed {
-    final raw = _rawElapsed;
-    if (_nextBoundaryIndex >= _phaseBoundaries.length) return raw;
-    final boundary = _phaseBoundaries[_nextBoundaryIndex];
-    if (raw < boundary) return raw;
-    return boundary - const Duration(milliseconds: 1);
+    final since = _runningSince;
+    return since == null
+        ? _offset
+        : _offset + DateTime.now().difference(since);
   }
 
-  List<Duration> _buildPhaseBoundaries() {
-    final boundaries = <Duration>[];
-    var cursor = Duration.zero;
-    final profile = customProfile;
-    if (profile != null && profile.segments.isNotEmpty) {
-      final durations = SpinningPlaylistService()
-          .scaledCustomSegmentDurations(profile, plan.duration);
-      for (final duration in durations) {
-        cursor += duration;
-        if (cursor > Duration.zero && cursor <= plan.duration) {
-          boundaries.add(cursor);
+  List<SpinningPhaseWindow> _buildPhaseWindows() {
+    final segments = <({SpinningPhase phase, Duration start, Duration end, String label})>[];
+    final custom = customProfile;
+    if (custom != null && custom.segments.isNotEmpty) {
+      final times = SpinningPlaylistService()
+          .scaledCustomSegmentDurations(custom, plan.duration);
+      var cursor = Duration.zero;
+      for (var i = 0; i < times.length && i < custom.segments.length; i++) {
+        final segment = custom.segments[i];
+        final end = cursor + times[i];
+        if (end > cursor) {
+          segments.add((
+            phase: segment.phase,
+            label: segment.label,
+            start: cursor,
+            end: end,
+          ));
         }
+        cursor = end;
+      }
+    } else if (plan.curve.isNotEmpty) {
+      var start = Duration.zero;
+      var phase = plan.curve.first.phase;
+      for (final point in plan.curve) {
+        if (point.phase == phase) continue;
+        if (point.position > start) {
+          segments.add((
+            phase: phase,
+            label: _phaseLabel(phase),
+            start: start,
+            end: point.position,
+          ));
+        }
+        start = point.position;
+        phase = point.phase;
+      }
+      if (start < plan.duration) {
+        segments.add((
+          phase: phase,
+          label: _phaseLabel(phase),
+          start: start,
+          end: plan.duration,
+        ));
       }
     } else {
+      var cursor = Duration.zero;
       for (final phase in const <SpinningPhase>[
         SpinningPhase.warmup,
         SpinningPhase.build,
@@ -168,72 +200,103 @@ class SpinningSessionController {
         SpinningPhase.peak,
         SpinningPhase.cooldown,
       ]) {
-        cursor += plan.phaseDurations[phase] ?? Duration.zero;
-        if (cursor > Duration.zero && cursor <= plan.duration) {
-          boundaries.add(cursor);
+        final end = cursor + (plan.phaseDurations[phase] ?? Duration.zero);
+        if (end > cursor) {
+          segments.add((
+            phase: phase,
+            label: _phaseLabel(phase),
+            start: cursor,
+            end: end,
+          ));
         }
+        cursor = end;
       }
     }
-    if (boundaries.isEmpty || boundaries.last != plan.duration) {
-      boundaries.add(plan.duration);
-    }
-    return boundaries.toSet().toList()..sort();
+
+    return [
+      for (var i = 0; i < segments.length; i++)
+        (
+          phase: segments[i].phase,
+          label: segments[i].label,
+          start: segments[i].start,
+          end: segments[i].end,
+          nextPhase: i + 1 < segments.length
+              ? segments[i + 1].phase
+              : null,
+        ),
+    ];
   }
 
-  int? _onTrackCompleted(int previousIndex) {
-    if (completed || ended) return null;
-    if (_nextBoundaryIndex >= _phaseBoundaries.length ||
-        _rawElapsed < _phaseBoundaries[_nextBoundaryIndex]) {
-      return null;
+  String _phaseLabel(SpinningPhase phase) => switch (phase) {
+        SpinningPhase.warmup => 'Warm-up',
+        SpinningPhase.build => 'Aufbau',
+        SpinningPhase.load => 'Belastung',
+        SpinningPhase.peak => 'Peak',
+        SpinningPhase.cooldown => 'Cool-down',
+      };
+
+  void _syncWindowToCurrentTrack() {
+    if (_phaseWindows.isEmpty) return;
+    var windowIndex = 0;
+    SpinningPhase? lastPhase;
+    final through = player.currentIndex;
+    for (var i = 0; i <= through && i < player.queue.length; i++) {
+      final phase = phaseForTrack(player.queue[i]);
+      if (phase == null || phase == lastPhase) continue;
+      lastPhase = phase;
+      var found = -1;
+      for (var j = windowIndex; j < _phaseWindows.length; j++) {
+        if (_phaseWindows[j].phase == phase) {
+          found = j;
+          break;
+        }
+      }
+      if (found >= 0) windowIndex = found;
     }
+    _activeWindowIndex = windowIndex;
+  }
 
-    final boundary = _phaseBoundaries[_nextBoundaryIndex];
-    _nextBoundaryIndex++;
-    _offset = boundary;
-    _runningSince = player.audio.playing ? DateTime.now() : null;
+  SpinningPhaseWindow get currentPhaseWindow {
+    if (_phaseWindows.isEmpty) {
+      return (
+        phase: SpinningPhase.warmup,
+        label: 'Warm-up',
+        start: Duration.zero,
+        end: plan.duration,
+        nextPhase: null,
+      );
+    }
+    final window = _phaseWindows[_activeWindowIndex];
+    final currentIndex = player.currentIndex;
+    SpinningPhase? next;
+    final activePhase = phaseForTrack(player.currentTrack ?? 
+        (player.queue.isNotEmpty ? player.queue.first : throw StateError('Empty Spinning queue')));
+    for (var i = currentIndex + 1; i < player.queue.length; i++) {
+      final phase = phaseForTrack(player.queue[i]);
+      if (phase != null && phase != activePhase) {
+        next = phase;
+        break;
+      }
+    }
+    return (
+      phase: activePhase ?? window.phase,
+      label: activePhase == null ? window.label : _phaseLabel(activePhase),
+      start: window.start,
+      end: window.end,
+      nextPhase: next,
+    );
+  }
 
-    // Reaching the planned session end also waits for the final song.
-    if (boundary >= plan.duration) {
+  // A natural ending (and a manual Next command) always advances to the
+  // immediate successor. No phase searching, skipping, shuffle or repeat.
+  int? _onTrackCompleted(int previousIndex) {
+    if (completed || ended) return -1;
+    if (previousIndex >= player.queue.length - 1) {
       unawaited(complete());
       return -1;
     }
-
-    final phase = _phaseAt(boundary);
-    if (phase == null) return null;
-    for (var index = previousIndex + 1; index < player.queue.length; index++) {
-      if (phaseForTrack(player.queue[index]) == phase) return index;
-    }
-    // No suitable upcoming track: preserve normal playback rather than
-    // jumping backwards or repeating an earlier title.
-    return null;
-  }
-
-  SpinningPhase? _phaseAt(Duration position) {
-    final profile = customProfile;
-    if (profile != null && profile.segments.isNotEmpty) {
-      final durations = SpinningPlaylistService()
-          .scaledCustomSegmentDurations(profile, plan.duration);
-      var cursor = Duration.zero;
-      for (var index = 0; index < durations.length; index++) {
-        cursor += durations[index];
-        if (position < cursor && index < profile.segments.length) {
-          return profile.segments[index].phase;
-        }
-      }
-      return null;
-    }
-    var cursor = Duration.zero;
-    for (final phase in const <SpinningPhase>[
-      SpinningPhase.warmup,
-      SpinningPhase.build,
-      SpinningPhase.load,
-      SpinningPhase.peak,
-      SpinningPhase.cooldown,
-    ]) {
-      cursor += plan.phaseDurations[phase] ?? Duration.zero;
-      if (position < cursor) return phase;
-    }
-    return null;
+    _commitRunningTime(); // Preserve elapsed song overrun.
+    return previousIndex + 1;
   }
 
   bool get isRunning => _runningSince != null;
@@ -241,17 +304,14 @@ class SpinningSessionController {
   bool get waitingForSongEnd =>
       !completed &&
       !ended &&
-      _runningSince != null &&
-      _nextBoundaryIndex < _phaseBoundaries.length &&
-      _rawElapsed >= _phaseBoundaries[_nextBoundaryIndex];
+      isRunning &&
+      currentPhaseWindow.nextPhase != null &&
+      elapsed >= currentPhaseWindow.end;
 
   void _commitRunningTime() {
     final runningSince = _runningSince;
     if (runningSince == null) return;
     _offset += DateTime.now().difference(runningSince);
-    if (_offset > plan.duration) {
-      _offset = plan.duration;
-    }
     _runningSince = null;
   }
 
@@ -278,25 +338,13 @@ class SpinningSessionController {
 
   int? _targetCeilingAt(Duration position) {
     final profile = customProfile;
-    if (profile != null && profile.segments.isNotEmpty) {
-      final durations = SpinningPlaylistService()
-          .scaledCustomSegmentDurations(profile, plan.duration);
-      var cursor = Duration.zero;
-      for (var index = 0;
-          index < durations.length && index < profile.segments.length;
-          index++) {
-        cursor += durations[index];
-        if (position < cursor || index == durations.length - 1) {
-          final segment = profile.segments[index];
-          if (segment.maxHeartRatePercent != null) {
-            return segment.maxHeartRatePercent;
-          }
-          return _standardPhaseCeiling(segment.phase);
-        }
-      }
+    if (profile != null &&
+        _activeWindowIndex < profile.segments.length) {
+      final segment = profile.segments[_activeWindowIndex];
+      return segment.maxHeartRatePercent ??
+          _standardPhaseCeiling(segment.phase);
     }
-    final phase = _phaseAt(position);
-    return phase == null ? null : _standardPhaseCeiling(phase);
+    return _standardPhaseCeiling(currentPhaseWindow.phase);
   }
 
   int _standardPhaseCeiling(SpinningPhase phase) => switch (phase) {
@@ -358,18 +406,12 @@ class SpinningSessionController {
   }
 
   void jumpTo(Duration position) {
-    final clampedMs =
-        position.inMilliseconds.clamp(0, plan.duration.inMilliseconds).toInt();
-    final wasRunning = _runningSince != null;
+    final wasRunning = isRunning;
     _runningSince = null;
-    _offset = Duration(milliseconds: clampedMs);
-    _nextBoundaryIndex = _phaseBoundaries.indexWhere(
-      (boundary) => boundary > _offset,
-    );
-    if (_nextBoundaryIndex < 0) {
-      _nextBoundaryIndex = _phaseBoundaries.length;
-    }
-    if (wasRunning && _offset < plan.duration && !ended && !completed) {
+    // Never make real elapsed time jump backwards on a manual phase skip.
+    if (position > _offset) _offset = position;
+    _syncWindowToCurrentTrack();
+    if (wasRunning && !ended && !completed) {
       _runningSince = DateTime.now();
     }
   }
@@ -381,7 +423,6 @@ class SpinningSessionController {
       player.onTrackCompleted = null;
     }
     _runningSince = null;
-    _offset = plan.duration;
     await player.pause();
     await _saveHistory(wasCompleted: true);
   }
@@ -404,5 +445,6 @@ class SpinningSessionController {
     _commitRunningTime();
     _statsTimer?.cancel();
     await _playerStateSub?.cancel();
+    await _trackSub?.cancel();
   }
 }
