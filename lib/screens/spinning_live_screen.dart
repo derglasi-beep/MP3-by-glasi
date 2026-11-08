@@ -1036,9 +1036,11 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                       child: ExpansionTile(
                         leading: const Icon(Icons.queue_music),
                         title: Text('Session-Musik (${queue.length})'),
-                        subtitle: const Text(
-                          'Titel während der laufenden Session anpassen',
-                        ),
+                        subtitle: Text(
+                           widget.session.usesTimedIntervals
+                               ? 'Musik läuft unabhängig vom Intervall-Timer'
+                               : 'Titel während der laufenden Session anpassen',
+                         ),
                         childrenPadding:
                             const EdgeInsets.fromLTRB(8, 0, 8, 10),
                         children: [
