@@ -1166,6 +1166,29 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     return result;
   }
 
+  // Group the filtered library by album, keeping unrelated folders apart.
+  List<List<Track>> _albumGroups(List<Track> filtered) {
+    final groups = <String, List<Track>>{};
+    for (final track in filtered) {
+      final album = track.album.trim().toLowerCase();
+      final normalized = track.path.replaceAll('\\', '/');
+      final slash = normalized.lastIndexOf('/');
+      final folder = slash > 0 ? normalized.substring(0, slash).toLowerCase() : '';
+      final key = album.isEmpty || album == 'unbekannt' || album == 'unknown'
+          ? 'unknown:$folder'
+          : _albumArtworkKey(track);
+      groups.putIfAbsent(key, () => <Track>[]).add(track);
+    }
+    final result = groups.values.toList();
+    result.sort((a, b) {
+      final cmp = _text(a.first.album).compareTo(_text(b.first.album));
+      if (cmp != 0) return sortAscending ? cmp : -cmp;
+      final other = _text(a.first.artist).compareTo(_text(b.first.artist));
+      return sortAscending ? other : -other;
+    });
+    return result;
+  }
+
   List<List<Track>> get matchingArtists {
     final q = search.trim().toLowerCase();
     if (q.isEmpty) return const [];
@@ -2115,8 +2138,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final visibleTracks = visible;
-    final artistMatches = matchingArtists;
-    final albumMatches = matchingAlbums;
+    final albumView = sortMode == _SortMode.album;
+    final albumGroups = albumView ? _albumGroups(visibleTracks) : const <List<Track>>[];
+    final artistMatches = albumView ? const <List<Track>>[] : matchingArtists;
+    final albumMatches = albumView ? const <List<Track>>[] : matchingAlbums;
 
     return Scaffold(
     appBar: AppBar(
@@ -2546,7 +2571,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (search.trim().isNotEmpty)
+            if (!albumView && search.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2558,7 +2583,90 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             Expanded(
-              child: visibleTracks.isEmpty
+              child: albumView
+                  ? albumGroups.isEmpty
+                      ? const Center(child: Text('Keine Alben gefunden'))
+                      : NotificationListener<ScrollNotification>(
+                          onNotification: _onLibraryScroll,
+                          child: ListView.builder(
+                            controller: _libraryScrollController,
+                            itemExtent: 80,
+                            cacheExtent: 80,
+                            itemCount: albumGroups.length,
+                            itemBuilder: (context, index) {
+                              final albumTracks = albumGroups[index];
+                              final first = albumTracks.first;
+                              Track cover = first;
+                              for (final track in albumTracks) {
+                                if (track.artwork != null &&
+                                    track.artwork!.isNotEmpty) {
+                                  cover = track;
+                                  break;
+                                }
+                              }
+                              _loadVisibleArtwork(cover);
+                              final name = first.album.trim().isEmpty
+                                  ? 'Unbekanntes Album' : first.album;
+                              final artists = albumTracks
+                                  .map((t) => t.artist.trim())
+                                  .where((artist) => artist.isNotEmpty).toSet();
+                              final artistName = artists.length == 1
+                                  ? artists.first : 'Verschiedene Interpreten';
+                              return ListTile(
+                                leading: cover.artwork == null
+                                    ? const CircleAvatar(child: Icon(Icons.album))
+                                    : ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Image.memory(
+                                          cover.artwork!,
+                                          width: 48,
+                                          height: 48,
+                                          cacheWidth: 96,
+                                          cacheHeight: 96,
+                                          fit: BoxFit.cover,
+                                          gaplessPlayback: true,
+                                        ),
+                                      ),
+                                title: Text(name,
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(
+                                  '$artistName · ${albumTracks.length} Titel',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: PopupMenuButton<String>(
+                                  tooltip: 'Album-Aktion',
+                                  onSelected: (action) async {
+                                    if (action == 'play') {
+                                      await _playAlbum(albumTracks);
+                                    } else if (action == 'queue') {
+                                      await _queueAlbum(albumTracks);
+                                    }
+                                  },
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(
+                                      value: 'play',
+                                      child: Text('Album abspielen'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'queue',
+                                      child: Text('Album zur Queue'),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AlbumScreen(
+                                      player: widget.player,
+                                      tracks: albumTracks,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                  : visibleTracks.isEmpty
                   ? const Center(
                       child: Text('Keine Titel in der Bibliothek'),
                     )
