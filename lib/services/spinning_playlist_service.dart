@@ -4,7 +4,7 @@ import '../models/track.dart';
 
 enum SpinningPhase { warmup, build, load, peak, cooldown }
 
-enum SpinningTrainingProfile { cadence, heartRate, power }
+enum SpinningTrainingProfile { cadence, heartRate, power, interval }
 
 class CustomBpmSegment {
   final String label;
@@ -181,6 +181,14 @@ class SpinningPlaylistService {
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 110, share: .15),
   ];
 
+  static const intervalPhases = <SpinningPhaseSpec>[
+    SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
+    SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aktive Erholung', minBpm: 100, maxBpm: 120, share: .32),
+    SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Belastung', minBpm: 125, maxBpm: 145, share: .26),
+    SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Intensives Intervall', minBpm: 140, maxBpm: 155, share: .12),
+    SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 108, share: .15),
+  ];
+
   static const powerPhases = <SpinningPhaseSpec>[
     SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
     SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aufbau', minBpm: 110, maxBpm: 135, share: .15),
@@ -195,6 +203,15 @@ class SpinningPlaylistService {
     SpinningTrainingProfile profile,
     SpinningPhase phase,
   ) {
+    if (profile == SpinningTrainingProfile.interval) {
+      return switch (phase) {
+        SpinningPhase.warmup => (min: 60, max: 69),
+        SpinningPhase.build => (min: 65, max: 74),
+        SpinningPhase.load => (min: 75, max: 85),
+        SpinningPhase.peak => (min: 85, max: 89),
+        SpinningPhase.cooldown => (min: 60, max: 65),
+      };
+    }
     if (profile == SpinningTrainingProfile.heartRate) {
       return switch (phase) {
         SpinningPhase.warmup => (min: 60, max: 65),
@@ -220,6 +237,7 @@ class SpinningPlaylistService {
         SpinningTrainingProfile.cadence => defaultPhases,
         SpinningTrainingProfile.heartRate => heartRatePhases,
         SpinningTrainingProfile.power => powerPhases,
+        SpinningTrainingProfile.interval => intervalPhases,
       };
 
   SpinningPlan build({
@@ -907,6 +925,49 @@ class SpinningPlaylistService {
     SpinningTrainingProfile profile,
     int variant,
   ) {
+    if (profile == SpinningTrainingProfile.interval) {
+      // Four recovery bouts separate high and moderate efforts. Each block
+      // receives at least one song from the normal session planner.
+      return switch (variant) {
+        0 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .35, .65]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .30]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .78, .62]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .92]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .28]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.48, .83, .62]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.65, .95]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .40, .08]),
+          ],
+        1 => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .32, .62]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.52, .28]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.60, .92]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .25]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .80, .62]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.49, .28]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .96]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.47, .83, .62]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .38, .07]),
+          ],
+        _ => const [
+            _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .34, .65]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.52, .27]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.46, .82, .61]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.51, .27]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.64, .93]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.49, .26]),
+            _SpinningCurveBlock(SpinningPhase.peak, .06, [.63, .96]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.load, .13, [.44, .80, .60]),
+            _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.68, .36, .08]),
+          ],
+      };
+    }
+
     if (profile == SpinningTrainingProfile.heartRate) {
       return switch (variant) {
         0 => const [
