@@ -57,6 +57,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Map<String, int> _trackIndexById = <String, int>{};
   List<Track>? _visibleCache;
   String? _visibleCacheKey;
+  List<List<Track>>? _albumGroupsCache;
+  List<Track>? _albumGroupsSource;
 
   String search = '';
   final TextEditingController _searchController = TextEditingController();
@@ -245,11 +247,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _jumpOrAnimateLibraryTo(0);
   }
 
-  void _scrollToCurrentTrack(List<Track> visibleTracks) {
+  void _scrollToCurrentTrack(
+    List<Track> visibleTracks, {
+    List<List<Track>>? albumGroups,
+  }) {
     final current = widget.player.currentTrack;
     if (current == null || !_libraryScrollController.hasClients) return;
 
-    final index = visibleTracks.indexWhere((track) => track.id == current.id);
+    final index = albumGroups == null
+        ? visibleTracks.indexWhere((track) => track.id == current.id)
+        : albumGroups.indexWhere(
+            (album) => album.any((track) => track.id == current.id),
+          );
     if (index < 0) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -264,7 +273,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    const tileExtent = 72.0;
+    final tileExtent = albumGroups == null ? 72.0 : 80.0;
     final position = _libraryScrollController.position;
     final centeredTarget =
         (index * tileExtent) - ((position.viewportDimension - tileExtent) / 2);
@@ -284,6 +293,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void _invalidateVisibleCache() {
     _visibleCache = null;
     _visibleCacheKey = null;
+    _invalidateAlbumGroups();
+  }
+
+  void _invalidateAlbumGroups() {
+    _albumGroupsCache = null;
+    _albumGroupsSource = null;
   }
 
   int _trackIndex(String id) => _trackIndexById[id] ?? -1;
@@ -348,6 +363,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
       final cleared = track.copyWith(clearArtwork: true);
       tracks[index] = cleared;
+      _invalidateAlbumGroups();
 
       if (_visibleCache != null) {
         final visibleIndex =
@@ -395,6 +411,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
       final updated = tracks[freshIndex].copyWith(artwork: artwork);
       tracks[freshIndex] = updated;
+      _invalidateAlbumGroups();
       _touchArtworkInMemory(current.id);
 
       if (_visibleCache != null) {
@@ -654,6 +671,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void _scheduleBackgroundUiRefresh() {
     if (!mounted) return;
     _backgroundUiDirty = true;
+    _invalidateAlbumGroups();
     if (_libraryScrolling) return;
     if (_backgroundUiRefreshTimer?.isActive ?? false) return;
 
@@ -1168,6 +1186,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   // Group the filtered library by album, keeping unrelated folders apart.
   List<List<Track>> _albumGroups(List<Track> filtered) {
+    if (identical(_albumGroupsSource, filtered) && _albumGroupsCache != null) {
+      return _albumGroupsCache!;
+    }
     final groups = <String, List<Track>>{};
     for (final track in filtered) {
       final album = track.album.trim().toLowerCase();
@@ -1186,6 +1207,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       final other = _text(a.first.artist).compareTo(_text(b.first.artist));
       return sortAscending ? other : -other;
     });
+    _albumGroupsSource = filtered;
+    _albumGroupsCache = result;
     return result;
   }
 
@@ -2292,7 +2315,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           IconButton(
             onPressed: widget.player.currentTrack == null
                 ? null
-                : () => _scrollToCurrentTrack(visibleTracks),
+                : () => _scrollToCurrentTrack(
+                    visibleTracks,
+                    albumGroups: albumView ? albumGroups : null,
+                  ),
             tooltip: 'Zum aktuellen Titel',
             icon: const Icon(Icons.my_location),
           ),
