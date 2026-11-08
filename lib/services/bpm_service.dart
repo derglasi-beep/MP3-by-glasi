@@ -46,7 +46,7 @@ class BpmService {
         bytes.offsetInBytes,
         bytes.lengthInBytes ~/ 4,
       );
-      return Isolate.run(() => BpmAnalyzer().estimateResult(data, 44100));
+      return await Isolate.run(() => BpmAnalyzer().estimateResult(data, 44100));
     } catch (_) {
       return null;
     } finally {
