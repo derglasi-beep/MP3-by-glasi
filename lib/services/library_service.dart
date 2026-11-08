@@ -428,8 +428,6 @@ class LibraryService {
     await p.setString(_spinningTrainingProfileKey, profile);
   }
 
-  Map<String, dynamic> _trackToJson(Track t) => _trackToJsonStatic(t);
-
   Track _trackFromJson(
     Map<String, dynamic> j, {
     List<int>? artwork,
