@@ -43,6 +43,8 @@ class SpinningSessionController {
   int _heartRateSamples = 0;
   int _heartRateTotal = 0;
   int? _heartRateMax;
+  late final bool _previousShuffle;
+  late final LoopMode _previousLoopMode;
   bool _historySaved = false;
   bool completed = false;
   bool ended = false;
@@ -63,6 +65,10 @@ class SpinningSessionController {
     }
 
     _phaseWindows = phaseWindowsFor(plan, customProfile);
+    _previousShuffle = player.shuffle;
+    _previousLoopMode = player.loopMode;
+    player.shuffle = false;
+    player.loopMode = LoopMode.off;
     player.onTrackCompleted = _onTrackCompleted;
     _trackSub = player.currentTrackStream.listen((_) {
       _syncWindowToCurrentTrack();
@@ -420,13 +426,19 @@ class SpinningSessionController {
     }
   }
 
+  void _releasePlayerControl() {
+    if (player.onTrackCompleted == _onTrackCompleted) {
+      player.onTrackCompleted = null;
+      player.shuffle = _previousShuffle;
+      player.loopMode = _previousLoopMode;
+    }
+  }
+
   Future<void> complete() async {
     if (completed || ended) return;
     _commitRunningTime();
     completed = true;
-    if (player.onTrackCompleted == _onTrackCompleted) {
-      player.onTrackCompleted = null;
-    }
+    _releasePlayerControl();
     await player.pause();
     await _saveHistory(wasCompleted: true);
   }
@@ -434,18 +446,14 @@ class SpinningSessionController {
   Future<void> end() async {
     if (ended) return;
     ended = true;
-    if (player.onTrackCompleted == _onTrackCompleted) {
-      player.onTrackCompleted = null;
-    }
+    _releasePlayerControl();
     _commitRunningTime();
     await player.pause();
     await _saveHistory(wasCompleted: false);
   }
 
   Future<void> dispose() async {
-    if (player.onTrackCompleted == _onTrackCompleted) {
-      player.onTrackCompleted = null;
-    }
+    _releasePlayerControl();
     _commitRunningTime();
     _statsTimer?.cancel();
     await _playerStateSub?.cancel();
