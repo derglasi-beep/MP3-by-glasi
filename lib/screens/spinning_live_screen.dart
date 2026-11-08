@@ -67,7 +67,8 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       widget.session.currentPhaseWindow;
 
   Future<void> _startNextPhase() async {
-    if (_phaseSwitching || widget.session.completed || widget.session.ended) {
+    if (widget.session.usesTimedIntervals ||
+        _phaseSwitching || widget.session.completed || widget.session.ended) {
       return;
     }
     final current = _phaseWindowAt(_sessionElapsed);
@@ -642,7 +643,10 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final point = _pointAt(elapsed);
             final phaseWindow = _phaseWindowAt(elapsed);
             final currentPhase = phaseWindow.phase;
-            final custom = _customSegmentAt(phaseWindow.start);
+            final custom = widget.session.usesTimedIntervals
+                ? null
+                : _customSegmentAt(phaseWindow.start);
+            final timedStep = widget.session.currentTimedStep;
             final phaseRemaining = widget.session.phaseRemaining;
             final nextPhase = phaseWindow.nextPhase;
             final progress = widget.plan.duration.inMilliseconds <= 0
@@ -661,11 +665,23 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final selection = widget.plan.selections.where(
               (item) => item.track.id == currentTrack?.id,
             );
-            final targetBpm = selection.isNotEmpty
-                ? _displayBpm(selection.first.targetBpm).round()
-                : point == null
-                    ? null
-                    : _displayBpm(point.targetBpm).round();
+            final intervalSpecs = SpinningPlaylistService.intervalPhases;
+            final intervalPhaseSpec = timedStep == null
+                ? null
+                : intervalSpecs.where((spec) => spec.phase == timedStep.phase);
+            final targetBpm = timedStep != null &&
+                    intervalPhaseSpec != null &&
+                    intervalPhaseSpec.isNotEmpty
+                ? _displayBpm(
+                    (intervalPhaseSpec.first.minBpm +
+                            intervalPhaseSpec.first.maxBpm) /
+                        2,
+                  ).round()
+                : selection.isNotEmpty
+                    ? _displayBpm(selection.first.targetBpm).round()
+                    : point == null
+                        ? null
+                        : _displayBpm(point.targetBpm).round();
 
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -689,6 +705,21 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                                   : 'noch ${_clock(phaseRemaining)}',
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
+                        if (timedStep != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            timedStep.instruction,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(
+                            widget.session.isRunning
+                                ? 'Zeitgesteuert · Musik läuft unabhängig weiter'
+                                : 'Pausiert · Timer steht',
+                            style: Theme.of(context).textTheme.bodySmall,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                         const SizedBox(height: 18),
                         LinearProgressIndicator(value: progress),
                         const SizedBox(height: 8),
@@ -1206,9 +1237,14 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final narrow = constraints.maxWidth < 520;
-                        final label = nextPhase == null
-                            ? 'Sessionende'
-                            : 'Als Nächstes: ${_phaseLabel(nextPhase)}';
+                        final nextTimed = widget.session.nextTimedStep;
+                        final label = widget.session.usesTimedIntervals
+                            ? nextTimed == null
+                                ? 'Nach Ablauf: Cool-down ausspielen'
+                                : 'Als Nächstes: ${nextTimed.label}'
+                            : nextPhase == null
+                                ? 'Sessionende'
+                                : 'Als Nächstes: ${_phaseLabel(nextPhase)}';
 
                         if (narrow) {
                           return Column(
@@ -1230,8 +1266,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                               ),
                               const SizedBox(height: 10),
                               FilledButton.icon(
-                                onPressed: widget.session.completed ||
-                                        nextPhase == null
+                                onPressed: widget.session.usesTimedIntervals ||
+                                    widget.session.completed ||
+                                    nextPhase == null
                                     ? null
                                     : _startNextPhase,
                                 icon: const Icon(Icons.skip_next),
@@ -1254,8 +1291,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                             ),
                             const SizedBox(width: 12),
                             FilledButton.icon(
-                              onPressed: widget.session.completed ||
-                                      nextPhase == null
+                              onPressed: widget.session.usesTimedIntervals ||
+                                  widget.session.completed ||
+                                  nextPhase == null
                                   ? null
                                   : _startNextPhase,
                               icon: const Icon(Icons.skip_next),
