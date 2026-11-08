@@ -17,6 +17,7 @@ class MusicScanner {
     Iterable<File> files, {
     void Function(int done, int total)? onProgress,
     bool loadArtwork = true,
+    int metadataBatchSize = 96,
   }) async {
     final candidates = files
         .where((file) => extensions.contains(_extension(file.path)))
@@ -27,7 +28,7 @@ class MusicScanner {
     // Reading metadata in batches avoids starting one isolate per track,
     // which becomes extremely expensive for libraries with 10k+ files.
     if (!loadArtwork && candidates.isNotEmpty) {
-      const batchSize = 96;
+      final batchSize = metadataBatchSize.clamp(1, 96);
       for (var start = 0; start < candidates.length; start += batchSize) {
         final end = (start + batchSize).clamp(0, candidates.length);
         final paths = <String>[
@@ -67,6 +68,7 @@ class MusicScanner {
     bool loadArtwork = true,
     void Function(int found)? onDiscoveryProgress,
     void Function(int done, int total)? onMetadataProgress,
+    int metadataBatchSize = 96,
   }) async {
     final root = Directory(path);
     if (!await root.exists()) {
@@ -98,6 +100,7 @@ class MusicScanner {
     return scanFiles(
       files,
       loadArtwork: loadArtwork,
+      metadataBatchSize: metadataBatchSize,
       onProgress: onMetadataProgress,
     );
   }
