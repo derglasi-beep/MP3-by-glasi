@@ -419,11 +419,11 @@ class SpinningSessionController {
 
   Future<void> complete() async {
     if (completed || ended) return;
+    _commitRunningTime();
     completed = true;
     if (player.onTrackCompleted == _onTrackCompleted) {
       player.onTrackCompleted = null;
     }
-    _runningSince = null;
     await player.pause();
     await _saveHistory(wasCompleted: true);
   }
