@@ -301,7 +301,16 @@ class SpinningSessionController {
     }
     return (
       phase: activePhase ?? window.phase,
-      label: activePhase == null ? window.label : _phaseLabel(activePhase),
+      label: activePhase == null
+          ? window.label
+          : trainingProfile == SpinningTrainingProfile.interval &&
+                  customProfile == null
+              ? switch (activePhase) {
+                  SpinningPhase.build => 'Aktive Erholung',
+                  SpinningPhase.peak => 'Intensives Intervall',
+                  _ => _phaseLabel(activePhase),
+                }
+              : _phaseLabel(activePhase),
       start: window.start,
       end: window.end,
       nextPhase: next,
