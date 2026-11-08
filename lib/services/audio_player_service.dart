@@ -161,11 +161,7 @@ class AudioPlayerService {
     if (index == currentIndex &&
         audio.processingState != ProcessingState.idle &&
         audio.processingState != ProcessingState.completed) {
-      if (awaitPlayback) {
-        _startPlayback();
-      } else {
-        _startPlayback();
-      }
+      _startPlayback();
       return;
     }
 
@@ -239,7 +235,7 @@ class AudioPlayerService {
     } else if (wasCurrent) {
       if (currentIndex >= queue.length) currentIndex = queue.length - 1;
       await _load();
-      if (wasPlaying) await play();
+      if (wasPlaying) _startPlayback();
     }
 
     _publishQueue();
@@ -674,14 +670,20 @@ class AudioPlayerService {
     // implicit jumps to a later phase, including from headset/lock-screen.
     final sessionNext = onTrackCompleted;
     if (sessionNext != null) {
-      final target = sessionNext(currentIndex);
-      if (target == -1) return;
-      final nextIndex = target ?? currentIndex + 1;
-      if (nextIndex < 0 || nextIndex >= queue.length) return;
-      currentIndex = nextIndex;
-      await _load();
-      _startPlayback();
-      _publishQueue();
+      var target = sessionNext(currentIndex);
+      // Skip broken / unavailable files instead of stopping the workout.
+      // Every skipped entry reports an error from _load().
+      while (target != null && target >= 0 && target < queue.length) {
+        currentIndex = target;
+        try {
+          await _load();
+          _startPlayback();
+          _publishQueue();
+          return;
+        } catch (_) {
+          target = sessionNext(currentIndex);
+        }
+      }
       return;
     }
 
