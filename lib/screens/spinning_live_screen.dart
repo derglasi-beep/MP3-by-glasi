@@ -580,13 +580,25 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     return null;
   }
 
-  String _phaseLabel(SpinningPhase phase) => switch (phase) {
+  String _phaseLabel(SpinningPhase phase) {
+    if (widget.session.trainingProfile == SpinningTrainingProfile.interval &&
+        widget.customProfile == null) {
+      return switch (phase) {
         SpinningPhase.warmup => 'Warm-up',
-        SpinningPhase.build => 'Aufbau',
-        SpinningPhase.load => 'Belastung',
-        SpinningPhase.peak => 'Peak',
+        SpinningPhase.build => 'Aktive Erholung',
+        SpinningPhase.load => 'Bergfahrt',
+        SpinningPhase.peak => 'Schnelles Intervall',
         SpinningPhase.cooldown => 'Cool-down',
       };
+    }
+    return switch (phase) {
+      SpinningPhase.warmup => 'Warm-up',
+      SpinningPhase.build => 'Aufbau',
+      SpinningPhase.load => 'Belastung',
+      SpinningPhase.peak => 'Peak',
+      SpinningPhase.cooldown => 'Cool-down',
+    };
+  }
 
   String _standardHeartRate(SpinningPhase phase) {
     final range = _heartRateRange(phase, null);
