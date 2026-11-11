@@ -31,7 +31,7 @@ void main() {
               preset == TimedIntervalPreset.thirtyThirty ? 30 : 20),
         );
         final afterWork = schedule.steps[firstWorkIndex + 1];
-        expect(afterWork.phase, SpinningPhase.build);
+        expect(afterWork.phase, SpinningPhase.recovery);
         expect(
           afterWork.end - afterWork.start,
           Duration(seconds: switch (preset) {
@@ -42,7 +42,7 @@ void main() {
           }),
         );
         expect(schedule.stepAt(firstWork.start)?.phase, SpinningPhase.peak);
-        expect(schedule.stepAt(firstWork.end)?.phase, SpinningPhase.build);
+        expect(schedule.stepAt(firstWork.end)?.phase, SpinningPhase.recovery);
         expect(schedule.remainingAt(firstWork.end), afterWork.end - afterWork.start);
         expect(schedule.stepAt(duration)?.phase, SpinningPhase.cooldown);
       }
@@ -78,7 +78,7 @@ void main() {
       (step) => step.phase == SpinningPhase.peak,
     );
     final firstRecovery = schedule.steps.firstWhere(
-      (step) => step.phase == SpinningPhase.build,
+      (step) => step.phase == SpinningPhase.recovery,
     );
     expect(firstWork.end - firstWork.start, const Duration(seconds: 45));
     expect(firstRecovery.end - firstRecovery.start,
