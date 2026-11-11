@@ -315,6 +315,7 @@ class SpinningPlaylistService {
       while ((intervalSongMode || selected.length < usable.length) &&
           (firstInBlock ||
               (!intervalRecovery &&
+                  !(intervalSongMode && block.phase == SpinningPhase.warmup) &&
                   elapsed + const Duration(seconds: 60) < block.end))) {
         final rawPosition = elapsed > block.start ? elapsed : block.start;
         final position =
@@ -1046,7 +1047,6 @@ class SpinningPlaylistService {
       return switch (variant) {
         0 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .35, .65]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .30]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .78, .62]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .92]),
@@ -1054,11 +1054,11 @@ class SpinningPlaylistService {
             _SpinningCurveBlock(SpinningPhase.load, .13, [.48, .83, .62]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.65, .95]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .30]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .40, .08]),
           ],
         1 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .32, .62]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .28]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.60, .92]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .80, .62]),
@@ -1066,11 +1066,11 @@ class SpinningPlaylistService {
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .96]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.47, .83, .62]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .28]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .38, .07]),
           ],
         _ => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .34, .65]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .27]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.46, .82, .61]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.51, .27]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.64, .93]),
@@ -1078,6 +1078,7 @@ class SpinningPlaylistService {
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.63, .96]),
             _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.44, .80, .60]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .27]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.68, .36, .08]),
           ],
       };
