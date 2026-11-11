@@ -62,7 +62,8 @@ void main() {
         }
       }
       expect(expected.first, SpinningPhase.warmup);
-      expect(expected[1],
+      expect(expected[1], SpinningPhase.build);
+      expect(expected[2],
           anyOf(SpinningPhase.load, SpinningPhase.peak));
       expect(expected.last, SpinningPhase.cooldown);
       expect(actual, orderedEquals(expected));
@@ -70,12 +71,16 @@ void main() {
         plan.selections.where((s) => s.phase == SpinningPhase.warmup).length,
         1,
       );
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.build).length,
+        1,
+      );
       for (var index = 1; index < expected.length - 1; index++) {
         if (expected[index] == SpinningPhase.peak ||
             expected[index] == SpinningPhase.load) {
           expect(
             expected[index - 1],
-            index == 1 ? SpinningPhase.warmup : SpinningPhase.recovery,
+            index == 2 ? SpinningPhase.build : SpinningPhase.recovery,
           );
         }
       }
@@ -158,9 +163,14 @@ void main() {
           .map((window) => window.phase)
           .toList();
       expect(phases, orderedEquals(expected));
-      expect(phases[1], anyOf(SpinningPhase.load, SpinningPhase.peak));
+      expect(phases[1], SpinningPhase.build);
+      expect(phases[2], anyOf(SpinningPhase.load, SpinningPhase.peak));
       expect(
         plan.selections.where((s) => s.phase == SpinningPhase.warmup).length,
+        1,
+      );
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.build).length,
         1,
       );
       for (var i = 1; i < phases.length; i++) {
