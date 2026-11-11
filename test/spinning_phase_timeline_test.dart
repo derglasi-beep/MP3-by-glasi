@@ -120,6 +120,50 @@ void main() {
     }
   });
 
+  test('small libraries keep effort blocks between repeated recoveries', () {
+    final library = [
+      for (var index = 0; index < 6; index++)
+        Track(
+          id: 'small-library-$index',
+          path: '/fake/small-$index.mp3',
+          title: 'Small Library $index',
+          artist: 'Artist $index',
+          bpm: index == 0 ? 108 : 145,
+          duration: const Duration(minutes: 3),
+        ),
+    ];
+    for (final minutes in [30, 45, 60]) {
+      final plan = SpinningPlaylistService().build(
+        library: library,
+        duration: Duration(minutes: minutes),
+        profile: SpinningTrainingProfile.interval,
+        phases: SpinningPlaylistService.intervalPhases,
+      );
+      final phases = <SpinningPhase>[];
+      for (final selection in plan.selections) {
+        if (phases.isEmpty || phases.last != selection.phase) {
+          phases.add(selection.phase);
+        }
+      }
+      final expected = SpinningSessionController.phaseWindowsFor(plan, null)
+          .map((window) => window.phase)
+          .toList();
+      expect(phases, orderedEquals(expected));
+      for (var i = 1; i < phases.length; i++) {
+        expect(
+          !(phases[i] == SpinningPhase.recovery &&
+              phases[i - 1] == SpinningPhase.recovery),
+          isTrue,
+        );
+      }
+      expect(phases.last, SpinningPhase.cooldown);
+      final recovery = plan.selections
+          .where((selection) => selection.phase == SpinningPhase.recovery)
+          .toList();
+      expect(recovery.map((selection) => selection.track.id).toSet().length, 1);
+    }
+  });
+
   test('manual interval playlist repeats its chosen recovery track', () {
     final recovery = Track(
       id: 'recovery',
