@@ -586,7 +586,9 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
         widget.customProfile == null) {
       return switch (phase) {
         SpinningPhase.warmup => 'Warm-up',
-        SpinningPhase.build => 'Aktive Erholung',
+        SpinningPhase.build => 'Aufbau',
+      SpinningPhase.recovery => 'Erholung',
+        SpinningPhase.recovery => 'Erholung',
         SpinningPhase.load => 'Bergfahrt',
         SpinningPhase.peak => 'Schnelles Intervall',
         SpinningPhase.cooldown => 'Cool-down',
