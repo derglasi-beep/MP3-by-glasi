@@ -2,7 +2,7 @@ import 'dart:math';
 
 import '../models/track.dart';
 
-enum SpinningPhase { warmup, build, load, peak, cooldown }
+enum SpinningPhase { warmup, build, load, peak, cooldown, recovery }
 
 enum SpinningTrainingProfile { cadence, heartRate, power, interval }
 
@@ -183,7 +183,7 @@ class SpinningPlaylistService {
 
   static const intervalPhases = <SpinningPhaseSpec>[
     SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
-    SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aktive Erholung', minBpm: 100, maxBpm: 120, share: .32),
+    SpinningPhaseSpec(phase: SpinningPhase.recovery, label: 'Erholung', minBpm: 100, maxBpm: 120, share: .32),
     SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Bergfahrt', minBpm: 125, maxBpm: 145, share: .26),
     SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Schnelles Intervall', minBpm: 150, maxBpm: 165, share: .12),
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 108, share: .15),
@@ -207,6 +207,7 @@ class SpinningPlaylistService {
       return switch (phase) {
         SpinningPhase.warmup => (min: 60, max: 69),
         SpinningPhase.build => (min: 65, max: 74),
+        SpinningPhase.recovery => (min: 60, max: 74),
         SpinningPhase.load => (min: 75, max: 85),
         SpinningPhase.peak => (min: 85, max: 89),
         SpinningPhase.cooldown => (min: 60, max: 65),
@@ -216,6 +217,7 @@ class SpinningPlaylistService {
       return switch (phase) {
         SpinningPhase.warmup => (min: 60, max: 65),
         SpinningPhase.build => (min: 65, max: 69),
+        SpinningPhase.recovery => (min: 60, max: 69),
         SpinningPhase.load => (min: 70, max: 79),
         SpinningPhase.peak => (min: 80, max: 85),
         SpinningPhase.cooldown => (min: 60, max: 65),
@@ -224,6 +226,7 @@ class SpinningPlaylistService {
     return switch (phase) {
       SpinningPhase.warmup => (min: 60, max: 69),
       SpinningPhase.build => (min: 70, max: 79),
+      SpinningPhase.recovery => (min: 60, max: 74),
       SpinningPhase.load => (min: 80, max: 89),
       SpinningPhase.peak => (min: 90, max: 95),
       SpinningPhase.cooldown => (min: 60, max: 65),
@@ -303,7 +306,7 @@ class SpinningPlaylistService {
     for (final block in blocks) {
       final intervalRecovery = profile == SpinningTrainingProfile.interval &&
           curveOverride == null &&
-          block.phase == SpinningPhase.build;
+          block.phase == SpinningPhase.recovery;
       var firstInBlock = true;
       // The overall song duration stays close to the plan; overshoot in one
       // block reduces the number of extra songs in later blocks. We still
@@ -495,6 +498,61 @@ class SpinningPlaylistService {
     final tracks = <Track>[];
     final used = <String>{};
     Track? previous;
+
+    if (profile == SpinningTrainingProfile.interval) {
+      // Use the first chosen recovery song repeatedly in curve order.
+      final specs = {for (final spec in phases) spec.phase: spec};
+      final positions = <SpinningPhase, int>{};
+      final recoverySongs = phaseTracks[SpinningPhase.recovery] ?? const <Track>[];
+      Track? recoverySong;
+      for (final song in recoverySongs) {
+        if (song.bpm != null && song.bpm! > 0) {
+          recoverySong = song;
+          break;
+        }
+      }
+      SpinningPhase? lastPhase;
+      for (final point in curve) {
+        if (point.phase == lastPhase) continue;
+        lastPhase = point.phase;
+        final phase = point.phase;
+        final available = phaseTracks[phase] ?? const <Track>[];
+        Track? chosen;
+        if (phase == SpinningPhase.recovery) {
+          chosen = recoverySong;
+        } else {
+          var index = positions[phase] ?? 0;
+          while (index < available.length) {
+            final candidate = available[index++];
+            if (candidate.bpm != null && candidate.bpm! > 0 &&
+                used.add(candidate.id)) {
+              chosen = candidate;
+              break;
+            }
+          }
+          positions[phase] = index;
+        }
+        if (chosen == null) continue;
+        final spec = specs[phase];
+        if (spec == null) continue;
+        tracks.add(chosen);
+        selections.add(SpinningSelection(
+          track: chosen,
+          targetBpm: (spec.minBpm + spec.maxBpm) / 2,
+          phase: phase,
+          score: _score(chosen, point, previous, _planningDuration(chosen)),
+        ));
+        previous = chosen;
+      }
+      return SpinningPlan(
+        duration: duration,
+        tracks: tracks,
+        phases: phases,
+        curve: curve,
+        selections: selections,
+        phaseDurations: phaseDurations,
+      );
+    }
 
     for (final spec in phases) {
       final selectedForPhase = phaseTracks[spec.phase] ?? const <Track>[];
@@ -728,6 +786,7 @@ class SpinningPlaylistService {
       SpinningPhase.build,
       SpinningPhase.load,
       SpinningPhase.peak,
+      SpinningPhase.recovery,
     ];
     final workWeight = workPhases.fold<double>(
       0,
@@ -959,37 +1018,37 @@ class SpinningPlaylistService {
       return switch (variant) {
         0 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .35, .65]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .30]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .30]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .78, .62]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .92]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .28]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.48, .83, .62]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.65, .95]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .40, .08]),
           ],
         1 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .32, .62]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.52, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .28]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.60, .92]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .80, .62]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.49, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.49, .28]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .96]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.47, .83, .62]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .38, .07]),
           ],
         _ => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .34, .65]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.52, .27]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .27]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.46, .82, .61]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.51, .27]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.51, .27]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.64, .93]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.49, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.49, .26]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.63, .96]),
-            _SpinningCurveBlock(SpinningPhase.build, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.44, .80, .60]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.68, .36, .08]),
           ],
