@@ -178,7 +178,7 @@ class TimedIntervalSchedule {
       add(
         position,
         next,
-        SpinningPhase.build,
+        SpinningPhase.recovery,
         blockBreak ? 'Blockpause' : 'Aktive Erholung',
         'Widerstand reduzieren · locker treten · RPE 2–3/10',
         round,

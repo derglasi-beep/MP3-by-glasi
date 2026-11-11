@@ -8,6 +8,7 @@ void main() {
     final expected = <SpinningPhase, ({int min, int max})>{
       SpinningPhase.warmup: (min: 60, max: 65),
       SpinningPhase.build: (min: 65, max: 69),
+      SpinningPhase.recovery: (min: 60, max: 69),
       SpinningPhase.load: (min: 70, max: 79),
       SpinningPhase.peak: (min: 80, max: 85),
       SpinningPhase.cooldown: (min: 60, max: 65),
@@ -66,7 +67,7 @@ void main() {
       for (var index = 1; index < expected.length - 1; index++) {
         if (expected[index] == SpinningPhase.peak ||
             expected[index] == SpinningPhase.load) {
-          expect(expected[index - 1], SpinningPhase.build);
+          expect(expected[index - 1], SpinningPhase.recovery);
         }
       }
       expect(
@@ -100,7 +101,7 @@ void main() {
         phases: SpinningPlaylistService.intervalPhases,
       );
       final recovery = plan.selections
-          .where((selection) => selection.phase == SpinningPhase.build)
+          .where((selection) => selection.phase == SpinningPhase.recovery)
           .toList();
       expect(recovery.length, greaterThanOrEqualTo(3));
       expect(recovery.map((selection) => selection.track.id).toSet().length, 1);
@@ -117,6 +118,87 @@ void main() {
       expect(work, isNotEmpty);
       expect(work.every((selection) => selection.track.id != first.id), isTrue);
     }
+  });
+
+  test('small libraries keep effort blocks between repeated recoveries', () {
+    final library = [
+      for (var index = 0; index < 6; index++)
+        Track(
+          id: 'small-library-$index',
+          path: '/fake/small-$index.mp3',
+          title: 'Small Library $index',
+          artist: 'Artist $index',
+          bpm: index == 0 ? 108 : 145,
+          duration: const Duration(minutes: 3),
+        ),
+    ];
+    for (final minutes in [30, 45, 60]) {
+      final plan = SpinningPlaylistService().build(
+        library: library,
+        duration: Duration(minutes: minutes),
+        profile: SpinningTrainingProfile.interval,
+        phases: SpinningPlaylistService.intervalPhases,
+      );
+      final phases = <SpinningPhase>[];
+      for (final selection in plan.selections) {
+        if (phases.isEmpty || phases.last != selection.phase) {
+          phases.add(selection.phase);
+        }
+      }
+      final expected = SpinningSessionController.phaseWindowsFor(plan, null)
+          .map((window) => window.phase)
+          .toList();
+      expect(phases, orderedEquals(expected));
+      for (var i = 1; i < phases.length; i++) {
+        expect(
+          !(phases[i] == SpinningPhase.recovery &&
+              phases[i - 1] == SpinningPhase.recovery),
+          isTrue,
+        );
+      }
+      expect(phases.last, SpinningPhase.cooldown);
+      final recovery = plan.selections
+          .where((selection) => selection.phase == SpinningPhase.recovery)
+          .toList();
+      expect(recovery.map((selection) => selection.track.id).toSet().length, 1);
+    }
+  });
+
+  test('manual interval playlist repeats its chosen recovery track', () {
+    final recovery = Track(
+      id: 'recovery',
+      path: '/fake/recovery.mp3',
+      title: 'My recovery song',
+      bpm: 108,
+      duration: const Duration(minutes: 3),
+    );
+    final work = [
+      for (var index = 0; index < 8; index++)
+        Track(
+          id: 'effort-$index',
+          path: '/fake/effort-$index.mp3',
+          title: 'Effort $index',
+          bpm: index.isEven ? 140 : 158,
+          duration: const Duration(minutes: 3),
+        ),
+    ];
+    final planner = SpinningPlaylistService();
+    final plan = planner.buildFromPhaseTracks(
+      phaseTracks: {
+        SpinningPhase.recovery: [recovery],
+        SpinningPhase.load: work,
+        SpinningPhase.peak: work,
+      },
+      duration: const Duration(minutes: 45),
+      phases: SpinningPlaylistService.intervalPhases,
+      profile: SpinningTrainingProfile.interval,
+    );
+    final recoveries = plan.selections
+        .where((selection) => selection.phase == SpinningPhase.recovery)
+        .toList();
+    expect(recoveries.length, greaterThanOrEqualTo(3));
+    expect(recoveries.every((selection) => selection.track.id == recovery.id),
+        isTrue);
   });
 
   test('repeated curve phases keep their original sequence', () {
