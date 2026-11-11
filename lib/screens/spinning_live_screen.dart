@@ -587,7 +587,6 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
       return switch (phase) {
         SpinningPhase.warmup => 'Warm-up',
         SpinningPhase.build => 'Aufbau',
-      SpinningPhase.recovery => 'Erholung',
         SpinningPhase.recovery => 'Erholung',
         SpinningPhase.load => 'Bergfahrt',
         SpinningPhase.peak => 'Schnelles Intervall',
@@ -597,6 +596,7 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
     return switch (phase) {
       SpinningPhase.warmup => 'Warm-up',
       SpinningPhase.build => 'Aufbau',
+      SpinningPhase.recovery => 'Erholung',
       SpinningPhase.load => 'Belastung',
       SpinningPhase.peak => 'Peak',
       SpinningPhase.cooldown => 'Cool-down',
