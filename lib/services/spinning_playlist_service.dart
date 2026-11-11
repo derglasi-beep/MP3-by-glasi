@@ -303,16 +303,16 @@ class SpinningPlaylistService {
       }
     }
 
+    final intervalSongMode =
+        profile == SpinningTrainingProfile.interval && curveOverride == null;
     for (final block in blocks) {
-      final intervalRecovery = profile == SpinningTrainingProfile.interval &&
-          curveOverride == null &&
-          block.phase == SpinningPhase.recovery;
+      final intervalRecovery =
+          intervalSongMode && block.phase == SpinningPhase.recovery;
       var firstInBlock = true;
       // The overall song duration stays close to the plan; overshoot in one
       // block reduces the number of extra songs in later blocks. We still
       // reserve one song per block whenever enough eligible music exists.
-      while ((selected.length < usable.length ||
-              (intervalRecovery && intervalRecoveryTrack != null)) &&
+      while ((intervalSongMode || selected.length < usable.length) &&
           (firstInBlock ||
               (!intervalRecovery &&
                   elapsed + const Duration(seconds: 60) < block.end))) {
@@ -345,6 +345,25 @@ class SpinningPlaylistService {
               final allowed = phaseEligibility[track.id];
               return allowed == null || allowed.isEmpty;
             }).toList();
+          }
+          if (candidates.isEmpty && intervalSongMode && !intervalRecovery) {
+            // Repeated recovery selections count toward selected.length, but
+            // must never exhaust the number of permitted effort blocks.
+            // Prefer unused effort songs; once exhausted, reuse an eligible
+            // effort track rather than silently omitting Load/Peak.
+            candidates = usable.where((track) {
+              if (track.id == intervalRecoveryTrack?.id) return false;
+              final allowed = phaseEligibility[track.id];
+              return allowed == null ||
+                  allowed.isEmpty ||
+                  allowed.contains(block.phase);
+            }).toList();
+            if (candidates.isEmpty) {
+              candidates = usable.where((track) =>
+                  track.id != intervalRecoveryTrack?.id &&
+                  (phaseEligibility[track.id] == null ||
+                      phaseEligibility[track.id]!.isEmpty)).toList();
+            }
           }
           if (candidates.isEmpty) break;
 
@@ -407,13 +426,22 @@ class SpinningPlaylistService {
     if (!hasCooldown && cooldownDuration > Duration.zero) {
       final cooldownStart = duration - cooldownDuration;
       final cooldownPoint = _curveAt(curve, cooldownStart);
-      final candidates = usable.where((track) {
+      var candidates = usable.where((track) {
         if (used.contains(track.id)) return false;
         final allowed = phaseEligibility[track.id];
         return allowed == null ||
             allowed.isEmpty ||
             allowed.contains(SpinningPhase.cooldown);
       }).toList();
+      if (candidates.isEmpty && intervalSongMode) {
+        candidates = usable.where((track) {
+          if (track.id == intervalRecoveryTrack?.id) return false;
+          final allowed = phaseEligibility[track.id];
+          return allowed == null ||
+              allowed.isEmpty ||
+              allowed.contains(SpinningPhase.cooldown);
+        }).toList();
+      }
       candidates.sort((a, b) =>
           _score(b, cooldownPoint, previous, cooldownDuration).compareTo(
             _score(a, cooldownPoint, previous, cooldownDuration),
