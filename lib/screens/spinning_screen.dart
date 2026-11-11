@@ -869,7 +869,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
               maxBpm: 120,
               minHeartRatePercent: 60,
               maxHeartRatePercent: 70,
-              phase: SpinningPhase.build,
+              phase: SpinningPhase.recovery,
             ),
             const CustomBpmSegment(
               label: 'Belastung',
@@ -1007,6 +1007,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                             ),
                             items: [
                               for (final item in SpinningPhase.values)
+                                if (trainingProfile == SpinningTrainingProfile.interval ||
+                                    item != SpinningPhase.recovery)
                                 DropdownMenuItem(
                                   value: item,
                                   child: Text(_phaseLabel(item)),
@@ -1620,6 +1622,7 @@ class _SpinningScreenState extends State<SpinningScreen> {
   String _phaseLabel(SpinningPhase phase) => switch (phase) {
     SpinningPhase.warmup => 'Warm-up',
     SpinningPhase.build => 'Aufbau',
+    SpinningPhase.recovery => 'Erholung',
     SpinningPhase.load => 'Belastung',
     SpinningPhase.peak => 'Peak',
     SpinningPhase.cooldown => 'Cool-down',
@@ -1767,6 +1770,8 @@ class _SpinningScreenState extends State<SpinningScreen> {
                     runSpacing: 6,
                     children: [
                       for (final phase in SpinningPhase.values)
+                        if (trainingProfile == SpinningTrainingProfile.interval ||
+                            phase != SpinningPhase.recovery)
                         ChoiceChip(
                           label: Text(
                             '${_phaseLabel(phase)} (${working[phase]!.length})',
