@@ -221,6 +221,7 @@ class SpinningSessionController {
       for (final phase in const <SpinningPhase>[
         SpinningPhase.warmup,
         SpinningPhase.build,
+        SpinningPhase.recovery,
         SpinningPhase.load,
         SpinningPhase.peak,
         SpinningPhase.cooldown,
@@ -255,6 +256,7 @@ class SpinningSessionController {
   static String _phaseLabel(SpinningPhase phase) => switch (phase) {
         SpinningPhase.warmup => 'Warm-up',
         SpinningPhase.build => 'Aufbau',
+        SpinningPhase.recovery => 'Erholung',
         SpinningPhase.load => 'Belastung',
         SpinningPhase.peak => 'Peak',
         SpinningPhase.cooldown => 'Cool-down',
@@ -345,7 +347,8 @@ class SpinningSessionController {
           : trainingProfile == SpinningTrainingProfile.interval &&
                   customProfile == null
               ? switch (activePhase) {
-                  SpinningPhase.build => 'Aktive Erholung',
+                  SpinningPhase.build => 'Aufbau',
+                  SpinningPhase.recovery => 'Erholung',
                   SpinningPhase.peak => 'Schnelles Intervall',
                   SpinningPhase.load => 'Bergfahrt',
                   _ => _phaseLabel(activePhase),
