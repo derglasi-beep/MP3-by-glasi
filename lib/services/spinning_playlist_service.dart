@@ -183,7 +183,8 @@ class SpinningPlaylistService {
 
   static const intervalPhases = <SpinningPhaseSpec>[
     SpinningPhaseSpec(phase: SpinningPhase.warmup, label: 'Warm-up', minBpm: 90, maxBpm: 110, share: .15),
-    SpinningPhaseSpec(phase: SpinningPhase.recovery, label: 'Erholung', minBpm: 100, maxBpm: 120, share: .32),
+    SpinningPhaseSpec(phase: SpinningPhase.build, label: 'Aufbau', minBpm: 110, maxBpm: 130, share: .08),
+    SpinningPhaseSpec(phase: SpinningPhase.recovery, label: 'Erholung', minBpm: 100, maxBpm: 120, share: .24),
     SpinningPhaseSpec(phase: SpinningPhase.load, label: 'Bergfahrt', minBpm: 125, maxBpm: 145, share: .26),
     SpinningPhaseSpec(phase: SpinningPhase.peak, label: 'Schnelles Intervall', minBpm: 150, maxBpm: 165, share: .12),
     SpinningPhaseSpec(phase: SpinningPhase.cooldown, label: 'Cool-down', minBpm: 90, maxBpm: 108, share: .15),
@@ -315,7 +316,8 @@ class SpinningPlaylistService {
       while ((intervalSongMode || selected.length < usable.length) &&
           (firstInBlock ||
               (!intervalRecovery &&
-                  !(intervalSongMode && block.phase == SpinningPhase.warmup) &&
+                  !(intervalSongMode && (block.phase == SpinningPhase.warmup ||
+                       block.phase == SpinningPhase.build)) &&
                   elapsed + const Duration(seconds: 60) < block.end))) {
         final rawPosition = elapsed > block.start ? elapsed : block.start;
         final position =
@@ -1047,38 +1049,41 @@ class SpinningPlaylistService {
       return switch (variant) {
         0 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.08, .35, .65]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.35, .65]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .78, .62]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .92]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.50, .28]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.48, .83, .62]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.65, .95]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .30]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.48, .30]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .40, .08]),
           ],
         1 => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .32, .62]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.35, .65]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.60, .92]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.50, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.45, .80, .62]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.49, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.49, .28]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.62, .96]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.50, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.50, .26]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.47, .83, .62]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .28]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.52, .28]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.70, .38, .07]),
           ],
         _ => const [
             _SpinningCurveBlock(SpinningPhase.warmup, .15, [.06, .34, .65]),
+            _SpinningCurveBlock(SpinningPhase.build, .08, [.35, .65]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.46, .82, .61]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.51, .27]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.51, .27]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.64, .93]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.49, .26]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.49, .26]),
             _SpinningCurveBlock(SpinningPhase.peak, .06, [.63, .96]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.48, .25]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.48, .25]),
             _SpinningCurveBlock(SpinningPhase.load, .13, [.44, .80, .60]),
-            _SpinningCurveBlock(SpinningPhase.recovery, .08, [.52, .27]),
+            _SpinningCurveBlock(SpinningPhase.recovery, .06, [.52, .27]),
             _SpinningCurveBlock(SpinningPhase.cooldown, .15, [.68, .36, .08]),
           ],
       };
