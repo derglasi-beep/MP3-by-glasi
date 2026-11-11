@@ -245,11 +245,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _jumpOrAnimateLibraryTo(0);
   }
 
-  void _scrollToCurrentTrack(List<Track> visibleTracks) {
+  void _scrollToCurrentTrack(
+    List<Track> visibleTracks, {
+    List<List<Track>>? groups,
+  }) {
     final current = widget.player.currentTrack;
     if (current == null || !_libraryScrollController.hasClients) return;
 
-    final index = visibleTracks.indexWhere((track) => track.id == current.id);
+    final index = groups == null
+        ? visibleTracks.indexWhere((track) => track.id == current.id)
+        : groups.indexWhere((group) =>
+            group.any((track) => track.id == current.id));
     if (index < 0) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -264,7 +270,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    const tileExtent = 72.0;
+    final tileExtent = groups == null ? 72.0 : 80.0;
     final position = _libraryScrollController.position;
     final centeredTarget =
         (index * tileExtent) - ((position.viewportDimension - tileExtent) / 2);
@@ -1185,6 +1191,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       if (cmp != 0) return sortAscending ? cmp : -cmp;
       final other = _text(a.first.artist).compareTo(_text(b.first.artist));
       return sortAscending ? other : -other;
+    });
+    return result;
+  }
+
+  // Sorting by artist shows artist folders rather than individual songs.
+  // Keep grouping on the filtered list so library search and BPM filters
+  // apply consistently to the artist -> album -> track hierarchy.
+  List<List<Track>> _artistGroups(List<Track> filtered) {
+    final groups = <String, List<Track>>{};
+    for (final track in filtered) {
+      final name = track.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : track.artist.trim();
+      groups.putIfAbsent(name.toLowerCase(), () => <Track>[]).add(track);
+    }
+    final result = groups.values.toList();
+    result.sort((a, b) {
+      final aName = a.first.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : a.first.artist.trim();
+      final bName = b.first.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : b.first.artist.trim();
+      final order = _text(aName).compareTo(_text(bName));
+      return sortAscending ? order : -order;
     });
     return result;
   }
@@ -2139,9 +2170,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final visibleTracks = visible;
     final albumView = sortMode == _SortMode.album;
+    final artistView = sortMode == _SortMode.artist;
     final albumGroups = albumView ? _albumGroups(visibleTracks) : const <List<Track>>[];
-    final artistMatches = albumView ? const <List<Track>>[] : matchingArtists;
-    final albumMatches = albumView ? const <List<Track>>[] : matchingAlbums;
+    final artistGroups = artistView ? _artistGroups(visibleTracks) : const <List<Track>>[];
+    final artistMatches = albumView || artistView
+        ? const <List<Track>>[] : matchingArtists;
+    final albumMatches = albumView || artistView
+        ? const <List<Track>>[] : matchingAlbums;
 
     return Scaffold(
     appBar: AppBar(
@@ -2292,7 +2327,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           IconButton(
             onPressed: widget.player.currentTrack == null
                 ? null
-                : () => _scrollToCurrentTrack(visibleTracks),
+                : () => _scrollToCurrentTrack(
+                    visibleTracks,
+                    groups: artistView
+                        ? artistGroups
+                        : albumView ? albumGroups : null,
+                  ),
             tooltip: 'Zum aktuellen Titel',
             icon: const Icon(Icons.my_location),
           ),
@@ -2571,7 +2611,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (!albumView && search.trim().isNotEmpty)
+            if (!albumView && !artistView && search.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2583,7 +2623,70 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             Expanded(
-              child: albumView
+              child: artistView
+                  ? artistGroups.isEmpty
+                      ? const Center(child: Text('Keine Interpreten gefunden'))
+                      : NotificationListener<ScrollNotification>(
+                          onNotification: _onLibraryScroll,
+                          child: ListView.builder(
+                            controller: _libraryScrollController,
+                            itemExtent: 80,
+                            cacheExtent: 80,
+                            itemCount: artistGroups.length,
+                            itemBuilder: (context, index) {
+                              final artistTracks = artistGroups[index];
+                              final first = artistTracks.first;
+                              Track cover = first;
+                              for (final track in artistTracks) {
+                                if (track.artwork != null &&
+                                    track.artwork!.isNotEmpty) {
+                                  cover = track;
+                                  break;
+                                }
+                              }
+                              _loadVisibleArtwork(cover);
+                              final name = first.artist.trim().isEmpty
+                                  ? 'Unbekannter Interpret' : first.artist.trim();
+                              final albums = artistTracks
+                                  .map((track) => track.album.trim().toLowerCase())
+                                  .toSet().length;
+                              return ListTile(
+                                leading: cover.artwork == null
+                                    ? const CircleAvatar(child: Icon(Icons.person))
+                                    : ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Image.memory(
+                                          cover.artwork!,
+                                          width: 48,
+                                          height: 48,
+                                          cacheWidth: 96,
+                                          cacheHeight: 96,
+                                          fit: BoxFit.cover,
+                                          gaplessPlayback: true,
+                                        ),
+                                      ),
+                                title: Text(name,
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(
+                                  '$albums Alben · ${artistTracks.length} Titel',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ArtistScreen(
+                                      player: widget.player,
+                                      artist: name,
+                                      tracks: artistTracks,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                  : albumView
                   ? albumGroups.isEmpty
                       ? const Center(child: Text('Keine Alben gefunden'))
                       : NotificationListener<ScrollNotification>(
