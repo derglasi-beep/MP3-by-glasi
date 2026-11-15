@@ -3,7 +3,9 @@ name: Windows Test Installer
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feature/artist-album-song-hierarchy-20261111
     paths:
       - "lib/**"
       - "pubspec.yaml"
@@ -78,7 +80,7 @@ jobs:
       - name: Upload Windows test package
         uses: actions/upload-artifact@v4
         with:
-          name: MP3-by-Glasi-Windows-${{ steps.version.outputs.version }}
+          name: MP3-by-Glasi-Windows-${{ steps.version.outputs.version }}-${{ github.run_number }}
           path: |
             dist/*.exe
             dist/*.zip
