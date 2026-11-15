@@ -2,8 +2,72 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mp3_by_glasi/models/track.dart';
 import 'package:mp3_by_glasi/services/spinning_playlist_service.dart';
 import 'package:mp3_by_glasi/services/spinning_session_controller.dart';
+import 'package:mp3_by_glasi/services/spinning_transfer_service.dart';
 
 void main() {
+  test('CSV round trip retains all tracks and editable phase flags', () {
+    final library = <Track>[
+      const Track(
+        id: 'song-1', path: r'C:\Musik\A;B.mp3', title: 'A; "B"',
+        artist: 'Künstler', album: 'Ein Album', bpm: 122,
+      ),
+      const Track(
+        id: 'song-2', path: '/music/other.mp3', title: 'Weitere Musik',
+        artist: 'Andere', album: 'Album',
+      ),
+    ];
+    final service = SpinningTransferService();
+    final csv = service.exportLibraryCsv(
+      library: library,
+      spinningTrackIds: {'song-1'},
+      phasesByTrackId: {
+        'song-1': {SpinningPhase.build, SpinningPhase.peak},
+      },
+    );
+    expect(csv.startsWith('\uFEFF'), isTrue);
+    expect(csv, contains('"A; ""B"""'));
+    final result = service.importLibraryCsv(csv, library);
+    expect(result.matchedCount, 2);
+    expect(result.unmatched, isEmpty);
+    expect(result.selected, {'song-1': true, 'song-2': false});
+    expect(result.phases['song-1'], {
+      SpinningPhase.build, SpinningPhase.peak,
+    });
+    expect(result.phases['song-2'], isEmpty);
+  });
+
+  test('CSV import applies edited flags without changing metadata', () {
+    const track = Track(
+      id: 'song', path: '/music/song.mp3',
+      title: 'Song', artist: 'Artist', bpm: 120,
+    );
+    final service = SpinningTransferService();
+    final csv = service.exportLibraryCsv(
+      library: [track],
+      spinningTrackIds: {},
+      phasesByTrackId: {},
+    );
+    final changed = csv.replaceFirst(
+      '";"0";"0";"0";"0";"0";"0";"0"',
+      '";"1";"0";"0";"1";"0";"1";"0"',
+    );
+    // Use columns to edit instead of relying on metadata fields.
+    final lines = changed.trim().split('\r\n');
+    final last = lines.last;
+    final cells = last.split(';');
+    cells[9] = '"1"';
+    cells[12] = '"1"';
+    cells[14] = '"1"';
+    final edited = '${lines.first}\r\n${cells.join(';')}\r\n';
+    final result = service.importLibraryCsv(edited, [track]);
+    expect(result.selected['song'], isTrue);
+    expect(result.phases['song'], {
+      SpinningPhase.load, SpinningPhase.recovery,
+    });
+    expect(track.bpm, 120);
+  });
+
+
   test('heart-training pulse targets stay moderate throughout the session', () {
     final expected = <SpinningPhase, ({int min, int max})>{
       SpinningPhase.warmup: (min: 60, max: 65),
