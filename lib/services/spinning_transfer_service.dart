@@ -182,10 +182,15 @@ class SpinningTransferService {
     SpinningPhase.warmup, SpinningPhase.build, SpinningPhase.load,
     SpinningPhase.peak, SpinningPhase.recovery, SpinningPhase.cooldown,
   ];
+  // Keep the columns people edit first. The final ID and path columns
+  // are for reliable round-trip matching, not for spreadsheet editing.
   static const csvColumns = <String>[
-    'ID', 'Pfad', 'Interpret', 'Album', 'Titel', 'Jahr', 'Nummer',
-    'DauerSekunden', 'BPM', 'Spinning', 'Warm-up', 'Aufbau',
-    'Belastung', 'Peak', 'Erholung', 'Cool-down',
+    'Interpret', 'Album', 'Titel', 'DauerSekunden', 'BPM',
+    'Spinning', 'Warm-up', 'Aufbau', 'Belastung', 'Peak',
+    'Erholung', 'Cool-down', 'ID', 'Pfad',
+  ];
+  static const csvPhaseColumns = <String>[
+    'Warm-up', 'Aufbau', 'Belastung', 'Peak', 'Erholung', 'Cool-down',
   ];
 
   String exportLibraryCsv({
@@ -197,13 +202,13 @@ class SpinningTransferService {
       csvColumns,
       for (final track in library)
         [
-          track.id, track.path, track.artist, track.album, track.title,
-          track.year?.toString() ?? '', track.trackNumber?.toString() ?? '',
+          track.artist, track.album, track.title,
           track.duration?.inSeconds.toString() ?? '',
           track.bpm?.toStringAsFixed(1) ?? '',
           spinningTrackIds.contains(track.id) ? '1' : '0',
           for (final phase in csvPhases)
             phasesByTrackId[track.id]?.contains(phase) == true ? '1' : '0',
+          track.id, track.path,
         ],
     ];
     return '\uFEFF${rows.map((r) => r.map(_escapeCsv).join(';')).join('\r\n')}\r\n';
@@ -213,8 +218,9 @@ class SpinningTransferService {
     final rows = _parseCsv(raw.replaceFirst('\uFEFF', ''));
     if (rows.length < 2) throw const FormatException('CSV enthält keine Titel.');
     final columns = rows.first.map((v) => v.trim()).toList();
-    if (columns.length != csvColumns.length ||
-        !csvColumns.every(columns.contains)) {
+    // Also accept exports from earlier versions (with Jahr and Nummer).
+    // Resolve by header, not by position, so reordering Excel columns is safe.
+    if (!csvColumns.every(columns.contains)) {
       throw const FormatException('Unbekanntes CSV-Format. Bitte Bibliotheks-Export verwenden.');
     }
     final indices = <String, int>{for (var i = 0; i < columns.length; i++) columns[i]: i};
@@ -260,7 +266,7 @@ class SpinningTransferService {
       final marked = flag(field(row, 'Spinning'));
       final choices = <SpinningPhase>{};
       for (var i = 0; i < csvPhases.length; i++) {
-        if (flag(field(row, csvColumns[10 + i]))) choices.add(csvPhases[i]);
+        if (flag(field(row, csvPhaseColumns[i]))) choices.add(csvPhases[i]);
       }
       if (selected.containsKey(match.id)) {
         throw FormatException('Doppelter Titel: ${match.artist} - ${match.title}');
