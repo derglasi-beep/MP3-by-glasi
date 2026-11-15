@@ -215,17 +215,36 @@ class SpinningTransferService {
   }
 
   SpinningCsvImportResult importLibraryCsv(String raw, List<Track> library) {
-    final rows = _parseCsv(raw.replaceFirst('\uFEFF', ''));
+    final clean = raw.replaceFirst('\uFEFF', '');
+    // Excel may save with a sep=; declaration, commas or tabs. Detect the
+    // delimiter from the header and ignore the optional Excel directive.
+    final firstLine = clean.split(RegExp(r'\r\n|\n|\r')).first.trim().toLowerCase();
+    final data = firstLine.startsWith('sep=') ?
+        clean.substring(clean.indexOf('\n') >= 0 ? clean.indexOf('\n') + 1 : clean.length) : clean;
+    final headerLine = data.split(RegExp(r'\r\n|\n|\r')).first;
+    final delimiter = headerLine.contains(';') ? ';'
+        : headerLine.contains('\t') ? '\t' : ',';
+    final rows = _parseCsv(data, delimiter: delimiter);
     if (rows.length < 2) throw const FormatException('CSV enthält keine Titel.');
-    final columns = rows.first.map((v) => v.trim()).toList();
-    // Also accept exports from earlier versions (with Jahr and Nummer).
-    // Resolve by header, not by position, so reordering Excel columns is safe.
-    if (!csvColumns.every(columns.contains)) {
-      throw const FormatException('Unbekanntes CSV-Format. Bitte Bibliotheks-Export verwenden.');
+    final columns = rows.first.map((v) => v.trim().replaceFirst('\uFEFF', '')).toList();
+    // Only the identifying metadata, Spinning flag and editable phase
+    // columns are required. Old exports have extra columns; Excel may drop
+    // or rearrange the technical ID and Pfad fields.
+    final required = <String>[
+      'Interpret', 'Album', 'Titel', 'Spinning', ...csvPhaseColumns,
+    ];
+    final missing = required.where((name) => !columns.contains(name)).toList();
+    if (missing.isNotEmpty) {
+      throw FormatException(
+        'CSV-Spalten fehlen: ${missing.join(', ')}. '
+        'Bitte die Überschriften aus dem Bibliotheksexport beibehalten.',
+      );
     }
     final indices = <String, int>{for (var i = 0; i < columns.length; i++) columns[i]: i};
-    String field(List<String> row, String key) =>
-        indices[key]! < row.length ? row[indices[key]!].trim() : '';
+    String field(List<String> row, String key) {
+      final index = indices[key];
+      return index == null || index >= row.length ? '' : row[index].trim();
+    }
     bool flag(String raw) {
       switch (raw.toLowerCase()) {
         case '1': case 'ja': case 'yes': case 'true': case 'x': return true;
@@ -279,7 +298,7 @@ class SpinningTransferService {
 
   String _escapeCsv(String cell) => '"${cell.replaceAll('"', '""')}"';
 
-  List<List<String>> _parseCsv(String raw) {
+  List<List<String>> _parseCsv(String raw, {String delimiter = ';'}) {
     final rows = <List<String>>[];
     var row = <String>[];
     var cell = StringBuffer();
@@ -292,7 +311,7 @@ class SpinningTransferService {
         } else {
           quoted = !quoted;
         }
-      } else if (char == ';' && !quoted) {
+      } else if (char == delimiter && !quoted) {
         row.add(cell.toString()); cell = StringBuffer();
       } else if ((char == '\n' || char == '\r') && !quoted) {
         if (char == '\r' && i + 1 < raw.length && raw[i + 1] == '\n') i++;
