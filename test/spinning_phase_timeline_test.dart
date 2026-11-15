@@ -68,6 +68,38 @@ void main() {
   });
 
 
+  test('Excel CSV with sep directive and omitted technical columns imports', () {
+    final library = [
+      const Track(
+        id: 'first', path: '/music/first.mp3', title: 'Song A',
+        artist: 'Künstler', album: 'Album A', bpm: 125,
+      ),
+    ];
+    final csv = [
+      'sep=;',
+      '"Interpret";"Album";"Titel";"DauerSekunden";"BPM";'
+          '"Spinning";"Warm-up";"Aufbau";"Belastung";"Peak";'
+          '"Erholung";"Cool-down"',
+      '"Künstler";"Album A";"Song A";"180";"125";'
+          '"1";"0";"1";"0";"1";"0";"0"',
+    ].join('\r\n');
+    final result = SpinningTransferService().importLibraryCsv(csv, library);
+    expect(result.matchedCount, 1);
+    expect(result.selected['first'], isTrue);
+    expect(result.phases['first'], {SpinningPhase.build, SpinningPhase.peak});
+  });
+
+  test('CSV missing an editable phase header names the missing column', () {
+    const csv = 'Interpret;Album;Titel;Spinning;Warm-up\r\n'
+        'A;B;C;1;1\r\n';
+    expect(
+      () => SpinningTransferService().importLibraryCsv(csv, const []),
+      throwsA(isA<FormatException>().having(
+        (exception) => exception.message, 'message', contains('Aufbau'),
+      )),
+    );
+  });
+
   test('heart-training pulse targets stay moderate throughout the session', () {
     final expected = <SpinningPhase, ({int min, int max})>{
       SpinningPhase.warmup: (min: 60, max: 65),
