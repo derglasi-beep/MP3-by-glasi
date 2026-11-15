@@ -47,12 +47,8 @@ void main() {
       spinningTrackIds: {},
       phasesByTrackId: {},
     );
-    final changed = csv.replaceFirst(
-      '";"0";"0";"0";"0";"0";"0";"0"',
-      '";"1";"0";"0";"1";"0";"1";"0"',
-    );
-    // Use columns to edit instead of relying on metadata fields.
-    final lines = changed.trim().split('\r\n');
+    // Edit only the Spinning and phase columns, as one would in Excel.
+    final lines = csv.trim().split('\r\n');
     final last = lines.last;
     final cells = last.split(';');
     cells[9] = '"1"';
