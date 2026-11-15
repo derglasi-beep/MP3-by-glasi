@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
@@ -18,6 +19,7 @@ import '../services/music_scanner.dart';
 import '../services/settings_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
+import '../services/spinning_transfer_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
@@ -2174,6 +2176,103 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
+
+  Future<void> _exportLibraryCsv() async {
+    await _reloadSpinningPhases();
+    if (!mounted) return;
+    try {
+      final csv = SpinningTransferService().exportLibraryCsv(
+        library: tracks,
+        spinningTrackIds: _spinningTrackIds,
+        phasesByTrackId: _spinningPhases,
+      );
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Gesamte Musikbibliothek als CSV exportieren',
+        fileName: 'MP3-by-Glasi-Bibliothek.csv',
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+      );
+      if (path == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${tracks.length} Bibliothekstitel als CSV exportiert.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV-Export fehlgeschlagen: $error')),
+      );
+    }
+  }
+
+  Future<void> _importLibraryCsv() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        withData: false,
+      );
+      final path = picked?.files.single.path;
+      if (path == null || path.isEmpty) return;
+      final csv = await File(path).readAsString();
+      final result = SpinningTransferService().importLibraryCsv(csv, tracks);
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Spinning-Auswahl aus CSV übernehmen?'),
+          content: Text(
+            '${result.matchedCount} Titel erkannt, '
+            '${result.unmatched.length} nicht zugeordnet.\n\n'
+            'Nur Spinning-Markierungen und Phasen werden aktualisiert. '
+            'Musikdateien, BPM und sonstige Titeldaten bleiben unverändert. '
+            'Nicht zugeordnete Titel behalten ihre bisherigen Einstellungen.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: result.matchedCount == 0
+                  ? null : () => Navigator.pop(context, true),
+              child: const Text('Übernehmen'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _reloadSpinningPhases();
+      setState(() {
+        for (final entry in result.selected.entries) {
+          if (entry.value) { _spinningTrackIds.add(entry.key); }
+          else { _spinningTrackIds.remove(entry.key); }
+          final phases = result.phases[entry.key] ?? {};
+          if (entry.value && phases.isNotEmpty) {
+            _spinningPhases[entry.key] = phases;
+          } else {
+            _spinningPhases.remove(entry.key);
+          }
+        }
+        _spinningPlan = null;
+      });
+      await library.saveSpinningTrackIds(_spinningTrackIds);
+      await library.saveSpinningTrackPhases({
+        for (final entry in _spinningPhases.entries)
+          entry.key: entry.value.map((phase) => phase.name).toSet(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${result.matchedCount} Spinning-Einträge aus CSV übernommen.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV-Import fehlgeschlagen: $error')),
+      );
+    }
+  }
+
   void _setSort(_SortMode mode) {
     setState(() {
       if (sortMode == mode) {
@@ -2429,6 +2528,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             icon: analyzing
                 ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.speed),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Bibliothek als CSV importieren/exportieren',
+            icon: const Icon(Icons.table_view_outlined),
+            onSelected: (action) {
+              if (action == 'export') { _exportLibraryCsv(); }
+              if (action == 'import') { _importLibraryCsv(); }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'export',
+                  child: Text('Gesamte Bibliothek als CSV exportieren')),
+              PopupMenuItem(value: 'import',
+                  child: Text('Spinning-Markierungen aus CSV importieren')),
+            ],
           ),
           PopupMenuButton<_SortMode>(
             tooltip: 'Sortieren nach',
