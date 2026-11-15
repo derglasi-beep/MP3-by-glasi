@@ -16,6 +16,14 @@ class SpinningImportResult {
   int get matchedCount => matched.length;
 }
 
+class SpinningCsvImportResult {
+  final Map<String, bool> selected;
+  final Map<String, Set<SpinningPhase>> phases;
+  final List<String> unmatched;
+  const SpinningCsvImportResult(this.selected, this.phases, this.unmatched);
+  int get matchedCount => selected.length;
+}
+
 class SpinningTransferService {
   static const format = 'mp3-by-glasi-spinning';
   static const version = 1;
@@ -167,6 +175,133 @@ class SpinningTransferService {
       matched: matched,
       unmatched: unmatched,
     );
+  }
+
+
+  static const csvPhases = <SpinningPhase>[
+    SpinningPhase.warmup, SpinningPhase.build, SpinningPhase.load,
+    SpinningPhase.peak, SpinningPhase.recovery, SpinningPhase.cooldown,
+  ];
+  static const csvColumns = <String>[
+    'ID', 'Pfad', 'Interpret', 'Album', 'Titel', 'Jahr', 'Nummer',
+    'DauerSekunden', 'BPM', 'Spinning', 'Warm-up', 'Aufbau',
+    'Belastung', 'Peak', 'Erholung', 'Cool-down',
+  ];
+
+  String exportLibraryCsv({
+    required List<Track> library,
+    required Set<String> spinningTrackIds,
+    required Map<String, Set<SpinningPhase>> phasesByTrackId,
+  }) {
+    final rows = <List<String>>[
+      csvColumns,
+      for (final track in library)
+        [
+          track.id, track.path, track.artist, track.album, track.title,
+          track.year?.toString() ?? '', track.trackNumber?.toString() ?? '',
+          track.duration?.inSeconds.toString() ?? '',
+          track.bpm?.toStringAsFixed(1) ?? '',
+          spinningTrackIds.contains(track.id) ? '1' : '0',
+          for (final phase in csvPhases)
+            phasesByTrackId[track.id]?.contains(phase) == true ? '1' : '0',
+        ],
+    ];
+    return '\uFEFF${rows.map((r) => r.map(_escapeCsv).join(';')).join('\r\n')}\r\n';
+  }
+
+  SpinningCsvImportResult importLibraryCsv(String raw, List<Track> library) {
+    final rows = _parseCsv(raw.replaceFirst('\uFEFF', ''));
+    if (rows.length < 2) throw const FormatException('CSV enthält keine Titel.');
+    final columns = rows.first.map((v) => v.trim()).toList();
+    if (columns.length != csvColumns.length ||
+        !csvColumns.every(columns.contains)) {
+      throw const FormatException('Unbekanntes CSV-Format. Bitte Bibliotheks-Export verwenden.');
+    }
+    final indices = <String, int>{for (var i = 0; i < columns.length; i++) columns[i]: i};
+    String field(List<String> row, String key) =>
+        indices[key]! < row.length ? row[indices[key]!].trim() : '';
+    bool flag(String raw) {
+      switch (raw.toLowerCase()) {
+        case '1': case 'ja': case 'yes': case 'true': case 'x': return true;
+        case '0': case 'nein': case 'no': case 'false': case '': return false;
+        default: throw FormatException('Ungültiger Wert "$raw": nur 1 oder 0 verwenden.');
+      }
+    }
+    final byId = {for (final t in library) t.id: t};
+    final byPath = <String, List<Track>>{};
+    final byMetadata = <String, List<Track>>{};
+    for (final t in library) {
+      byPath.putIfAbsent(t.path.toLowerCase(), () => []).add(t);
+      byMetadata.putIfAbsent(
+        '${_artistTitleKey(t.artist, t.title)}|${_normalizeText(t.album)}',
+        () => [],
+      ).add(t);
+    }
+    final selected = <String, bool>{};
+    final phases = <String, Set<SpinningPhase>>{};
+    final unmatched = <String>[];
+    for (final row in rows.skip(1)) {
+      if (row.every((v) => v.trim().isEmpty)) continue;
+      Track? match = byId[field(row, 'ID')];
+      if (match == null) {
+        final path = field(row, 'Pfad').toLowerCase();
+        final candidates = byPath[path] ?? [];
+        if (path.isNotEmpty && candidates.length == 1) match = candidates.single;
+      }
+      if (match == null) {
+        final key = '${_artistTitleKey(field(row, 'Interpret'), field(row, 'Titel'))}|${_normalizeText(field(row, 'Album'))}';
+        final candidates = byMetadata[key] ?? [];
+        if (candidates.length == 1) match = candidates.single;
+      }
+      if (match == null) {
+        unmatched.add("${field(row, 'Interpret')} - ${field(row, 'Titel')}");
+        continue;
+      }
+      final marked = flag(field(row, 'Spinning'));
+      final choices = <SpinningPhase>{};
+      for (var i = 0; i < csvPhases.length; i++) {
+        if (flag(field(row, csvColumns[10 + i]))) choices.add(csvPhases[i]);
+      }
+      if (selected.containsKey(match.id)) {
+        throw FormatException('Doppelter Titel: ${match.artist} - ${match.title}');
+      }
+      selected[match.id] = marked;
+      phases[match.id] = marked ? choices : <SpinningPhase>{};
+    }
+    return SpinningCsvImportResult(selected, phases, unmatched);
+  }
+
+  String _escapeCsv(String cell) => '"${cell.replaceAll('"', '""')}"';
+
+  List<List<String>> _parseCsv(String raw) {
+    final rows = <List<String>>[];
+    var row = <String>[];
+    var cell = StringBuffer();
+    var quoted = false;
+    for (var i = 0; i < raw.length; i++) {
+      final char = raw[i];
+      if (char == '"') {
+        if (quoted && i + 1 < raw.length && raw[i + 1] == '"') {
+          cell.write('"'); i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char == ';' && !quoted) {
+        row.add(cell.toString()); cell = StringBuffer();
+      } else if ((char == '\n' || char == '\r') && !quoted) {
+        if (char == '\r' && i + 1 < raw.length && raw[i + 1] == '\n') i++;
+        row.add(cell.toString()); cell = StringBuffer();
+        if (row.any((value) => value.isNotEmpty)) rows.add(row);
+        row = <String>[];
+      } else {
+        cell.write(char);
+      }
+    }
+    if (quoted) throw const FormatException('CSV-Anführungszeichen nicht geschlossen.');
+    if (cell.isNotEmpty || row.isNotEmpty) {
+      row.add(cell.toString()); rows.add(row);
+    }
+    return rows;
   }
 
   String _artistTitleKey(String artist, String title) =>
