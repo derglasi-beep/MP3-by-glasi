@@ -2372,6 +2372,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // In Android landscape the soft keyboard leaves very little room.
+    // Keep search and the result list visible when the keyboard is open.
+    final compactLandscapeSearch = Platform.isAndroid &&
+        MediaQuery.orientationOf(context) == Orientation.landscape &&
+        MediaQuery.viewInsetsOf(context).bottom > 0;
     final visibleTracks = visible;
     final albumView = sortMode == _SortMode.album;
     final artistView = sortMode == _SortMode.artist;
@@ -2433,7 +2438,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ),
         ),
       ),
-      Padding(
+      if (!compactLandscapeSearch) Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
         child: Row(
           children: [
@@ -2484,7 +2489,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
         ),
       ),
-      SizedBox(
+      if (!compactLandscapeSearch) SizedBox(
         height: 44,
         child: ListView(
           scrollDirection: Axis.horizontal,
@@ -2512,7 +2517,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
         ),
       ),
-      Padding(
+      if (!compactLandscapeSearch) Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         child: Row(children: [
           const Icon(Icons.sort, size: 20),
@@ -2590,7 +2595,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ),
         ]),
       ),
-      if (_backgroundBpmWorkerRunning || _artworkWorkerRunning)
+      if (!compactLandscapeSearch && (_backgroundBpmWorkerRunning || _artworkWorkerRunning))
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
           child: Align(
@@ -2615,7 +2620,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       Expanded(
         child: Column(
           children: [
-            if (artistMatches.isNotEmpty) ...[
+            if (!compactLandscapeSearch && artistMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2709,7 +2714,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (albumMatches.isNotEmpty) ...[
+            if (!compactLandscapeSearch && albumMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2833,7 +2838,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (!albumView && !artistView && search.trim().isNotEmpty)
+            if (!compactLandscapeSearch && !albumView && !artistView && search.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2852,6 +2857,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                           onNotification: _onLibraryScroll,
                           child: ListView.builder(
                             controller: _libraryScrollController,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            physics: const AlwaysScrollableScrollPhysics(),
                             itemExtent: 80,
                             cacheExtent: 80,
                             itemCount: artistGroups.length,
@@ -2915,6 +2922,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                           onNotification: _onLibraryScroll,
                           child: ListView.builder(
                             controller: _libraryScrollController,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            physics: const AlwaysScrollableScrollPhysics(),
                             itemExtent: 80,
                             cacheExtent: 80,
                             itemCount: albumGroups.length,
@@ -2999,6 +3008,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       onNotification: _onLibraryScroll,
                       child: ListView.builder(
                       controller: _libraryScrollController,
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemExtent: 72,
                       cacheExtent: 72,
                       itemCount: visibleTracks.length,
