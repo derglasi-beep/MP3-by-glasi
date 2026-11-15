@@ -25,6 +25,10 @@ void main() {
       },
     );
     expect(csv.startsWith('\uFEFF'), isTrue);
+    expect(SpinningTransferService.csvColumns.take(6), [
+      'Interpret', 'Album', 'Titel', 'DauerSekunden', 'BPM', 'Spinning',
+    ]);
+    expect(SpinningTransferService.csvColumns.skip(12), ['ID', 'Pfad']);
     expect(csv, contains('"A; ""B"""'));
     final result = service.importLibraryCsv(csv, library);
     expect(result.matchedCount, 2);
@@ -51,9 +55,9 @@ void main() {
     final lines = csv.trim().split('\r\n');
     final last = lines.last;
     final cells = last.split(';');
-    cells[9] = '"1"';
-    cells[12] = '"1"';
-    cells[14] = '"1"';
+    cells[5] = '"1"';
+    cells[8] = '"1"';
+    cells[10] = '"1"';
     final edited = '${lines.first}\r\n${cells.join(';')}\r\n';
     final result = service.importLibraryCsv(edited, [track]);
     expect(result.selected['song'], isTrue);
