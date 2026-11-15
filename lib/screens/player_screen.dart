@@ -2180,6 +2180,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _exportLibraryCsv() async {
     await _reloadSpinningPhases();
     if (!mounted) return;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Bibliothek für Excel exportieren'),
+        content: const Text(
+          'CSV-Format: UTF-8, Trennzeichen Semikolon (;).\n\n'
+          'Falls Excel nach dem Trennzeichen fragt, bitte '
+          '„Semikolon“ auswählen.\n\n'
+          'Bearbeite die Spalten „Spinning“ und die Trainingsphasen '
+          'mit 1 (Ja) bzw. 0 (Nein). Die Spalten „ID“ und „Pfad“ '
+          'am Ende bitte nicht verändern.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('CSV speichern'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
     try {
       final csv = SpinningTransferService().exportLibraryCsv(
         library: tracks,
@@ -2226,7 +2251,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             '${result.unmatched.length} nicht zugeordnet.\n\n'
             'Nur Spinning-Markierungen und Phasen werden aktualisiert. '
             'Musikdateien, BPM und sonstige Titeldaten bleiben unverändert. '
-            'Nicht zugeordnete Titel behalten ihre bisherigen Einstellungen.',
+            'Nicht zugeordnete Titel behalten ihre bisherigen Einstellungen.\n\n'
+            'CSV-Trennzeichen: Semikolon (;), Zeichensatz: UTF-8.',
           ),
           actions: [
             TextButton(
@@ -2541,6 +2567,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   child: Text('Gesamte Bibliothek als CSV exportieren')),
               PopupMenuItem(value: 'import',
                   child: Text('Spinning-Markierungen aus CSV importieren')),
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Text('CSV: Semikolon (;) · UTF-8'),
+              ),
             ],
           ),
           PopupMenuButton<_SortMode>(
