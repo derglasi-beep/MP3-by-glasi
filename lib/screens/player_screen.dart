@@ -2372,11 +2372,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    // In Android landscape the soft keyboard leaves very little room.
-    // Keep search and the result list visible when the keyboard is open.
+    // Android landscape needs a compact search layout even AFTER the keyboard
+    // is dismissed. Otherwise the fixed library controls and suggestions may
+    // consume all available height and leave the title list with zero space.
     final compactLandscapeSearch = Platform.isAndroid &&
         MediaQuery.orientationOf(context) == Orientation.landscape &&
-        MediaQuery.viewInsetsOf(context).bottom > 0;
+        (search.trim().isNotEmpty ||
+            MediaQuery.viewInsetsOf(context).bottom > 0);
     final visibleTracks = visible;
     final albumView = sortMode == _SortMode.album;
     final artistView = sortMode == _SortMode.artist;
