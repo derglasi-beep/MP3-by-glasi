@@ -92,6 +92,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
   final Set<String> _spinningTrackIds = <String>{};
+  final Map<String, Set<SpinningPhase>> _spinningPhases = {};
   SpinningPlan? _spinningPlan;
   SpinningSessionController? _spinningSession;
   final HeartRateSensorService _heartRateSensor = HeartRateSensorService();
@@ -557,6 +558,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _restoreLibrary() async {
+    await _reloadSpinningPhases();
     final results = await Future.wait([
       library.loadTracks(),
       library.loadArtworkMisses(),
@@ -2086,13 +2088,90 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
+
+  Future<void> _reloadSpinningPhases() async {
+    final stored = await library.loadSpinningTrackPhases();
+    _spinningPhases
+      ..clear()
+      ..addEntries(stored.entries.map((entry) => MapEntry(
+        entry.key,
+        SpinningPhase.values.where((p) => entry.value.contains(p.name)).toSet(),
+      )));
+  }
+
+  Future<void> _editSpinningPhases(Track track) async {
+    await _reloadSpinningPhases();
+    if (!mounted) return;
+    final selected = Set<SpinningPhase>.from(_spinningPhases[track.id] ?? {});
+    final result = await showDialog<Set<SpinningPhase>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: Text('Spinning-Phasen: ${track.title}'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Mehrfachauswahl. Ohne Auswahl: alle Phasen.'),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final phase in SpinningPhase.values)
+                    FilterChip(
+                      label: Text(switch (phase) {
+                        SpinningPhase.warmup => 'Warm-up',
+                        SpinningPhase.build => 'Aufbau',
+                        SpinningPhase.load => 'Belastung',
+                        SpinningPhase.peak => 'Peak',
+                        SpinningPhase.recovery => 'Erholung',
+                        SpinningPhase.cooldown => 'Cool-down',
+                      }),
+                      selected: selected.contains(phase),
+                      onSelected: (value) => refresh(() {
+                        if (value) { selected.add(phase); }
+                        else { selected.remove(phase); }
+                      }),
+                    ),
+                ]),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => refresh(selected.clear),
+                child: const Text('Alle Phasen')),
+            TextButton(onPressed: () => Navigator.pop(context),
+                child: const Text('Abbrechen')),
+            FilledButton(onPressed: () => Navigator.pop(context, selected),
+                child: const Text('Speichern')),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _spinningTrackIds.add(track.id);
+      if (result.isEmpty) { _spinningPhases.remove(track.id); }
+      else { _spinningPhases[track.id] = result; }
+    });
+    await library.saveSpinningTrackIds(_spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final e in _spinningPhases.entries)
+        e.key: e.value.map((p) => p.name).toSet(),
+    });
+  }
+
   Future<void> _toggleSpinningTrack(Track track) async {
     setState(() {
       if (!_spinningTrackIds.add(track.id)) {
         _spinningTrackIds.remove(track.id);
+        _spinningPhases.remove(track.id);
       }
     });
     await library.saveSpinningTrackIds(_spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final e in _spinningPhases.entries)
+        e.key: e.value.map((p) => p.name).toSet(),
+    });
   }
 
   void _setSort(_SortMode mode) {
@@ -2845,7 +2924,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                   if (action == 'spinning') {
                                     await _toggleSpinningTrack(t);
                                   }
-                                  if (action == 'bpm') {
+                                  if (action == 'spinning-phases') {
+                                     await _editSpinningPhases(t);
+                                   }
+                                   if (action == 'bpm') {
                                     await _editBpm(t);
                                   }
                                 },
@@ -2878,8 +2960,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                       ],
                                     ),
                                   ),
-                                  PopupMenuItem(
-                                    value: 'bpm',
+                                  const PopupMenuItem(
+                                     value: 'spinning-phases',
+                                     child: Row(children: [
+                                       Icon(Icons.tune), SizedBox(width: 10),
+                                       Text('Spinning-Phasen wählen'),
+                                     ]),
+                                   ),
+                                   PopupMenuItem(
+                                     value: 'bpm',
                                     child: Row(
                                       children: [
                                         const Icon(Icons.speed),
