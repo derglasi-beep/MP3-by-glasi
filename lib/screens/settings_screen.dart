@@ -134,9 +134,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _showAppInfo() async {
+    try {
+      final info = await _packageInfo;
+      if (!mounted) return;
+      showAboutDialog(
+        context: context,
+        applicationName: 'MP3 by Glasi',
+        applicationVersion: 'Version ${info.version} (Build ${info.buildNumber})',
+        applicationLegalese: 'Musikplayer für Windows und Android',
+        children: const [
+          SizedBox(height: 8),
+          Text('Spinning-Training, Musikbibliothek und BPM-Analyse.'),
+        ],
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('App-Informationen nicht verfügbar: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:const Text('Audio & Einstellungen')),
+    appBar: AppBar(
+      title: const Text('Audio & Einstellungen'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          tooltip: 'Info über MP3 by Glasi',
+          onPressed: _showAppInfo,
+        ),
+      ],
+    ),
     body:ListView(padding:const EdgeInsets.all(20),children:[
       Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
         Text(eqAvailable ? '${bands.length}-Band EQ' : 'Equalizer',style:Theme.of(context).textTheme.headlineSmall),
