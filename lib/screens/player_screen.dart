@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/android_music_library_service.dart';
@@ -47,7 +46,6 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver {
-  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   final scanner = MusicScanner();
   final androidMusicLibrary = AndroidMusicLibraryService();
   final bpm = BpmService();
@@ -2393,46 +2391,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
     return Scaffold(
     appBar: AppBar(
-      title: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Flexible(
-                child: Text(
-                  'MP3 by Glasi',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              FutureBuilder<PackageInfo>(
-                future: _packageInfo,
-                builder: (context, snapshot) {
-                  final version = snapshot.data?.version;
-                  if (version == null || version.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: Text(
-                      'v${version}',
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          if (_showLibrary)
-            Text(
-              'Bibliothek',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-        ],
-      ),
+      title: Text(_showLibrary ? 'Bibliothek' : 'MP3 by Glasi'),
       actions: [
       IconButton(
         onPressed: () {
