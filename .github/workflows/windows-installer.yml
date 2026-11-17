@@ -50,6 +50,10 @@ jobs:
         shell: pwsh
         run: flutter pub get
 
+      - name: Test Spinning playlist and CSV logic
+        shell: pwsh
+        run: flutter test test/spinning_phase_timeline_test.dart
+
       - name: Build Windows release
         shell: pwsh
         run: flutter build windows --release
