@@ -11,12 +11,14 @@ class NowPlayingScreen extends StatefulWidget {
   final AudioPlayerService player;
   final Set<String> spinningTrackIds;
   final Future<void> Function(Track track) onToggleSpinning;
+  final Future<void> Function(Track track) onEditSpinningPhases;
 
   const NowPlayingScreen({
     super.key,
     required this.player,
     required this.spinningTrackIds,
     required this.onToggleSpinning,
+    required this.onEditSpinningPhases,
   });
 
   @override
@@ -258,6 +260,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ),
                           ],
                         ),
+                        if (track != null) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await widget.onEditSpinningPhases(track);
+                                if (mounted) setState(() {});
+                              },
+                              icon: const Icon(Icons.tune),
+                              label: const Text('Spinning-Phasen wählen'),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 4),
                         Slider(
                           value: value,
