@@ -10,6 +10,7 @@ on:
       - "lib/**"
       - "pubspec.yaml"
       - "installer/windows/**"
+      - "tool/set_windows_window_title.ps1"
       - ".github/workflows/windows-installer.yml"
 
 permissions:
@@ -40,6 +41,10 @@ jobs:
           if (-not (Test-Path "windows")) {
             flutter create --platforms=windows .
           }
+
+      - name: Set native Windows title bar version
+        shell: pwsh
+        run: ./tool/set_windows_window_title.ps1
 
       - name: Resolve packages
         shell: pwsh
