@@ -306,6 +306,42 @@ class SpinningPlaylistService {
 
     final intervalSongMode =
         profile == SpinningTrainingProfile.interval && curveOverride == null;
+
+    // Reserve one recovery song before selecting effort songs. Otherwise a
+    // small library can use every available track in early blocks, leaving
+    // no recovery candidate at the first interval break.
+    if (intervalSongMode) {
+      final recoveryBlocks =
+          blocks.where((block) => block.phase == SpinningPhase.recovery);
+      if (recoveryBlocks.isNotEmpty) {
+        final recoveryStart = recoveryBlocks.first.start;
+        final point = _curveAt(curve, recoveryStart);
+        var candidates = usable.where((track) {
+          final allowed = phaseEligibility[track.id];
+          return allowed == null ||
+              allowed.isEmpty ||
+              allowed.contains(SpinningPhase.recovery);
+        }).toList();
+        if (candidates.isEmpty) {
+          candidates = usable.where((track) {
+            final allowed = phaseEligibility[track.id];
+            return allowed == null || allowed.isEmpty;
+          }).toList();
+        }
+        if (candidates.isNotEmpty) {
+          candidates.sort((a, b) {
+            double score(Track track) {
+              final seconds = _planningDuration(track).inSeconds;
+              return _score(track, point, null, const Duration(minutes: 3)) -
+                  (seconds - 180).abs() / 120 * .2;
+            }
+            return score(b).compareTo(score(a));
+          });
+          intervalRecoveryTrack = candidates.first;
+        }
+      }
+    }
+
     for (final block in blocks) {
       final intervalRecovery =
           intervalSongMode && block.phase == SpinningPhase.recovery;
@@ -334,7 +370,11 @@ class SpinningPlaylistService {
           chosen = intervalRecoveryTrack;
         } else {
           var candidates = usable.where((track) {
-            if (used.contains(track.id)) return false;
+            if (used.contains(track.id) ||
+                (intervalSongMode && !intervalRecovery &&
+                    track.id == intervalRecoveryTrack?.id)) {
+              return false;
+            }
             final allowed = phaseEligibility[track.id];
             return allowed == null ||
                 allowed.isEmpty ||
@@ -344,7 +384,11 @@ class SpinningPlaylistService {
           // Keep backwards compatibility for libraries without phase tagging.
           if (candidates.isEmpty) {
             candidates = usable.where((track) {
-              if (used.contains(track.id)) return false;
+              if (used.contains(track.id) ||
+                  (intervalSongMode && !intervalRecovery &&
+                      track.id == intervalRecoveryTrack?.id)) {
+                return false;
+              }
               final allowed = phaseEligibility[track.id];
               return allowed == null || allowed.isEmpty;
             }).toList();
