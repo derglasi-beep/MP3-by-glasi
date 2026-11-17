@@ -131,8 +131,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
     await _saveSpinningPhases();
   }
 
-  void _openNowPlaying(BuildContext context) {
-    Navigator.push(
+  Future<void> _openNowPlaying(BuildContext context) async {
+    // Selections may have changed through CSV import or the library screen.
+    // Refresh before opening the detail, otherwise its badge can be stale.
+    await _loadSpinningSelection();
+    if (!mounted || !context.mounted) return;
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => NowPlayingScreen(
@@ -143,6 +147,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
         ),
       ),
     );
+    // Keep the mini player current after returning from phase selection.
+    if (mounted) await _loadSpinningSelection();
   }
 
   @override
