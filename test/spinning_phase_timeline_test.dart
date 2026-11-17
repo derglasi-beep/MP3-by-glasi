@@ -2,8 +2,104 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mp3_by_glasi/models/track.dart';
 import 'package:mp3_by_glasi/services/spinning_playlist_service.dart';
 import 'package:mp3_by_glasi/services/spinning_session_controller.dart';
+import 'package:mp3_by_glasi/services/spinning_transfer_service.dart';
 
 void main() {
+  test('CSV round trip retains all tracks and editable phase flags', () {
+    final library = <Track>[
+      const Track(
+        id: 'song-1', path: r'C:\Musik\A;B.mp3', title: 'A; "B"',
+        artist: 'Künstler', album: 'Ein Album', bpm: 122,
+      ),
+      const Track(
+        id: 'song-2', path: '/music/other.mp3', title: 'Weitere Musik',
+        artist: 'Andere', album: 'Album',
+      ),
+    ];
+    final service = SpinningTransferService();
+    final csv = service.exportLibraryCsv(
+      library: library,
+      spinningTrackIds: {'song-1'},
+      phasesByTrackId: {
+        'song-1': {SpinningPhase.build, SpinningPhase.peak},
+      },
+    );
+    expect(csv.startsWith('\uFEFF'), isTrue);
+    expect(SpinningTransferService.csvColumns.take(6), [
+      'Interpret', 'Album', 'Titel', 'DauerSekunden', 'BPM', 'Spinning',
+    ]);
+    expect(SpinningTransferService.csvColumns.skip(12), ['ID', 'Pfad']);
+    expect(csv, contains('"A; ""B"""'));
+    final result = service.importLibraryCsv(csv, library);
+    expect(result.matchedCount, 2);
+    expect(result.unmatched, isEmpty);
+    expect(result.selected, {'song-1': true, 'song-2': false});
+    expect(result.phases['song-1'], {
+      SpinningPhase.build, SpinningPhase.peak,
+    });
+    expect(result.phases['song-2'], isEmpty);
+  });
+
+  test('CSV import applies edited flags without changing metadata', () {
+    const track = Track(
+      id: 'song', path: '/music/song.mp3',
+      title: 'Song', artist: 'Artist', bpm: 120,
+    );
+    final service = SpinningTransferService();
+    final csv = service.exportLibraryCsv(
+      library: [track],
+      spinningTrackIds: {},
+      phasesByTrackId: {},
+    );
+    // Edit only the Spinning and phase columns, as one would in Excel.
+    final lines = csv.trim().split('\r\n');
+    final last = lines.last;
+    final cells = last.split(';');
+    cells[5] = '"1"';
+    cells[8] = '"1"';
+    cells[10] = '"1"';
+    final edited = '${lines.first}\r\n${cells.join(';')}\r\n';
+    final result = service.importLibraryCsv(edited, [track]);
+    expect(result.selected['song'], isTrue);
+    expect(result.phases['song'], {
+      SpinningPhase.load, SpinningPhase.recovery,
+    });
+    expect(track.bpm, 120);
+  });
+
+
+  test('Excel CSV with sep directive and omitted technical columns imports', () {
+    final library = [
+      const Track(
+        id: 'first', path: '/music/first.mp3', title: 'Song A',
+        artist: 'Künstler', album: 'Album A', bpm: 125,
+      ),
+    ];
+    final csv = [
+      'sep=;',
+      '"Interpret";"Album";"Titel";"DauerSekunden";"BPM";'
+          '"Spinning";"Warm-up";"Aufbau";"Belastung";"Peak";'
+          '"Erholung";"Cool-down"',
+      '"Künstler";"Album A";"Song A";"180";"125";'
+          '"1";"0";"1";"0";"1";"0";"0"',
+    ].join('\r\n');
+    final result = SpinningTransferService().importLibraryCsv(csv, library);
+    expect(result.matchedCount, 1);
+    expect(result.selected['first'], isTrue);
+    expect(result.phases['first'], {SpinningPhase.build, SpinningPhase.peak});
+  });
+
+  test('CSV missing an editable phase header names the missing column', () {
+    const csv = 'Interpret;Album;Titel;Spinning;Warm-up\r\n'
+        'A;B;C;1;1\r\n';
+    expect(
+      () => SpinningTransferService().importLibraryCsv(csv, const []),
+      throwsA(isA<FormatException>().having(
+        (exception) => exception.message, 'message', contains('Aufbau'),
+      )),
+    );
+  });
+
   test('heart-training pulse targets stay moderate throughout the session', () {
     final expected = <SpinningPhase, ({int min, int max})>{
       SpinningPhase.warmup: (min: 60, max: 65),
@@ -62,12 +158,26 @@ void main() {
         }
       }
       expect(expected.first, SpinningPhase.warmup);
+      expect(expected[1], SpinningPhase.build);
+      expect(expected[2],
+          anyOf(SpinningPhase.load, SpinningPhase.peak));
       expect(expected.last, SpinningPhase.cooldown);
       expect(actual, orderedEquals(expected));
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.warmup).length,
+        1,
+      );
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.build).length,
+        1,
+      );
       for (var index = 1; index < expected.length - 1; index++) {
         if (expected[index] == SpinningPhase.peak ||
             expected[index] == SpinningPhase.load) {
-          expect(expected[index - 1], SpinningPhase.recovery);
+          expect(
+            expected[index - 1],
+            index == 2 ? SpinningPhase.build : SpinningPhase.recovery,
+          );
         }
       }
       expect(
@@ -149,6 +259,16 @@ void main() {
           .map((window) => window.phase)
           .toList();
       expect(phases, orderedEquals(expected));
+      expect(phases[1], SpinningPhase.build);
+      expect(phases[2], anyOf(SpinningPhase.load, SpinningPhase.peak));
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.warmup).length,
+        1,
+      );
+      expect(
+        plan.selections.where((s) => s.phase == SpinningPhase.build).length,
+        1,
+      );
       for (var i = 1; i < phases.length; i++) {
         expect(
           !(phases[i] == SpinningPhase.recovery &&

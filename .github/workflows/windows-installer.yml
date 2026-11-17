@@ -3,11 +3,14 @@ name: Windows Test Installer
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feature/artist-album-song-hierarchy-20261111
     paths:
       - "lib/**"
       - "pubspec.yaml"
       - "installer/windows/**"
+      - "tool/set_windows_window_title.ps1"
       - ".github/workflows/windows-installer.yml"
 
 permissions:
@@ -39,9 +42,17 @@ jobs:
             flutter create --platforms=windows .
           }
 
+      - name: Set native Windows title bar version
+        shell: pwsh
+        run: ./tool/set_windows_window_title.ps1
+
       - name: Resolve packages
         shell: pwsh
         run: flutter pub get
+
+      - name: Test Spinning playlist and CSV logic
+        shell: pwsh
+        run: flutter test test/spinning_phase_timeline_test.dart test/music_scanner_test.dart
 
       - name: Build Windows release
         shell: pwsh
@@ -78,7 +89,7 @@ jobs:
       - name: Upload Windows test package
         uses: actions/upload-artifact@v4
         with:
-          name: MP3-by-Glasi-Windows-${{ steps.version.outputs.version }}
+          name: MP3-by-Glasi-Windows-${{ steps.version.outputs.version }}-${{ github.run_number }}
           path: |
             dist/*.exe
             dist/*.zip

@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
 import '../services/library_service.dart';
+import '../services/spinning_playlist_service.dart';
 import '../screens/now_playing_screen.dart';
 
 class MiniPlayer extends StatefulWidget {
@@ -17,6 +18,7 @@ class MiniPlayer extends StatefulWidget {
 class _MiniPlayerState extends State<MiniPlayer> {
   final LibraryService library = LibraryService();
   final Set<String> _spinningTrackIds = <String>{};
+  final Map<String, Set<SpinningPhase>> _spinningPhases = {};
 
   AudioPlayerService get player => widget.player;
 
@@ -28,34 +30,129 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   Future<void> _loadSpinningSelection() async {
     final ids = await library.loadSpinningTrackIds();
+    final stored = await library.loadSpinningTrackPhases();
     if (!mounted) return;
     setState(() {
       _spinningTrackIds
         ..clear()
         ..addAll(ids);
+      _spinningPhases
+        ..clear()
+        ..addEntries(stored.entries.map((entry) => MapEntry(
+          entry.key,
+          SpinningPhase.values.where((p) => entry.value.contains(p.name)).toSet(),
+        )));
     });
   }
 
   Future<void> _toggleSpinningTrack(Track track) async {
+    await _loadSpinningSelection();
+    if (!mounted) return;
     setState(() {
       if (!_spinningTrackIds.add(track.id)) {
         _spinningTrackIds.remove(track.id);
+        _spinningPhases.remove(track.id);
       }
     });
     await library.saveSpinningTrackIds(_spinningTrackIds);
+    await _saveSpinningPhases();
   }
 
-  void _openNowPlaying(BuildContext context) {
-    Navigator.push(
+  Future<void> _saveSpinningPhases() =>
+      library.saveSpinningTrackPhases({
+        for (final e in _spinningPhases.entries)
+          e.key: e.value.map((phase) => phase.name).toSet(),
+      });
+
+  Future<void> _editSpinningPhases(Track track) async {
+    await _loadSpinningSelection();
+    if (!mounted) return;
+    final selected = Set<SpinningPhase>.from(_spinningPhases[track.id] ?? {});
+    final result = await showDialog<Set<SpinningPhase>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: Text('Spinning-Phasen: ${track.title}'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Mehrfachauswahl. Ohne Auswahl: alle Phasen.'),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final phase in SpinningPhase.values)
+                    FilterChip(
+                      label: Text(switch (phase) {
+                        SpinningPhase.warmup => 'Warm-up',
+                        SpinningPhase.build => 'Aufbau',
+                        SpinningPhase.load => 'Belastung',
+                        SpinningPhase.peak => 'Peak',
+                        SpinningPhase.recovery => 'Erholung',
+                        SpinningPhase.cooldown => 'Cool-down',
+                      }),
+                      selected: selected.contains(phase),
+                      onSelected: (value) => refresh(() {
+                        if (value) { selected.add(phase); }
+                        else { selected.remove(phase); }
+                      }),
+                    ),
+                ]),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => refresh(selected.clear),
+              child: const Text('Alle Phasen'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected),
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    // The dialog can stay open while the library changes selections.
+    // Keep the new choice for this track without overwriting other tracks.
+    await _loadSpinningSelection();
+    if (!mounted) return;
+    setState(() {
+      _spinningTrackIds.add(track.id);
+      if (result.isEmpty) {
+        _spinningPhases.remove(track.id);
+      } else {
+        _spinningPhases[track.id] = result;
+      }
+    });
+    await library.saveSpinningTrackIds(_spinningTrackIds);
+    await _saveSpinningPhases();
+  }
+
+  Future<void> _openNowPlaying(BuildContext context) async {
+    // Selections may have changed through CSV import or the library screen.
+    // Refresh before opening the detail, otherwise its badge can be stale.
+    await _loadSpinningSelection();
+    if (!mounted || !context.mounted) return;
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => NowPlayingScreen(
           player: player,
           spinningTrackIds: _spinningTrackIds,
           onToggleSpinning: _toggleSpinningTrack,
+          onEditSpinningPhases: _editSpinningPhases,
         ),
       ),
     );
+    // Keep the mini player current after returning from phase selection.
+    if (mounted) await _loadSpinningSelection();
   }
 
   @override

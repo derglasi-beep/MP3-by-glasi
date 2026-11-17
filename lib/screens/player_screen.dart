@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
@@ -18,6 +19,7 @@ import '../services/music_scanner.dart';
 import '../services/settings_service.dart';
 import '../services/spinning_playlist_service.dart';
 import '../services/spinning_session_controller.dart';
+import '../services/spinning_transfer_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'playlists_screen.dart';
@@ -92,6 +94,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   final Set<String> _artworkLoads = <String>{};
   final Set<String> _artworkMisses = <String>{};
   final Set<String> _spinningTrackIds = <String>{};
+  final Map<String, Set<SpinningPhase>> _spinningPhases = {};
   SpinningPlan? _spinningPlan;
   SpinningSessionController? _spinningSession;
   final HeartRateSensorService _heartRateSensor = HeartRateSensorService();
@@ -245,11 +248,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _jumpOrAnimateLibraryTo(0);
   }
 
-  void _scrollToCurrentTrack(List<Track> visibleTracks) {
+  void _scrollToCurrentTrack(
+    List<Track> visibleTracks, {
+    List<List<Track>>? groups,
+  }) {
     final current = widget.player.currentTrack;
     if (current == null || !_libraryScrollController.hasClients) return;
 
-    final index = visibleTracks.indexWhere((track) => track.id == current.id);
+    final index = groups == null
+        ? visibleTracks.indexWhere((track) => track.id == current.id)
+        : groups.indexWhere((group) =>
+            group.any((track) => track.id == current.id));
     if (index < 0) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -264,7 +273,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       return;
     }
 
-    const tileExtent = 72.0;
+    final tileExtent = groups == null ? 72.0 : 80.0;
     final position = _libraryScrollController.position;
     final centeredTarget =
         (index * tileExtent) - ((position.viewportDimension - tileExtent) / 2);
@@ -551,6 +560,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _restoreLibrary() async {
+    await _reloadSpinningPhases();
     final results = await Future.wait([
       library.loadTracks(),
       library.loadArtworkMisses(),
@@ -1185,6 +1195,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       if (cmp != 0) return sortAscending ? cmp : -cmp;
       final other = _text(a.first.artist).compareTo(_text(b.first.artist));
       return sortAscending ? other : -other;
+    });
+    return result;
+  }
+
+  // Sorting by artist shows artist folders rather than individual songs.
+  // Keep grouping on the filtered list so library search and BPM filters
+  // apply consistently to the artist -> album -> track hierarchy.
+  List<List<Track>> _artistGroups(List<Track> filtered) {
+    final groups = <String, List<Track>>{};
+    for (final track in filtered) {
+      final name = track.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : track.artist.trim();
+      groups.putIfAbsent(name.toLowerCase(), () => <Track>[]).add(track);
+    }
+    final result = groups.values.toList();
+    result.sort((a, b) {
+      final aName = a.first.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : a.first.artist.trim();
+      final bName = b.first.artist.trim().isEmpty
+          ? 'Unbekannter Interpret'
+          : b.first.artist.trim();
+      final order = _text(aName).compareTo(_text(bName));
+      return sortAscending ? order : -order;
     });
     return result;
   }
@@ -2055,13 +2090,227 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     });
   }
 
+
+  Future<void> _reloadSpinningPhases() async {
+    final stored = await library.loadSpinningTrackPhases();
+    _spinningPhases
+      ..clear()
+      ..addEntries(stored.entries.map((entry) => MapEntry(
+        entry.key,
+        SpinningPhase.values.where((p) => entry.value.contains(p.name)).toSet(),
+      )));
+  }
+
+  // Other views (including the mini-player) can edit the same saved selection.
+  // Refresh both parts before writing, so stale screen state cannot undo them.
+  Future<void> _reloadSpinningSelection() async {
+    final ids = await library.loadSpinningTrackIds();
+    await _reloadSpinningPhases();
+    _spinningTrackIds
+      ..clear()
+      ..addAll(ids);
+  }
+
+  Future<void> _editSpinningPhases(Track track) async {
+    await _reloadSpinningSelection();
+    if (!mounted) return;
+    final selected = Set<SpinningPhase>.from(_spinningPhases[track.id] ?? {});
+    final result = await showDialog<Set<SpinningPhase>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: Text('Spinning-Phasen: ${track.title}'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Mehrfachauswahl. Ohne Auswahl: alle Phasen.'),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final phase in SpinningPhase.values)
+                    FilterChip(
+                      label: Text(switch (phase) {
+                        SpinningPhase.warmup => 'Warm-up',
+                        SpinningPhase.build => 'Aufbau',
+                        SpinningPhase.load => 'Belastung',
+                        SpinningPhase.peak => 'Peak',
+                        SpinningPhase.recovery => 'Erholung',
+                        SpinningPhase.cooldown => 'Cool-down',
+                      }),
+                      selected: selected.contains(phase),
+                      onSelected: (value) => refresh(() {
+                        if (value) { selected.add(phase); }
+                        else { selected.remove(phase); }
+                      }),
+                    ),
+                ]),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => refresh(selected.clear),
+                child: const Text('Alle Phasen')),
+            TextButton(onPressed: () => Navigator.pop(context),
+                child: const Text('Abbrechen')),
+            FilledButton(onPressed: () => Navigator.pop(context, selected),
+                child: const Text('Speichern')),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _reloadSpinningSelection();
+    if (!mounted) return;
+    setState(() {
+      _spinningTrackIds.add(track.id);
+      if (result.isEmpty) { _spinningPhases.remove(track.id); }
+      else { _spinningPhases[track.id] = result; }
+    });
+    await library.saveSpinningTrackIds(_spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final e in _spinningPhases.entries)
+        e.key: e.value.map((p) => p.name).toSet(),
+    });
+  }
+
   Future<void> _toggleSpinningTrack(Track track) async {
+    await _reloadSpinningSelection();
+    if (!mounted) return;
     setState(() {
       if (!_spinningTrackIds.add(track.id)) {
         _spinningTrackIds.remove(track.id);
+        _spinningPhases.remove(track.id);
       }
     });
     await library.saveSpinningTrackIds(_spinningTrackIds);
+    await library.saveSpinningTrackPhases({
+      for (final e in _spinningPhases.entries)
+        e.key: e.value.map((p) => p.name).toSet(),
+    });
+  }
+
+
+  Future<void> _exportLibraryCsv() async {
+    await _reloadSpinningPhases();
+    if (!mounted) return;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Bibliothek für Excel exportieren'),
+        content: const Text(
+          'CSV-Format: UTF-8, Trennzeichen Semikolon (;).\n\n'
+          'Falls Excel nach dem Trennzeichen fragt, bitte '
+          '„Semikolon“ auswählen.\n\n'
+          'Bearbeite die Spalten „Spinning“ und die Trainingsphasen '
+          'mit 1 (Ja) bzw. 0 (Nein). Die Spalten „ID“ und „Pfad“ '
+          'am Ende bitte nicht verändern.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('CSV speichern'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+    try {
+      final csv = SpinningTransferService().exportLibraryCsv(
+        library: tracks,
+        spinningTrackIds: _spinningTrackIds,
+        phasesByTrackId: _spinningPhases,
+      );
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Gesamte Musikbibliothek als CSV exportieren',
+        fileName: 'MP3-by-Glasi-Bibliothek.csv',
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+      );
+      if (path == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${tracks.length} Bibliothekstitel als CSV exportiert.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV-Export fehlgeschlagen: $error')),
+      );
+    }
+  }
+
+  Future<void> _importLibraryCsv() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        withData: false,
+      );
+      final path = picked?.files.single.path;
+      if (path == null || path.isEmpty) return;
+      final csv = await File(path).readAsString();
+      final result = SpinningTransferService().importLibraryCsv(csv, tracks);
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Spinning-Auswahl aus CSV übernehmen?'),
+          content: Text(
+            '${result.matchedCount} Titel erkannt, '
+            '${result.unmatched.length} nicht zugeordnet.\n\n'
+            'Nur Spinning-Markierungen und Phasen werden aktualisiert. '
+            'Musikdateien, BPM und sonstige Titeldaten bleiben unverändert. '
+            'Nicht zugeordnete Titel behalten ihre bisherigen Einstellungen.\n\n'
+            'CSV-Trennzeichen: Semikolon (;), Zeichensatz: UTF-8.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: result.matchedCount == 0
+                  ? null : () => Navigator.pop(context, true),
+              child: const Text('Übernehmen'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _reloadSpinningPhases();
+      setState(() {
+        for (final entry in result.selected.entries) {
+          if (entry.value) { _spinningTrackIds.add(entry.key); }
+          else { _spinningTrackIds.remove(entry.key); }
+          final phases = result.phases[entry.key] ?? {};
+          if (entry.value && phases.isNotEmpty) {
+            _spinningPhases[entry.key] = phases;
+          } else {
+            _spinningPhases.remove(entry.key);
+          }
+        }
+        _spinningPlan = null;
+      });
+      await library.saveSpinningTrackIds(_spinningTrackIds);
+      await library.saveSpinningTrackPhases({
+        for (final entry in _spinningPhases.entries)
+          entry.key: entry.value.map((phase) => phase.name).toSet(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${result.matchedCount} Spinning-Einträge aus CSV übernommen.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV-Import fehlgeschlagen: $error')),
+      );
+    }
   }
 
   void _setSort(_SortMode mode) {
@@ -2137,11 +2386,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // Android landscape needs a compact search layout even AFTER the keyboard
+    // is dismissed. Otherwise the fixed library controls and suggestions may
+    // consume all available height and leave the title list with zero space.
+    final compactLandscapeSearch = Platform.isAndroid &&
+        MediaQuery.orientationOf(context) == Orientation.landscape &&
+        (search.trim().isNotEmpty ||
+            MediaQuery.viewInsetsOf(context).bottom > 0);
     final visibleTracks = visible;
     final albumView = sortMode == _SortMode.album;
+    final artistView = sortMode == _SortMode.artist;
     final albumGroups = albumView ? _albumGroups(visibleTracks) : const <List<Track>>[];
-    final artistMatches = albumView ? const <List<Track>>[] : matchingArtists;
-    final albumMatches = albumView ? const <List<Track>>[] : matchingAlbums;
+    final artistGroups = artistView ? _artistGroups(visibleTracks) : const <List<Track>>[];
+    final artistMatches = albumView || artistView
+        ? const <List<Track>>[] : matchingArtists;
+    final albumMatches = albumView || artistView
+        ? const <List<Track>>[] : matchingAlbums;
 
     return Scaffold(
     appBar: AppBar(
@@ -2194,7 +2454,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ),
         ),
       ),
-      Padding(
+      if (!compactLandscapeSearch) Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
         child: Row(
           children: [
@@ -2245,7 +2505,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
         ),
       ),
-      SizedBox(
+      if (!compactLandscapeSearch) SizedBox(
         height: 44,
         child: ListView(
           scrollDirection: Axis.horizontal,
@@ -2273,7 +2533,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ],
         ),
       ),
-      Padding(
+      if (!compactLandscapeSearch) Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         child: Row(children: [
           const Icon(Icons.sort, size: 20),
@@ -2292,7 +2552,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           IconButton(
             onPressed: widget.player.currentTrack == null
                 ? null
-                : () => _scrollToCurrentTrack(visibleTracks),
+                : () => _scrollToCurrentTrack(
+                    visibleTracks,
+                    groups: artistView
+                        ? artistGroups
+                        : albumView ? albumGroups : null,
+                  ),
             tooltip: 'Zum aktuellen Titel',
             icon: const Icon(Icons.my_location),
           ),
@@ -2311,6 +2576,24 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.speed),
           ),
+          PopupMenuButton<String>(
+            tooltip: 'Bibliothek als CSV importieren/exportieren',
+            icon: const Icon(Icons.table_view_outlined),
+            onSelected: (action) {
+              if (action == 'export') { _exportLibraryCsv(); }
+              if (action == 'import') { _importLibraryCsv(); }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'export',
+                  child: Text('Gesamte Bibliothek als CSV exportieren')),
+              PopupMenuItem(value: 'import',
+                  child: Text('Spinning-Markierungen aus CSV importieren')),
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Text('CSV: Semikolon (;) · UTF-8'),
+              ),
+            ],
+          ),
           PopupMenuButton<_SortMode>(
             tooltip: 'Sortieren nach',
             onSelected: _setSort,
@@ -2328,7 +2611,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           ),
         ]),
       ),
-      if (_backgroundBpmWorkerRunning || _artworkWorkerRunning)
+      if (!compactLandscapeSearch && (_backgroundBpmWorkerRunning || _artworkWorkerRunning))
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
           child: Align(
@@ -2353,7 +2636,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       Expanded(
         child: Column(
           children: [
-            if (artistMatches.isNotEmpty) ...[
+            if (!compactLandscapeSearch && artistMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2447,7 +2730,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (albumMatches.isNotEmpty) ...[
+            if (!compactLandscapeSearch && albumMatches.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2571,7 +2854,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             ],
-            if (!albumView && search.trim().isNotEmpty)
+            if (!compactLandscapeSearch && !albumView && !artistView && search.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
                 child: Align(
@@ -2583,13 +2866,80 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                 ),
               ),
             Expanded(
-              child: albumView
+              child: artistView
+                  ? artistGroups.isEmpty
+                      ? const Center(child: Text('Keine Interpreten gefunden'))
+                      : NotificationListener<ScrollNotification>(
+                          onNotification: _onLibraryScroll,
+                          child: ListView.builder(
+                            controller: _libraryScrollController,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemExtent: 80,
+                            cacheExtent: 80,
+                            itemCount: artistGroups.length,
+                            itemBuilder: (context, index) {
+                              final artistTracks = artistGroups[index];
+                              final first = artistTracks.first;
+                              Track cover = first;
+                              for (final track in artistTracks) {
+                                if (track.artwork != null &&
+                                    track.artwork!.isNotEmpty) {
+                                  cover = track;
+                                  break;
+                                }
+                              }
+                              _loadVisibleArtwork(cover);
+                              final name = first.artist.trim().isEmpty
+                                  ? 'Unbekannter Interpret' : first.artist.trim();
+                              final albums = artistTracks
+                                  .map((track) => track.album.trim().toLowerCase())
+                                  .toSet().length;
+                              return ListTile(
+                                leading: cover.artwork == null
+                                    ? const CircleAvatar(child: Icon(Icons.person))
+                                    : ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Image.memory(
+                                          cover.artwork!,
+                                          width: 48,
+                                          height: 48,
+                                          cacheWidth: 96,
+                                          cacheHeight: 96,
+                                          fit: BoxFit.cover,
+                                          gaplessPlayback: true,
+                                        ),
+                                      ),
+                                title: Text(name,
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(
+                                  '$albums Alben · ${artistTracks.length} Titel',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ArtistScreen(
+                                      player: widget.player,
+                                      artist: name,
+                                      tracks: artistTracks,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                  : albumView
                   ? albumGroups.isEmpty
                       ? const Center(child: Text('Keine Alben gefunden'))
                       : NotificationListener<ScrollNotification>(
                           onNotification: _onLibraryScroll,
                           child: ListView.builder(
                             controller: _libraryScrollController,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            physics: const AlwaysScrollableScrollPhysics(),
                             itemExtent: 80,
                             cacheExtent: 80,
                             itemCount: albumGroups.length,
@@ -2674,6 +3024,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       onNotification: _onLibraryScroll,
                       child: ListView.builder(
                       controller: _libraryScrollController,
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemExtent: 72,
                       cacheExtent: 72,
                       itemCount: visibleTracks.length,
@@ -2742,7 +3094,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                   if (action == 'spinning') {
                                     await _toggleSpinningTrack(t);
                                   }
-                                  if (action == 'bpm') {
+                                  if (action == 'spinning-phases') {
+                                     await _editSpinningPhases(t);
+                                   }
+                                   if (action == 'bpm') {
                                     await _editBpm(t);
                                   }
                                 },
@@ -2775,8 +3130,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                       ],
                                     ),
                                   ),
-                                  PopupMenuItem(
-                                    value: 'bpm',
+                                  const PopupMenuItem(
+                                     value: 'spinning-phases',
+                                     child: Row(children: [
+                                       Icon(Icons.tune), SizedBox(width: 10),
+                                       Text('Spinning-Phasen wählen'),
+                                     ]),
+                                   ),
+                                   PopupMenuItem(
+                                     value: 'bpm',
                                     child: Row(
                                       children: [
                                         const Icon(Icons.speed),
@@ -2838,6 +3200,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                 player: widget.player,
                                 spinningTrackIds: _spinningTrackIds,
                                 onToggleSpinning: _toggleSpinningTrack,
+                                onEditSpinningPhases: _editSpinningPhases,
                               ),
                             ),
                           ),
@@ -2935,6 +3298,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                     ),
                   ],
                 ]),
+                if (t != null) ...[
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () => _editSpinningPhases(t),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Spinning-Phasen wählen'),
+                  ),
+                ],
                 if (t != null && onlineBpmTrackId == t.id && onlineBpmResult != null) ...[
                   const SizedBox(height: 4),
                   Text(
