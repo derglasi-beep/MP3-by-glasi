@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../services/equalizer_service.dart';
@@ -12,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final s = SettingsService();
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   late final EqualizerService eq;
   StreamSubscription? _trackSub;
   bool _eqRefreshRunning = false;
@@ -196,6 +198,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }),
       const SizedBox(height:8),
       const Text('Crossfade ist als Einstellung vorbereitet; die eigentliche Überblendung kommt mit dem nächsten Playback-Engine-Schritt.'),
+      const Divider(height: 32),
+      Center(
+        child: FutureBuilder<PackageInfo>(
+          future: _packageInfo,
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            if (info == null) return const SizedBox.shrink();
+            return Text(
+              'MP3 by Glasi · Version ${info.version} (Build ${info.buildNumber})',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
     ]),
   );
 }
