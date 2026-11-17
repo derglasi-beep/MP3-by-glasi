@@ -2101,8 +2101,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       )));
   }
 
-  Future<void> _editSpinningPhases(Track track) async {
+  // Other views (including the mini-player) can edit the same saved selection.
+  // Refresh both parts before writing, so stale screen state cannot undo them.
+  Future<void> _reloadSpinningSelection() async {
+    final ids = await library.loadSpinningTrackIds();
     await _reloadSpinningPhases();
+    _spinningTrackIds
+      ..clear()
+      ..addAll(ids);
+  }
+
+  Future<void> _editSpinningPhases(Track track) async {
+    await _reloadSpinningSelection();
     if (!mounted) return;
     final selected = Set<SpinningPhase>.from(_spinningPhases[track.id] ?? {});
     final result = await showDialog<Set<SpinningPhase>>(
@@ -2150,6 +2160,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       ),
     );
     if (result == null || !mounted) return;
+    await _reloadSpinningSelection();
+    if (!mounted) return;
     setState(() {
       _spinningTrackIds.add(track.id);
       if (result.isEmpty) { _spinningPhases.remove(track.id); }
@@ -2163,6 +2175,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   Future<void> _toggleSpinningTrack(Track track) async {
+    await _reloadSpinningSelection();
+    if (!mounted) return;
     setState(() {
       if (!_spinningTrackIds.add(track.id)) {
         _spinningTrackIds.remove(track.id);
