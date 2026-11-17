@@ -119,6 +119,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
       ),
     );
     if (result == null || !mounted) return;
+    // The dialog can stay open while the library changes selections.
+    // Keep the new choice for this track without overwriting other tracks.
+    await _loadSpinningSelection();
+    if (!mounted) return;
     setState(() {
       _spinningTrackIds.add(track.id);
       if (result.isEmpty) {
