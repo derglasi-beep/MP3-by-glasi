@@ -3186,6 +3186,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                                 player: widget.player,
                                 spinningTrackIds: _spinningTrackIds,
                                 onToggleSpinning: _toggleSpinningTrack,
+                                onEditSpinningPhases: _editSpinningPhases,
                               ),
                             ),
                           ),
@@ -3283,6 +3284,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                     ),
                   ],
                 ]),
+                if (t != null) ...[
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () => _editSpinningPhases(t),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Spinning-Phasen wählen'),
+                  ),
+                ],
                 if (t != null && onlineBpmTrackId == t.id && onlineBpmResult != null) ...[
                   const SizedBox(height: 4),
                   Text(
