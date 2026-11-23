@@ -553,14 +553,16 @@ class AudioPlayerService {
       final handback = Stopwatch()..start();
       // Hand-back between two decoders of the same track is kept brief on
       // Windows to avoid audible flanging from small sample offsets.
-      final handbackMs = Platform.isWindows ? 65 : 180;
+      final handbackMs = Platform.isWindows ? 35 : 180;
       while (revision == _fadeRevision) {
         final t = (handback.elapsedMilliseconds / handbackMs).clamp(0.0, 1.0);
         _fadeGain = math.sin(t * math.pi / 2);
         _outgoingGain = math.cos(t * math.pi / 2);
         await _applyEffectiveVolume();
         if (t >= 1) break;
-        await Future<void>.delayed(const Duration(milliseconds: 15));
+        await Future<void>.delayed(
+          Duration(milliseconds: Platform.isWindows ? 8 : 15),
+        );
       }
     } catch (error) {
       if (revision == _fadeRevision) {
