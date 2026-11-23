@@ -28,6 +28,21 @@ class AudioPlayerService {
   int? Function(int currentIndex)? onTrackCompleted;
   double _playerVolume = .8;
   double _fadeSeconds = 0;
+  bool _crossfadeEnabled = true;
+
+  double get crossfadeSeconds => _fadeSeconds;
+  bool get crossfadeEnabled => _crossfadeEnabled && _fadeSeconds > 0;
+
+  Future<void> toggleCrossfade() async {
+    // With an unset duration, choose a useful default the first time.
+    if (_fadeSeconds <= 0) {
+      _fadeSeconds = 5;
+      await _settings.setCrossfade(_fadeSeconds);
+    }
+    _crossfadeEnabled = !_crossfadeEnabled;
+    await _settings.setCrossfadeEnabled(_crossfadeEnabled);
+    if (!_crossfadeEnabled) await _resetFade();
+  }
   double _fadeGain = 1;
   double _outgoingGain = 0;
   AudioPlayer? _outgoingFadePlayer;
@@ -398,7 +413,7 @@ class AudioPlayerService {
     await _stopOutgoingFade();
     if (revision != _fadeRevision) return;
 
-    final overlap = fading && _fadeSeconds > 0 &&
+    final overlap = fading && crossfadeEnabled &&
         audio.playing && outgoingTrack != null;
     if (!overlap) {
       _fadeGain = 1;
@@ -749,6 +764,7 @@ class AudioPlayerService {
       settings.shuffle,
       settings.repeatMode,
       settings.crossfade,
+      settings.crossfadeEnabled,
     ]);
 
     _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
@@ -757,6 +773,7 @@ class AudioPlayerService {
     _bass = (values[4] as double).clamp(-12, 12).toDouble();
     _treble = (values[5] as double).clamp(-12, 12).toDouble();
     _fadeSeconds = (values[8] as double).clamp(0, 12).toDouble();
+    _crossfadeEnabled = values[9] as bool;
     shuffle = values[6] as bool;
     loopMode = switch ((values[7] as int).clamp(0, 2)) {
       1 => LoopMode.all,
