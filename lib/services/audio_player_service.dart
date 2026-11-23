@@ -17,6 +17,9 @@ class AudioPlayerService {
   final StreamController<List<Track>> _queueController = StreamController.broadcast();
   final StreamController<String> _errorController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
+  late final StreamSubscription<Duration> _positionSub;
+  bool _automaticCrossfadeInProgress = false;
+  int? _automaticCrossfadeTriggeredIndex;
 
   int currentIndex = -1;
   bool shuffle = false;
@@ -70,6 +73,41 @@ class AudioPlayerService {
         _handleCompletion();
       }
     });
+    _positionSub = audio.positionStream.listen(_checkAutomaticCrossfade);
+  }
+
+  void _checkAutomaticCrossfade(Duration position) {
+    // Spinning owns its song transitions and must never be interrupted early.
+    if (!crossfadeEnabled ||
+        onTrackCompleted != null ||
+        _automaticCrossfadeInProgress ||
+        !audio.playing ||
+        audio.processingState != ProcessingState.ready ||
+        currentTrack == null ||
+        !canGoNext ||
+        loopMode == LoopMode.one) {
+      return;
+    }
+
+    final duration = audio.duration;
+    if (duration == null || duration <= Duration.zero) return;
+
+    final fade = Duration(milliseconds: (_fadeSeconds * 1000).round());
+    // Avoid crossfading tiny tracks and inaccurate end-of-file metadata.
+    if (duration <= fade + const Duration(seconds: 2)) return;
+
+    final remaining = duration - position;
+    if (remaining > fade || remaining <= Duration.zero) return;
+
+    // Position streams can emit repeatedly near the end of one song.
+    if (_automaticCrossfadeTriggeredIndex == currentIndex) return;
+    _automaticCrossfadeTriggeredIndex = currentIndex;
+    _automaticCrossfadeInProgress = true;
+    unawaited(next().catchError((Object error, StackTrace stack) {
+      _publishError(error, fallback: 'Automatische Überblendung fehlgeschlagen.');
+    }).whenComplete(() {
+      _automaticCrossfadeInProgress = false;
+    }));
   }
 
   Stream<Duration> get positionStream => audio.positionStream;
@@ -321,6 +359,7 @@ class AudioPlayerService {
       // This survives fast app closes and source-load failures much better.
       await _settings.setLastTrackId(t.id);
       await audio.setFilePath(t.path);
+      _automaticCrossfadeTriggeredIndex = null;
       if (_audioSettingsLoaded) {
         await _restoreEqualizerIfAvailable();
       }
@@ -958,6 +997,7 @@ class AudioPlayerService {
     await _resetFade();
     _completionInProgress = true;
     await _stateSub.cancel();
+    await _positionSub.cancel();
     await _trackController.close();
     await _queueController.close();
     await _errorController.close();
