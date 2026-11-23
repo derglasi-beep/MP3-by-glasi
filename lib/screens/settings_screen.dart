@@ -226,8 +226,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }),
       slider(
         crossfade <= 0
-            ? 'Sanfter Titelwechsel: Aus'
-            : 'Sanfter Titelwechsel: ${crossfade.toStringAsFixed(0)} s',
+            ? 'DJ-Crossfade: Aus'
+            : 'DJ-Crossfade: ${crossfade.toStringAsFixed(0)} s',
         crossfade, 0, 12, (v) {
           setState(() => crossfade = v);
           unawaited(widget.player.setFadeDuration(v));
@@ -236,10 +236,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'Beim manuellen Songwechsel blendet der aktuelle Titel aus und '
-        'der nächste ein. 0 s schaltet den Effekt aus. '
-        'Die Titel überlappen noch nicht; automatische Übergänge und '
-        'Spinning-Intervalle bleiben vorerst unverändert.',
+        'Beim manuellen Songwechsel laufen beide Titel kurz gleichzeitig: '
+        'der alte blendet aus und der neue ein. 0 s = Aus. '
+        'Automatische Übergänge und Spinning-Intervalle bleiben '
+        'vorerst ohne Crossfade.',
       ),
       const Divider(height: 32),
       Center(
