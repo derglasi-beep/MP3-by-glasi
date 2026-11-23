@@ -1,7 +1,7 @@
 name: mp3_by_glasi
 description: Cross-platform PowerAmp-inspired music player for Android, Windows and Linux.
 publish_to: "none"
-version: 0.5.25+30
+version: 0.5.26+31
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
