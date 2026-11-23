@@ -459,17 +459,23 @@ class AudioPlayerService {
       if (revision != _fadeRevision) return;
       unawaited(shadow.play().catchError((Object _) {}));
 
-      // Hand the outgoing music to the second channel before replacing the
-      // primary source. The hand-off is short; the actual overlap below uses
-      // the full user-selected crossfade duration.
+      // Give Android's second decoder a moment to deliver its first audio
+      // buffers at zero volume before taking over from the primary player.
+      // Without this, the volume hand-off can briefly dip into silence.
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      if (revision != _fadeRevision) return;
+
+      // Use an equal-power hand-off rather than a linear one. Two linear
+      // gains at 50% create an audible loudness dip ("stumble") when the
+      // outgoing title is transferred between audio players.
       final handoff = Stopwatch()..start();
       while (revision == _fadeRevision) {
         final t = (handoff.elapsedMilliseconds / 140).clamp(0.0, 1.0);
-        _fadeGain = 1 - t;
-        _outgoingGain = t;
+        _fadeGain = math.cos(t * math.pi / 2);
+        _outgoingGain = math.sin(t * math.pi / 2);
         await _applyEffectiveVolume();
         if (t >= 1) break;
-        await Future<void>.delayed(const Duration(milliseconds: 25));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       if (revision != _fadeRevision) return;
 
