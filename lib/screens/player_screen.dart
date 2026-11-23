@@ -3229,6 +3229,51 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   ),
                 const SizedBox(height: 6),
                 GlasiVisualizer(playing: ps.data?.playing ?? false, bpm: t?.bpm),
+                const SizedBox(height: 8),
+                Center(
+                  child: FilterChip(
+                    avatar: const Icon(Icons.graphic_eq, size: 18),
+                    label: Text(widget.player.crossfadeEnabled
+                        ? 'DJ-Crossfade AN · ${widget.player.crossfadeSeconds.round()} s'
+                        : 'DJ-Crossfade AUS'),
+                    selected: widget.player.crossfadeEnabled,
+                    tooltip: 'DJ-Crossfade ein- oder ausschalten',
+                    onSelected: (_) async {
+                      await widget.player.toggleCrossfade();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Text('1 s'),
+                    Expanded(
+                      child: Slider(
+                        value: (widget.player.crossfadeSeconds > 0
+                                ? widget.player.crossfadeSeconds
+                                : 5)
+                            .clamp(1.0, 12.0)
+                            .toDouble(),
+                        min: 1,
+                        max: 12,
+                        divisions: 11,
+                        label: '${widget.player.crossfadeSeconds.round()} s',
+                        onChanged: (v) {
+                          // Update the displayed value immediately; keep the
+                          // existing persisted setting used by both views.
+                          setState(() {});
+                          unawaited(widget.player.setFadeDuration(v));
+                        },
+                        onChangeEnd: (v) async {
+                          await widget.player.setFadeDuration(v);
+                          await settings.setCrossfade(v);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                    Text('${(widget.player.crossfadeSeconds > 0 ? widget.player.crossfadeSeconds : 5).round()} s'),
+                  ],
+                ),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   BpmBadge(bpm: t?.bpm, loading: analyzing && t != null && t.bpm == null),
                   if (t != null) ...[
