@@ -27,6 +27,9 @@ class AudioPlayerService {
   // Return -1 to stop after the current song, null for normal navigation.
   int? Function(int currentIndex)? onTrackCompleted;
   double _playerVolume = .8;
+  double _fadeSeconds = 0;
+  double _fadeGain = 1;
+  int _fadeRevision = 0;
   double _preamp = 0;
   double _bass = 0;
   double _treble = 0;
@@ -163,8 +166,7 @@ class AudioPlayerService {
     }
 
     currentIndex = index;
-    await _load();
-    _startPlayback();
+    await _loadAndStart(fading: audio.playing && onTrackCompleted == null);
     _publishQueue();
   }
 
@@ -325,7 +327,10 @@ class AudioPlayerService {
     }
   }
 
-  Future<void> pause() => audio.pause();
+  Future<void> pause() async {
+    await _resetFade();
+    await audio.pause();
+  }
   Future<void> seek(Duration p) {
     final duration = audio.duration;
     if (duration == null) return audio.seek(p);
@@ -343,9 +348,72 @@ class AudioPlayerService {
     await _applyEffectiveVolume();
   }
 
+  Future<void> setFadeDuration(double seconds) async {
+    _fadeSeconds = seconds.clamp(0, 12).toDouble();
+    if (_fadeSeconds == 0) await _resetFade();
+  }
+
+  Future<void> _resetFade() async {
+    _fadeRevision++;
+    _fadeGain = 1;
+    await _applyEffectiveVolume();
+  }
+
+  Future<void> _rampFade(double end, Duration duration, int revision) async {
+    final start = _fadeGain;
+    final elapsed = Stopwatch()..start();
+    final totalMicros = duration.inMicroseconds;
+    if (totalMicros <= 0) {
+      if (revision == _fadeRevision) {
+        _fadeGain = end;
+        await _applyEffectiveVolume();
+      }
+      return;
+    }
+    while (revision == _fadeRevision) {
+      final fraction = (elapsed.elapsedMicroseconds / totalMicros)
+          .clamp(0.0, 1.0);
+      // Smoothstep avoids an abrupt volume change at either endpoint.
+      final eased = fraction * fraction * (3 - 2 * fraction);
+      _fadeGain = start + (end - start) * eased;
+      await _applyEffectiveVolume();
+      if (fraction >= 1 || revision != _fadeRevision) break;
+      await Future<void>.delayed(const Duration(milliseconds: 35));
+    }
+  }
+
+  Future<void> _loadAndStart({bool fading = false}) async {
+    final revision = ++_fadeRevision;
+    if (fading && _fadeSeconds > 0 && audio.playing) {
+      await _rampFade(
+        0, Duration(milliseconds: (_fadeSeconds * 500).round()), revision);
+    }
+    if (revision != _fadeRevision) return;
+    try {
+      await _load();
+      if (revision != _fadeRevision) return;
+      if (fading && _fadeSeconds > 0) {
+        _fadeGain = 0;
+        await _applyEffectiveVolume();
+      } else {
+        _fadeGain = 1;
+        await _applyEffectiveVolume();
+      }
+      _startPlayback();
+      if (fading && _fadeSeconds > 0) {
+        unawaited(_rampFade(
+          1, Duration(milliseconds: (_fadeSeconds * 500).round()), revision)
+          .catchError((Object _) {}));
+      }
+    } catch (_) {
+      if (revision == _fadeRevision) await _resetFade();
+      rethrow;
+    }
+  }
+
   Future<void> _applyEffectiveVolume() async {
     final attenuation = _preamp < 0 ? math.pow(10, _preamp / 20).toDouble() : 1.0;
-    await audio.setVolume((_playerVolume * attenuation).clamp(0, 1).toDouble());
+    await audio.setVolume((_playerVolume * attenuation * _fadeGain).clamp(0, 1).toDouble());
   }
 
   Future<void> setPreamp(double decibels) async {
@@ -613,6 +681,7 @@ class AudioPlayerService {
       settings.treble,
       settings.shuffle,
       settings.repeatMode,
+      settings.crossfade,
     ]);
 
     _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
@@ -620,6 +689,7 @@ class AudioPlayerService {
     _preamp = (values[3] as double).clamp(-12, 12).toDouble();
     _bass = (values[4] as double).clamp(-12, 12).toDouble();
     _treble = (values[5] as double).clamp(-12, 12).toDouble();
+    _fadeSeconds = (values[8] as double).clamp(0, 12).toDouble();
     shuffle = values[6] as bool;
     loopMode = switch ((values[7] as int).clamp(0, 2)) {
       1 => LoopMode.all,
@@ -702,8 +772,7 @@ class AudioPlayerService {
       await audio.seek(Duration.zero);
       return;
     }
-    await _load();
-    _startPlayback();
+    await _loadAndStart(fading: !fromCompletion && audio.playing);
     _publishQueue();
   }
 
@@ -732,8 +801,7 @@ class AudioPlayerService {
       return;
     }
 
-    await _load();
-    _startPlayback();
+    await _loadAndStart(fading: audio.playing && onTrackCompleted == null);
     _publishQueue();
   }
 
@@ -764,6 +832,7 @@ class AudioPlayerService {
   }
 
   Future<void> dispose() async {
+    _fadeRevision++;
     _completionInProgress = true;
     await _stateSub.cancel();
     await _trackController.close();
