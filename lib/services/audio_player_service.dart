@@ -530,14 +530,37 @@ class AudioPlayerService {
       await _applyEffectiveVolume();
       _startPlayback();
 
+      // Windows can take noticeably longer to start the new native decoder.
+      // Seek-to-position before play alone does not keep the two instances
+      // aligned: the shadow has advanced while the primary was buffering.
+      // Wait until the primary is ready, then align it to the live shadow
+      // just before we make the primary audible.
+      if (Platform.isWindows) {
+        try {
+          await audio.playerStateStream
+              .firstWhere((state) =>
+                  state.playing &&
+                  state.processingState == ProcessingState.ready)
+              .timeout(const Duration(seconds: 2));
+        } on TimeoutException {
+          // Do not block a transition indefinitely on an audio backend.
+        }
+        if (revision != _fadeRevision) return;
+        await audio.seek(shadow.position);
+        if (revision != _fadeRevision) return;
+      }
+
       final handback = Stopwatch()..start();
+      // Hand-back between two decoders of the same track is kept brief on
+      // Windows to avoid audible flanging from small sample offsets.
+      final handbackMs = Platform.isWindows ? 65 : 180;
       while (revision == _fadeRevision) {
-        final t = (handback.elapsedMilliseconds / 180).clamp(0.0, 1.0);
+        final t = (handback.elapsedMilliseconds / handbackMs).clamp(0.0, 1.0);
         _fadeGain = math.sin(t * math.pi / 2);
         _outgoingGain = math.cos(t * math.pi / 2);
         await _applyEffectiveVolume();
         if (t >= 1) break;
-        await Future<void>.delayed(const Duration(milliseconds: 25));
+        await Future<void>.delayed(const Duration(milliseconds: 15));
       }
     } catch (error) {
       if (revision == _fadeRevision) {
