@@ -224,11 +224,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       slider('Geschwindigkeit  ${speed.toStringAsFixed(2)}×',speed,.5,2,(v){
         setState(()=>speed=v); widget.player.setSpeed(v); s.setSpeed(v);
       }),
-      slider('Crossfade  ${crossfade.toStringAsFixed(0)} s',crossfade,0,12,(v){
-        setState(()=>crossfade=v); s.setCrossfade(v);
-      }),
-      const SizedBox(height:8),
-      const Text('Crossfade ist als Einstellung vorbereitet; die eigentliche Überblendung kommt mit dem nächsten Playback-Engine-Schritt.'),
+      slider(
+        crossfade <= 0
+            ? 'Sanfter Titelwechsel: Aus'
+            : 'Sanfter Titelwechsel: ${crossfade.toStringAsFixed(0)} s',
+        crossfade, 0, 12, (v) {
+          setState(() => crossfade = v);
+          unawaited(widget.player.setFadeDuration(v));
+          unawaited(s.setCrossfade(v));
+        },
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Beim manuellen Songwechsel blendet der aktuelle Titel aus und '
+        'der nächste ein. 0 s schaltet den Effekt aus. '
+        'Die Titel überlappen noch nicht; automatische Übergänge und '
+        'Spinning-Intervalle bleiben vorerst unverändert.',
+      ),
       const Divider(height: 32),
       Center(
         child: FutureBuilder<PackageInfo>(
