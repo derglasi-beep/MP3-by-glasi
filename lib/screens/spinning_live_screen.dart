@@ -663,11 +663,17 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
             final songRemaining = currentTrack == null ||
                     songDuration == null ||
                     songDuration <= Duration.zero ||
-                    audio.processingState == ProcessingState.loading
+                    audio.processingState == ProcessingState.loading ||
+                    audio.processingState == ProcessingState.idle
                 ? null
                 : songDuration > songPosition
                     ? songDuration - songPosition
                     : Duration.zero;
+            final songProgress = songRemaining == null
+                ? null
+                : (songPosition.inMilliseconds /
+                        songDuration!.inMilliseconds)
+                    .clamp(0.0, 1.0);
             final songMax = widget.session.maxPercentForTrack(currentTrack);
             final hfText = songMax == null
                 ? (custom == null
@@ -755,6 +761,23 @@ class _SpinningLiveScreenState extends State<SpinningLiveScreen> {
                             ),
                           ],
                         ),
+                        if (songProgress != null) ...[
+                          const SizedBox(height: 8),
+                          Semantics(
+                            label: 'Fortschritt des aktuellen Songs',
+                            value: '${(songProgress * 100).round()} Prozent',
+                            child: LinearProgressIndicator(
+                              value: songProgress,
+                              minHeight: 3,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_clock(songPosition)} / ${_clock(songDuration!)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ],
                     ),
                   ),
