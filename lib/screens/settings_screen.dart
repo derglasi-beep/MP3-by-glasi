@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../services/equalizer_service.dart';
@@ -12,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final s = SettingsService();
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   late final EqualizerService eq;
   StreamSubscription? _trackSub;
   bool _eqRefreshRunning = false;
@@ -132,9 +134,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _showAppInfo() async {
+    try {
+      final info = await _packageInfo;
+      if (!mounted) return;
+      showAboutDialog(
+        context: context,
+        applicationName: 'MP3 by Glasi',
+        applicationVersion: 'Version ${info.version} (Build ${info.buildNumber})',
+        applicationLegalese: 'Musikplayer für Windows und Android',
+        children: const [
+          SizedBox(height: 8),
+          Text('Spinning-Training, Musikbibliothek und BPM-Analyse.'),
+        ],
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('App-Informationen nicht verfügbar: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:const Text('Audio & Einstellungen')),
+    appBar: AppBar(
+      title: const Text('Audio & Einstellungen'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          tooltip: 'Info über MP3 by Glasi',
+          onPressed: _showAppInfo,
+        ),
+      ],
+    ),
     body:ListView(padding:const EdgeInsets.all(20),children:[
       Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
         Text(eqAvailable ? '${bands.length}-Band EQ' : 'Equalizer',style:Theme.of(context).textTheme.headlineSmall),
@@ -191,11 +224,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       slider('Geschwindigkeit  ${speed.toStringAsFixed(2)}×',speed,.5,2,(v){
         setState(()=>speed=v); widget.player.setSpeed(v); s.setSpeed(v);
       }),
-      slider('Crossfade  ${crossfade.toStringAsFixed(0)} s',crossfade,0,12,(v){
-        setState(()=>crossfade=v); s.setCrossfade(v);
-      }),
-      const SizedBox(height:8),
-      const Text('Crossfade ist als Einstellung vorbereitet; die eigentliche Überblendung kommt mit dem nächsten Playback-Engine-Schritt.'),
+      slider(
+        crossfade <= 0
+            ? 'DJ-Crossfade: Aus'
+            : 'DJ-Crossfade: ${crossfade.toStringAsFixed(0)} s',
+        crossfade, 0, 12, (v) {
+          setState(() => crossfade = v);
+          unawaited(widget.player.setFadeDuration(v));
+          unawaited(s.setCrossfade(v));
+        },
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Der alte Titel blendet aus, während der nächste einblendet – '
+        'bei manuellen und automatischen Übergängen. '
+        '0 s = Aus. Im Spinning-Modus bleibt Crossfade ausgeschaltet.',
+      ),
+      const Divider(height: 32),
+      Center(
+        child: FutureBuilder<PackageInfo>(
+          future: _packageInfo,
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            if (info == null) return const SizedBox.shrink();
+            return Text(
+              'MP3 by Glasi · Version ${info.version} (Build ${info.buildNumber})',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
     ]),
   );
 }

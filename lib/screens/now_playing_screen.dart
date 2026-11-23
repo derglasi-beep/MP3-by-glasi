@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/audio_player_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/bpm_badge.dart';
 import '../widgets/glasi_visualizer.dart';
 import 'queue_screen.dart';
@@ -11,12 +12,14 @@ class NowPlayingScreen extends StatefulWidget {
   final AudioPlayerService player;
   final Set<String> spinningTrackIds;
   final Future<void> Function(Track track) onToggleSpinning;
+  final Future<void> Function(Track track) onEditSpinningPhases;
 
   const NowPlayingScreen({
     super.key,
     required this.player,
     required this.spinningTrackIds,
     required this.onToggleSpinning,
+    required this.onEditSpinningPhases,
   });
 
   @override
@@ -25,6 +28,7 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
   AudioPlayerService get player => widget.player;
+  double? _crossfadeDraft;
 
   String _time(Duration d) =>
       '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
@@ -258,6 +262,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             ),
                           ],
                         ),
+                        if (track != null) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await widget.onEditSpinningPhases(track);
+                                if (mounted) setState(() {});
+                              },
+                              icon: const Icon(Icons.tune),
+                              label: const Text('Spinning-Phasen wählen'),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 4),
                         Slider(
                           value: value,
@@ -280,6 +298,64 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           playing: playing,
                           bpm: track?.bpm,
                           height: 42,
+                        ),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.center,
+                          child: FilterChip(
+                            avatar: Icon(
+                              Icons.graphic_eq,
+                              size: 18,
+                              color: player.crossfadeEnabled
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                            ),
+                            label: Text(
+                              player.crossfadeEnabled
+                                  ? 'DJ-Crossfade AN · ${player.crossfadeSeconds.toStringAsFixed(0)} s'
+                                  : 'DJ-Crossfade AUS',
+                            ),
+                            selected: player.crossfadeEnabled,
+                            tooltip: 'DJ-Crossfade direkt ein- oder ausschalten',
+                            onSelected: (_) async {
+                              await player.toggleCrossfade();
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            children: [
+                              const Text('1 s'),
+                              Expanded(
+                                child: Slider(
+                                  value: (_crossfadeDraft ??
+                                          (player.crossfadeSeconds > 0
+                                              ? player.crossfadeSeconds
+                                              : 5))
+                                      .clamp(1.0, 12.0)
+                                      .toDouble(),
+                                  min: 1,
+                                  max: 12,
+                                  divisions: 11,
+                                  label: '${(_crossfadeDraft ?? (player.crossfadeSeconds > 0 ? player.crossfadeSeconds : 5)).round()} s',
+                                  onChanged: (v) =>
+                                      setState(() => _crossfadeDraft = v),
+                                  onChangeEnd: (v) async {
+                                    await player.setFadeDuration(v);
+                                    await SettingsService().setCrossfade(v);
+                                    if (mounted) {
+                                      setState(() => _crossfadeDraft = null);
+                                    }
+                                  },
+                                ),
+                              ),
+                              Text(
+                                '${(_crossfadeDraft ?? (player.crossfadeSeconds > 0 ? player.crossfadeSeconds : 5)).round()} s',
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 2),
                         StreamBuilder<List<Track>>(

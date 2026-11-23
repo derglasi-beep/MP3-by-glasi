@@ -17,6 +17,7 @@ class MusicScanner {
     Iterable<File> files, {
     void Function(int done, int total)? onProgress,
     bool loadArtwork = true,
+    bool networkOptimized = false,
   }) async {
     final candidates = files
         .where((file) => extensions.contains(_extension(file.path)))
@@ -27,21 +28,34 @@ class MusicScanner {
     // Reading metadata in batches avoids starting one isolate per track,
     // which becomes extremely expensive for libraries with 10k+ files.
     if (!loadArtwork && candidates.isNotEmpty) {
-      const batchSize = 96;
-      for (var start = 0; start < candidates.length; start += batchSize) {
-        final end = (start + batchSize).clamp(0, candidates.length);
-        final paths = <String>[
-          for (var i = start; i < end; i++) candidates[i].path,
-        ];
-        final snapshots = await Isolate.run(() => _readMetadataBatch(paths));
-
-        for (var i = 0; i < paths.length; i++) {
-          final path = paths[i];
-          final snapshot = snapshots[i];
-          result.add(_trackFromMetadataSnapshot(path, snapshot));
+      // Remote reads can take seconds per file. Smaller batches allow regular
+      // progress updates, while two workers overlap network I/O without
+      // flooding a NAS with hundreds of simultaneous metadata requests.
+      final batchSize = networkOptimized ? 12 : 96;
+      final workers = networkOptimized ? 2 : 1;
+      for (var start = 0; start < candidates.length;
+          start += batchSize * workers) {
+        final jobs = <Future<List<Map<String, Object?>?>>>[];
+        final pathBatches = <List<String>>[];
+        for (var worker = 0; worker < workers; worker++) {
+          final from = start + worker * batchSize;
+          if (from >= candidates.length) break;
+          final to = (from + batchSize).clamp(0, candidates.length);
+          final paths = <String>[
+            for (var i = from; i < to; i++) candidates[i].path,
+          ];
+          pathBatches.add(paths);
+          jobs.add(Isolate.run(() => _readMetadataBatch(paths)));
         }
-
-        onProgress?.call(end, candidates.length);
+        final snapshotsByBatch = await Future.wait(jobs);
+        for (var batch = 0; batch < pathBatches.length; batch++) {
+          final paths = pathBatches[batch];
+          final snapshots = snapshotsByBatch[batch];
+          for (var i = 0; i < paths.length; i++) {
+            result.add(_trackFromMetadataSnapshot(paths[i], snapshots[i]));
+          }
+        }
+        onProgress?.call(result.length, candidates.length);
         await Future<void>.delayed(Duration.zero);
       }
     } else {
@@ -75,6 +89,7 @@ class MusicScanner {
 
     final files = <File>[];
     final pending = <Directory>[root];
+    final discoveryTimer = Stopwatch()..start();
 
     while (pending.isNotEmpty) {
       final directory = pending.removeLast();
@@ -85,7 +100,10 @@ class MusicScanner {
           } else if (entity is File &&
               extensions.contains(_extension(entity.path))) {
             files.add(entity);
-            onDiscoveryProgress?.call(files.length);
+            if (discoveryTimer.elapsedMilliseconds >= 120) {
+              onDiscoveryProgress?.call(files.length);
+              discoveryTimer.reset();
+            }
           }
         }
       } on FileSystemException {
@@ -95,9 +113,13 @@ class MusicScanner {
       }
     }
 
+    // Always publish the final discovery count, including small folders.
+    onDiscoveryProgress?.call(files.length);
+    final normalized = path.replaceAll('\\', '/');
     return scanFiles(
       files,
       loadArtwork: loadArtwork,
+      networkOptimized: Platform.isWindows && normalized.startsWith('//'),
       onProgress: onMetadataProgress,
     );
   }

@@ -17,6 +17,9 @@ class AudioPlayerService {
   final StreamController<List<Track>> _queueController = StreamController.broadcast();
   final StreamController<String> _errorController = StreamController.broadcast();
   late final StreamSubscription<PlayerState> _stateSub;
+  late final StreamSubscription<Duration> _positionSub;
+  bool _automaticCrossfadeInProgress = false;
+  int? _automaticCrossfadeTriggeredIndex;
 
   int currentIndex = -1;
   bool shuffle = false;
@@ -27,6 +30,28 @@ class AudioPlayerService {
   // Return -1 to stop after the current song, null for normal navigation.
   int? Function(int currentIndex)? onTrackCompleted;
   double _playerVolume = .8;
+  double _fadeSeconds = 0;
+  bool _crossfadeEnabled = true;
+
+  double get crossfadeSeconds => _fadeSeconds;
+  bool get crossfadeEnabled => _crossfadeEnabled && _fadeSeconds > 0;
+
+  Future<void> toggleCrossfade() async {
+    // First tap turns the effect on with a useful default duration.
+    if (_fadeSeconds <= 0) {
+      _fadeSeconds = 5;
+      _crossfadeEnabled = true;
+      await _settings.setCrossfade(_fadeSeconds);
+    } else {
+      _crossfadeEnabled = !_crossfadeEnabled;
+    }
+    await _settings.setCrossfadeEnabled(_crossfadeEnabled);
+    if (!_crossfadeEnabled) await _resetFade();
+  }
+  double _fadeGain = 1;
+  double _outgoingGain = 0;
+  AudioPlayer? _outgoingFadePlayer;
+  int _fadeRevision = 0;
   double _preamp = 0;
   double _bass = 0;
   double _treble = 0;
@@ -48,6 +73,42 @@ class AudioPlayerService {
         _handleCompletion();
       }
     });
+    _positionSub = audio.positionStream.listen(_checkAutomaticCrossfade);
+  }
+
+  void _checkAutomaticCrossfade(Duration position) {
+    // Spinning owns its song transitions and must never be interrupted early.
+    if (!crossfadeEnabled ||
+        onTrackCompleted != null ||
+        _automaticCrossfadeInProgress ||
+        _outgoingFadePlayer != null ||
+        !audio.playing ||
+        audio.processingState != ProcessingState.ready ||
+        currentTrack == null ||
+        !canGoNext ||
+        loopMode == LoopMode.one) {
+      return;
+    }
+
+    final duration = audio.duration;
+    if (duration == null || duration <= Duration.zero) return;
+
+    final fade = Duration(milliseconds: (_fadeSeconds * 1000).round());
+    // Avoid crossfading tiny tracks and inaccurate end-of-file metadata.
+    if (duration <= fade + const Duration(seconds: 2)) return;
+
+    final remaining = duration - position;
+    if (remaining > fade || remaining <= Duration.zero) return;
+
+    // Position streams can emit repeatedly near the end of one song.
+    if (_automaticCrossfadeTriggeredIndex == currentIndex) return;
+    _automaticCrossfadeTriggeredIndex = currentIndex;
+    _automaticCrossfadeInProgress = true;
+    unawaited(next().catchError((Object error, StackTrace stack) {
+      _publishError(error, fallback: 'Automatische Überblendung fehlgeschlagen.');
+    }).whenComplete(() {
+      _automaticCrossfadeInProgress = false;
+    }));
   }
 
   Stream<Duration> get positionStream => audio.positionStream;
@@ -89,7 +150,7 @@ class AudioPlayerService {
   }
 
   Future<void> _handleCompletion() async {
-    if (_completionInProgress) return;
+    if (_completionInProgress || _outgoingFadePlayer != null) return;
     final revision = _navigationRevision;
     _completionInProgress = true;
     try {
@@ -115,6 +176,7 @@ class AudioPlayerService {
   }) async {
     // Keep external library refreshes from replacing a running Spinning queue.
     if (onTrackCompleted != null) return;
+    await _resetFade();
     _navigationRevision++;
     final oldTrack = currentTrack;
     final oldPosition = audio.position;
@@ -162,9 +224,12 @@ class AudioPlayerService {
       return;
     }
 
+    final outgoingTrack = currentTrack;
     currentIndex = index;
-    await _load();
-    _startPlayback();
+    await _loadAndStart(
+      fading: audio.playing && onTrackCompleted == null,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -257,6 +322,7 @@ class AudioPlayerService {
 
   Future<void> clearQueue() async {
     if (onTrackCompleted != null) return;
+    await _resetFade();
     queue.clear();
     _history.clear();
     currentIndex = -1;
@@ -294,6 +360,7 @@ class AudioPlayerService {
       // This survives fast app closes and source-load failures much better.
       await _settings.setLastTrackId(t.id);
       await audio.setFilePath(t.path);
+      _automaticCrossfadeTriggeredIndex = null;
       if (_audioSettingsLoaded) {
         await _restoreEqualizerIfAvailable();
       }
@@ -325,7 +392,10 @@ class AudioPlayerService {
     }
   }
 
-  Future<void> pause() => audio.pause();
+  Future<void> pause() async {
+    await _resetFade();
+    await audio.pause();
+  }
   Future<void> seek(Duration p) {
     final duration = audio.duration;
     if (duration == null) return audio.seek(p);
@@ -343,9 +413,185 @@ class AudioPlayerService {
     await _applyEffectiveVolume();
   }
 
+  Future<void> setFadeDuration(double seconds) async {
+    _fadeSeconds = seconds.clamp(0, 12).toDouble();
+    if (_fadeSeconds > 0 && !_crossfadeEnabled) {
+      _crossfadeEnabled = true;
+      await _settings.setCrossfadeEnabled(true);
+    }
+    if (_fadeSeconds == 0) await _resetFade();
+  }
+
+  Future<void> _stopOutgoingFade() async {
+    final outgoing = _outgoingFadePlayer;
+    _outgoingFadePlayer = null;
+    _outgoingGain = 0;
+    if (outgoing == null) return;
+    // Rapid skips may interrupt the secondary player while it is still
+    // loading a remote file. It is disposable, so cleanup must not block
+    // playback of the selected primary track.
+    try {
+      await outgoing.stop();
+    } catch (_) {
+      // The old transition is already cancelled.
+    } finally {
+      try {
+        await outgoing.dispose();
+      } catch (_) {
+        // A failed secondary player must not break the main player.
+      }
+    }
+  }
+
+  Future<void> _resetFade() async {
+    final revision = ++_fadeRevision;
+    await _stopOutgoingFade();
+    if (revision != _fadeRevision) return;
+    _fadeGain = 1;
+    await _applyEffectiveVolume();
+  }
+
+  double get _baseVolume {
+    final attenuation = _preamp < 0
+        ? math.pow(10, _preamp / 20).toDouble()
+        : 1.0;
+    return (_playerVolume * attenuation).clamp(0, 1).toDouble();
+  }
+
+  // Keep the primary player responsible for playback state, Android
+  // notification and queue. A temporary second player carries the incoming
+  // song during the overlap; the current song is never restarted mid-play.
+  Future<void> _loadAndStart({
+    bool fading = false,
+    Track? outgoingTrack,
+  }) async {
+    // During a rapid second skip the previous transition may still own the
+    // shadow player. Cancel it and use a direct switch instead of replaying
+    // the wrong outgoing track on another temporary channel.
+    final hadActiveTransition = _outgoingFadePlayer != null;
+    final revision = ++_fadeRevision;
+    await _stopOutgoingFade();
+    if (revision != _fadeRevision) return;
+
+    final overlap = !hadActiveTransition && fading && crossfadeEnabled &&
+        audio.playing && outgoingTrack != null;
+    if (!overlap) {
+      _fadeGain = 1;
+      await _applyEffectiveVolume();
+      if (revision != _fadeRevision) return;
+      await _load();
+      if (revision != _fadeRevision) return;
+      _startPlayback();
+      return;
+    }
+
+    AudioPlayer? shadow;
+    try {
+      // The original track must remain on the main player throughout its
+      // fade-out. Restarting it on a shadow player caused an audible jump
+      // because two decoders never resume at precisely the same sample.
+      shadow = AudioPlayer();
+      _outgoingFadePlayer = shadow;
+      await shadow.setVolume(0);
+      final incomingTrack = currentTrack;
+      if (incomingTrack == null) return;
+      await shadow.setFilePath(incomingTrack.path);
+      if (revision != _fadeRevision) return;
+      unawaited(shadow.play().catchError((Object _) {}));
+
+      // Warm up the incoming decoder at zero gain. The currently playing
+      // song is never sought, restarted or switched to another decoder.
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      if (revision != _fadeRevision) return;
+
+      // Blend outgoing (main) into incoming (shadow) with equal-power gains.
+      final clock = Stopwatch()..start();
+      final durationMs = (_fadeSeconds * 1000).round();
+      while (revision == _fadeRevision) {
+        final t = (clock.elapsedMilliseconds / durationMs).clamp(0.0, 1.0);
+        _fadeGain = math.cos(t * math.pi / 2);
+        _outgoingGain = math.sin(t * math.pi / 2);
+        await _applyEffectiveVolume();
+        if (t >= 1) break;
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+      }
+      if (revision != _fadeRevision) return;
+
+      // Bring the incoming title back onto the notification/position player.
+      // Both copies of the NEW song are running for this short hand-back;
+      // the OLD song was never replayed or repositioned.
+      final incomingPosition = shadow.position;
+      await _load();
+      if (revision != _fadeRevision) return;
+      await audio.seek(incomingPosition);
+      if (revision != _fadeRevision) return;
+      _fadeGain = 0;
+      _outgoingGain = 1;
+      await _applyEffectiveVolume();
+      _startPlayback();
+
+      // Windows can take noticeably longer to start the new native decoder.
+      // Seek-to-position before play alone does not keep the two instances
+      // aligned: the shadow has advanced while the primary was buffering.
+      // Wait until the primary is ready, then align it to the live shadow
+      // just before we make the primary audible.
+      if (Platform.isWindows) {
+        try {
+          await audio.playerStateStream
+              .firstWhere((state) =>
+                  state.playing &&
+                  state.processingState == ProcessingState.ready)
+              .timeout(const Duration(seconds: 2));
+        } on TimeoutException {
+          // Do not block a transition indefinitely on an audio backend.
+        }
+        if (revision != _fadeRevision) return;
+        await audio.seek(shadow.position);
+        if (revision != _fadeRevision) return;
+      }
+
+      final handback = Stopwatch()..start();
+      // Hand-back between two decoders of the same track is kept brief on
+      // Windows to avoid audible flanging from small sample offsets.
+      final handbackMs = Platform.isWindows ? 35 : 180;
+      while (revision == _fadeRevision) {
+        final t = (handback.elapsedMilliseconds / handbackMs).clamp(0.0, 1.0);
+        _fadeGain = math.sin(t * math.pi / 2);
+        _outgoingGain = math.cos(t * math.pi / 2);
+        await _applyEffectiveVolume();
+        if (t >= 1) break;
+        await Future<void>.delayed(
+          Duration(milliseconds: Platform.isWindows ? 8 : 15),
+        );
+      }
+    } catch (error) {
+      if (revision == _fadeRevision) {
+        _publishError(error, fallback: 'Überblendung fehlgeschlagen.');
+        rethrow;
+      }
+    } finally {
+      if (revision == _fadeRevision) {
+        _fadeGain = 1;
+        await _stopOutgoingFade();
+        await _applyEffectiveVolume();
+      } else if (shadow != null && !identical(shadow, _outgoingFadePlayer)) {
+        // A newer transition already disposed its predecessor.
+      }
+    }
+  }
+
   Future<void> _applyEffectiveVolume() async {
-    final attenuation = _preamp < 0 ? math.pow(10, _preamp / 20).toDouble() : 1.0;
-    await audio.setVolume((_playerVolume * attenuation).clamp(0, 1).toDouble());
+    final base = _baseVolume;
+    await audio.setVolume((base * _fadeGain).clamp(0, 1).toDouble());
+    final outgoing = _outgoingFadePlayer;
+    if (outgoing != null) {
+      try {
+        await outgoing.setVolume((base * _outgoingGain).clamp(0, 1).toDouble());
+      } catch (_) {
+        // A concurrent skip may have disposed this outgoing channel.
+        // Never interrupt primary playback because of that race.
+      }
+    }
   }
 
   Future<void> setPreamp(double decibels) async {
@@ -613,6 +859,8 @@ class AudioPlayerService {
       settings.treble,
       settings.shuffle,
       settings.repeatMode,
+      settings.crossfade,
+      settings.crossfadeEnabled,
     ]);
 
     _playerVolume = (values[0] as double).clamp(0, 1).toDouble();
@@ -620,6 +868,8 @@ class AudioPlayerService {
     _preamp = (values[3] as double).clamp(-12, 12).toDouble();
     _bass = (values[4] as double).clamp(-12, 12).toDouble();
     _treble = (values[5] as double).clamp(-12, 12).toDouble();
+    _fadeSeconds = (values[8] as double).clamp(0, 12).toDouble();
+    _crossfadeEnabled = values[9] as bool;
     shuffle = values[6] as bool;
     loopMode = switch ((values[7] as int).clamp(0, 2)) {
       1 => LoopMode.all,
@@ -689,6 +939,7 @@ class AudioPlayerService {
       _startPlayback();
       return;
     }
+    final outgoingTrack = currentTrack;
     if (shuffle && currentIndex >= 0) _history.add(currentIndex);
     if (shuffle && queue.length > 1) {
       currentIndex = _nextShuffleIndex();
@@ -702,8 +953,10 @@ class AudioPlayerService {
       await audio.seek(Duration.zero);
       return;
     }
-    await _load();
-    _startPlayback();
+    await _loadAndStart(
+      fading: !fromCompletion && audio.playing,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -715,6 +968,7 @@ class AudioPlayerService {
       return;
     }
 
+    final outgoingTrack = currentTrack;
     if (onTrackCompleted != null) {
       if (currentIndex <= 0) {
         await seek(Duration.zero);
@@ -732,8 +986,10 @@ class AudioPlayerService {
       return;
     }
 
-    await _load();
-    _startPlayback();
+    await _loadAndStart(
+      fading: audio.playing && onTrackCompleted == null,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -764,8 +1020,10 @@ class AudioPlayerService {
   }
 
   Future<void> dispose() async {
+    await _resetFade();
     _completionInProgress = true;
     await _stateSub.cancel();
+    await _positionSub.cancel();
     await _trackController.close();
     await _queueController.close();
     await _errorController.close();
