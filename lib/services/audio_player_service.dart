@@ -29,6 +29,8 @@ class AudioPlayerService {
   double _playerVolume = .8;
   double _fadeSeconds = 0;
   double _fadeGain = 1;
+  double _outgoingGain = 0;
+  AudioPlayer? _outgoingFadePlayer;
   int _fadeRevision = 0;
   double _preamp = 0;
   double _bass = 0;
@@ -166,8 +168,12 @@ class AudioPlayerService {
       return;
     }
 
+    final outgoingTrack = currentTrack;
     currentIndex = index;
-    await _loadAndStart(fading: audio.playing && onTrackCompleted == null);
+    await _loadAndStart(
+      fading: audio.playing && onTrackCompleted == null,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -355,67 +361,126 @@ class AudioPlayerService {
     if (_fadeSeconds == 0) await _resetFade();
   }
 
+  Future<void> _stopOutgoingFade() async {
+    final outgoing = _outgoingFadePlayer;
+    _outgoingFadePlayer = null;
+    _outgoingGain = 0;
+    if (outgoing == null) return;
+    try {
+      await outgoing.stop();
+    } finally {
+      await outgoing.dispose();
+    }
+  }
+
   Future<void> _resetFade() async {
     _fadeRevision++;
+    await _stopOutgoingFade();
     _fadeGain = 1;
     await _applyEffectiveVolume();
   }
 
-  Future<void> _rampFade(double end, Duration duration, int revision) async {
-    final start = _fadeGain;
-    final elapsed = Stopwatch()..start();
-    final totalMicros = duration.inMicroseconds;
-    if (totalMicros <= 0) {
-      if (revision == _fadeRevision) {
-        _fadeGain = end;
-        await _applyEffectiveVolume();
-      }
-      return;
-    }
-    while (revision == _fadeRevision) {
-      final fraction = (elapsed.elapsedMicroseconds / totalMicros)
-          .clamp(0.0, 1.0);
-      // Smoothstep avoids an abrupt volume change at either endpoint.
-      final eased = fraction * fraction * (3 - 2 * fraction);
-      _fadeGain = start + (end - start) * eased;
-      await _applyEffectiveVolume();
-      if (fraction >= 1 || revision != _fadeRevision) break;
-      await Future<void>.delayed(const Duration(milliseconds: 35));
-    }
+  double get _baseVolume {
+    final attenuation = _preamp < 0
+        ? math.pow(10, _preamp / 20).toDouble()
+        : 1.0;
+    return (_playerVolume * attenuation).clamp(0, 1).toDouble();
   }
 
-  Future<void> _loadAndStart({bool fading = false}) async {
+  // Keep the primary player as the sole source of playback state, Android
+  // media notification, position and queue. A transient second channel
+  // carries the outgoing audio while the primary loads the next song.
+  Future<void> _loadAndStart({
+    bool fading = false,
+    Track? outgoingTrack,
+  }) async {
     final revision = ++_fadeRevision;
-    if (fading && _fadeSeconds > 0 && audio.playing) {
-      await _rampFade(
-        0, Duration(milliseconds: (_fadeSeconds * 500).round()), revision);
-    }
+    await _stopOutgoingFade();
     if (revision != _fadeRevision) return;
-    try {
+
+    final overlap = fading && _fadeSeconds > 0 &&
+        audio.playing && outgoingTrack != null;
+    if (!overlap) {
+      _fadeGain = 1;
+      await _applyEffectiveVolume();
+      if (revision != _fadeRevision) return;
       await _load();
       if (revision != _fadeRevision) return;
-      if (fading && _fadeSeconds > 0) {
-        _fadeGain = 0;
-        await _applyEffectiveVolume();
-      } else {
-        _fadeGain = 1;
-        await _applyEffectiveVolume();
-      }
       _startPlayback();
-      if (fading && _fadeSeconds > 0) {
-        unawaited(_rampFade(
-          1, Duration(milliseconds: (_fadeSeconds * 500).round()), revision)
-          .catchError((Object _) {}));
+      return;
+    }
+
+    AudioPlayer? shadow;
+    try {
+      shadow = AudioPlayer();
+      _outgoingFadePlayer = shadow;
+      await shadow.setVolume(0);
+      await shadow.setFilePath(outgoingTrack.path);
+      if (revision != _fadeRevision) return;
+      // Seek only after the replacement source is ready; the original
+      // primary player keeps playing while this source is prepared.
+      final position = audio.position;
+      await shadow.seek(position);
+      if (revision != _fadeRevision) return;
+      unawaited(shadow.play().catchError((Object _) {}));
+
+      // Hand the outgoing music to the second channel before replacing the
+      // primary source. The hand-off is short; the actual overlap below uses
+      // the full user-selected crossfade duration.
+      final handoff = Stopwatch()..start();
+      while (revision == _fadeRevision) {
+        final t = (handoff.elapsedMilliseconds / 140).clamp(0.0, 1.0);
+        _fadeGain = 1 - t;
+        _outgoingGain = t;
+        await _applyEffectiveVolume();
+        if (t >= 1) break;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
       }
-    } catch (_) {
-      if (revision == _fadeRevision) await _resetFade();
-      rethrow;
+      if (revision != _fadeRevision) return;
+
+      await _load();
+      if (revision != _fadeRevision) return;
+      _fadeGain = 0;
+      _outgoingGain = 1;
+      await _applyEffectiveVolume();
+      _startPlayback();
+
+      // True overlapping playback: the outgoing channel fades out while
+      // the incoming title on the primary player fades in.
+      final clock = Stopwatch()..start();
+      final durationMs = (_fadeSeconds * 1000).round();
+      while (revision == _fadeRevision) {
+        final t = (clock.elapsedMilliseconds / durationMs).clamp(0.0, 1.0);
+        // Equal-power curve keeps perceived loudness more consistent.
+        _fadeGain = math.sin(t * math.pi / 2);
+        _outgoingGain = math.cos(t * math.pi / 2);
+        await _applyEffectiveVolume();
+        if (t >= 1) break;
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+      }
+    } catch (error) {
+      if (revision == _fadeRevision) {
+        _publishError(error, fallback: 'Überblendung fehlgeschlagen.');
+        rethrow;
+      }
+    } finally {
+      if (revision == _fadeRevision) {
+        _fadeGain = 1;
+        await _stopOutgoingFade();
+        await _applyEffectiveVolume();
+      } else if (shadow != null && !identical(shadow, _outgoingFadePlayer)) {
+        // A newer transition already disposed its predecessor.
+      }
     }
   }
 
   Future<void> _applyEffectiveVolume() async {
-    final attenuation = _preamp < 0 ? math.pow(10, _preamp / 20).toDouble() : 1.0;
-    await audio.setVolume((_playerVolume * attenuation * _fadeGain).clamp(0, 1).toDouble());
+    final base = _baseVolume;
+    await audio.setVolume((base * _fadeGain).clamp(0, 1).toDouble());
+    final outgoing = _outgoingFadePlayer;
+    if (outgoing != null) {
+      await outgoing.setVolume((base * _outgoingGain).clamp(0, 1).toDouble());
+    }
   }
 
   Future<void> setPreamp(double decibels) async {
@@ -761,6 +826,7 @@ class AudioPlayerService {
       _startPlayback();
       return;
     }
+    final outgoingTrack = currentTrack;
     if (shuffle && currentIndex >= 0) _history.add(currentIndex);
     if (shuffle && queue.length > 1) {
       currentIndex = _nextShuffleIndex();
@@ -774,7 +840,10 @@ class AudioPlayerService {
       await audio.seek(Duration.zero);
       return;
     }
-    await _loadAndStart(fading: !fromCompletion && audio.playing);
+    await _loadAndStart(
+      fading: !fromCompletion && audio.playing,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -786,6 +855,7 @@ class AudioPlayerService {
       return;
     }
 
+    final outgoingTrack = currentTrack;
     if (onTrackCompleted != null) {
       if (currentIndex <= 0) {
         await seek(Duration.zero);
@@ -803,7 +873,10 @@ class AudioPlayerService {
       return;
     }
 
-    await _loadAndStart(fading: audio.playing && onTrackCompleted == null);
+    await _loadAndStart(
+      fading: audio.playing && onTrackCompleted == null,
+      outgoingTrack: outgoingTrack,
+    );
     _publishQueue();
   }
 
@@ -834,7 +907,7 @@ class AudioPlayerService {
   }
 
   Future<void> dispose() async {
-    _fadeRevision++;
+    await _resetFade();
     _completionInProgress = true;
     await _stateSub.cancel();
     await _trackController.close();
