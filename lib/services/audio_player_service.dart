@@ -387,16 +387,26 @@ class AudioPlayerService {
     _outgoingFadePlayer = null;
     _outgoingGain = 0;
     if (outgoing == null) return;
+    // Rapid skips may interrupt the secondary player while it is still
+    // loading a remote file. It is disposable, so cleanup must not block
+    // playback of the selected primary track.
     try {
       await outgoing.stop();
+    } catch (_) {
+      // The old transition is already cancelled.
     } finally {
-      await outgoing.dispose();
+      try {
+        await outgoing.dispose();
+      } catch (_) {
+        // A failed secondary player must not break the main player.
+      }
     }
   }
 
   Future<void> _resetFade() async {
-    _fadeRevision++;
+    final revision = ++_fadeRevision;
     await _stopOutgoingFade();
+    if (revision != _fadeRevision) return;
     _fadeGain = 1;
     await _applyEffectiveVolume();
   }
@@ -415,11 +425,15 @@ class AudioPlayerService {
     bool fading = false,
     Track? outgoingTrack,
   }) async {
+    // During a rapid second skip the previous transition may still own the
+    // shadow player. Cancel it and use a direct switch instead of replaying
+    // the wrong outgoing track on another temporary channel.
+    final hadActiveTransition = _outgoingFadePlayer != null;
     final revision = ++_fadeRevision;
     await _stopOutgoingFade();
     if (revision != _fadeRevision) return;
 
-    final overlap = fading && crossfadeEnabled &&
+    final overlap = !hadActiveTransition && fading && crossfadeEnabled &&
         audio.playing && outgoingTrack != null;
     if (!overlap) {
       _fadeGain = 1;
@@ -500,7 +514,12 @@ class AudioPlayerService {
     await audio.setVolume((base * _fadeGain).clamp(0, 1).toDouble());
     final outgoing = _outgoingFadePlayer;
     if (outgoing != null) {
-      await outgoing.setVolume((base * _outgoingGain).clamp(0, 1).toDouble());
+      try {
+        await outgoing.setVolume((base * _outgoingGain).clamp(0, 1).toDouble());
+      } catch (_) {
+        // A concurrent skip may have disposed this outgoing channel.
+        // Never interrupt primary playback because of that race.
+      }
     }
   }
 
