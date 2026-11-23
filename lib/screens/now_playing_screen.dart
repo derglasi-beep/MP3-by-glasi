@@ -297,6 +297,30 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           bpm: track?.bpm,
                           height: 42,
                         ),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.center,
+                          child: FilterChip(
+                            avatar: Icon(
+                              Icons.graphic_eq,
+                              size: 18,
+                              color: player.crossfadeEnabled
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                            ),
+                            label: Text(
+                              player.crossfadeEnabled
+                                  ? 'DJ-Crossfade AN · ${player.crossfadeSeconds.toStringAsFixed(0)} s'
+                                  : 'DJ-Crossfade AUS',
+                            ),
+                            selected: player.crossfadeEnabled,
+                            tooltip: 'DJ-Crossfade direkt ein- oder ausschalten',
+                            onSelected: (_) async {
+                              await player.toggleCrossfade();
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ),
                         const SizedBox(height: 2),
                         StreamBuilder<List<Track>>(
                           stream: player.queueStream,
