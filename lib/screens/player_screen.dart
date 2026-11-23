@@ -3259,10 +3259,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                         divisions: 11,
                         label: '${widget.player.crossfadeSeconds.round()} s',
                         onChanged: (v) {
-                          // Update the displayed value immediately; keep the
-                          // existing persisted setting used by both views.
-                          setState(() {});
+                          // The service updates the chosen duration
+                          // synchronously before persistence runs.
                           unawaited(widget.player.setFadeDuration(v));
+                          setState(() {});
                         },
                         onChangeEnd: (v) async {
                           await widget.player.setFadeDuration(v);
