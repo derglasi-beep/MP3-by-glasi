@@ -415,7 +415,7 @@ class AudioPlayerService {
       shadow = AudioPlayer();
       _outgoingFadePlayer = shadow;
       await shadow.setVolume(0);
-      await shadow.setFilePath(outgoingTrack.path);
+      await shadow.setFilePath(outgoingTrack!.path);
       if (revision != _fadeRevision) return;
       // Seek only after the replacement source is ready; the original
       // primary player keeps playing while this source is prepared.
