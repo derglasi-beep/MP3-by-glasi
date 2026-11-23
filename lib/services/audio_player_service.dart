@@ -81,6 +81,7 @@ class AudioPlayerService {
     if (!crossfadeEnabled ||
         onTrackCompleted != null ||
         _automaticCrossfadeInProgress ||
+        _outgoingFadePlayer != null ||
         !audio.playing ||
         audio.processingState != ProcessingState.ready ||
         currentTrack == null ||
@@ -149,7 +150,7 @@ class AudioPlayerService {
   }
 
   Future<void> _handleCompletion() async {
-    if (_completionInProgress) return;
+    if (_completionInProgress || _outgoingFadePlayer != null) return;
     final revision = _navigationRevision;
     _completionInProgress = true;
     try {
@@ -457,9 +458,9 @@ class AudioPlayerService {
     return (_playerVolume * attenuation).clamp(0, 1).toDouble();
   }
 
-  // Keep the primary player as the sole source of playback state, Android
-  // media notification, position and queue. A transient second channel
-  // carries the outgoing audio while the primary loads the next song.
+  // Keep the primary player responsible for playback state, Android
+  // notification and queue. A temporary second player carries the incoming
+  // song during the overlap; the current song is never restarted mid-play.
   Future<void> _loadAndStart({
     bool fading = false,
     Track? outgoingTrack,
@@ -486,57 +487,57 @@ class AudioPlayerService {
 
     AudioPlayer? shadow;
     try {
+      // The original track must remain on the main player throughout its
+      // fade-out. Restarting it on a shadow player caused an audible jump
+      // because two decoders never resume at precisely the same sample.
       shadow = AudioPlayer();
       _outgoingFadePlayer = shadow;
       await shadow.setVolume(0);
-      await shadow.setFilePath(outgoingTrack!.path);
-      if (revision != _fadeRevision) return;
-      // Seek only after the replacement source is ready; the original
-      // primary player keeps playing while this source is prepared.
-      final position = audio.position;
-      await shadow.seek(position);
+      final incomingTrack = currentTrack;
+      if (incomingTrack == null) return;
+      await shadow.setFilePath(incomingTrack.path);
       if (revision != _fadeRevision) return;
       unawaited(shadow.play().catchError((Object _) {}));
 
-      // Give Android's second decoder a moment to deliver its first audio
-      // buffers at zero volume before taking over from the primary player.
-      // Without this, the volume hand-off can briefly dip into silence.
+      // Warm up the incoming decoder at zero gain. The currently playing
+      // song is never sought, restarted or switched to another decoder.
       await Future<void>.delayed(const Duration(milliseconds: 70));
       if (revision != _fadeRevision) return;
 
-      // Use an equal-power hand-off rather than a linear one. Two linear
-      // gains at 50% create an audible loudness dip ("stumble") when the
-      // outgoing title is transferred between audio players.
-      final handoff = Stopwatch()..start();
+      // Blend outgoing (main) into incoming (shadow) with equal-power gains.
+      final clock = Stopwatch()..start();
+      final durationMs = (_fadeSeconds * 1000).round();
       while (revision == _fadeRevision) {
-        final t = (handoff.elapsedMilliseconds / 140).clamp(0.0, 1.0);
+        final t = (clock.elapsedMilliseconds / durationMs).clamp(0.0, 1.0);
         _fadeGain = math.cos(t * math.pi / 2);
         _outgoingGain = math.sin(t * math.pi / 2);
         await _applyEffectiveVolume();
         if (t >= 1) break;
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await Future<void>.delayed(const Duration(milliseconds: 35));
       }
       if (revision != _fadeRevision) return;
 
+      // Bring the incoming title back onto the notification/position player.
+      // Both copies of the NEW song are running for this short hand-back;
+      // the OLD song was never replayed or repositioned.
+      final incomingPosition = shadow.position;
       await _load();
+      if (revision != _fadeRevision) return;
+      await audio.seek(incomingPosition);
       if (revision != _fadeRevision) return;
       _fadeGain = 0;
       _outgoingGain = 1;
       await _applyEffectiveVolume();
       _startPlayback();
 
-      // True overlapping playback: the outgoing channel fades out while
-      // the incoming title on the primary player fades in.
-      final clock = Stopwatch()..start();
-      final durationMs = (_fadeSeconds * 1000).round();
+      final handback = Stopwatch()..start();
       while (revision == _fadeRevision) {
-        final t = (clock.elapsedMilliseconds / durationMs).clamp(0.0, 1.0);
-        // Equal-power curve keeps perceived loudness more consistent.
+        final t = (handback.elapsedMilliseconds / 180).clamp(0.0, 1.0);
         _fadeGain = math.sin(t * math.pi / 2);
         _outgoingGain = math.cos(t * math.pi / 2);
         await _applyEffectiveVolume();
         if (t >= 1) break;
-        await Future<void>.delayed(const Duration(milliseconds: 35));
+        await Future<void>.delayed(const Duration(milliseconds: 25));
       }
     } catch (error) {
       if (revision == _fadeRevision) {
