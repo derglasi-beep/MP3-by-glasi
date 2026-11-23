@@ -118,6 +118,7 @@ class AudioPlayerService {
   }) async {
     // Keep external library refreshes from replacing a running Spinning queue.
     if (onTrackCompleted != null) return;
+    await _resetFade();
     _navigationRevision++;
     final oldTrack = currentTrack;
     final oldPosition = audio.position;
@@ -259,6 +260,7 @@ class AudioPlayerService {
 
   Future<void> clearQueue() async {
     if (onTrackCompleted != null) return;
+    await _resetFade();
     queue.clear();
     _history.clear();
     currentIndex = -1;
