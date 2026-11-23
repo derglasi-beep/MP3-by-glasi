@@ -34,12 +34,14 @@ class AudioPlayerService {
   bool get crossfadeEnabled => _crossfadeEnabled && _fadeSeconds > 0;
 
   Future<void> toggleCrossfade() async {
-    // With an unset duration, choose a useful default the first time.
+    // First tap turns the effect on with a useful default duration.
     if (_fadeSeconds <= 0) {
       _fadeSeconds = 5;
+      _crossfadeEnabled = true;
       await _settings.setCrossfade(_fadeSeconds);
+    } else {
+      _crossfadeEnabled = !_crossfadeEnabled;
     }
-    _crossfadeEnabled = !_crossfadeEnabled;
     await _settings.setCrossfadeEnabled(_crossfadeEnabled);
     if (!_crossfadeEnabled) await _resetFade();
   }
@@ -373,6 +375,10 @@ class AudioPlayerService {
 
   Future<void> setFadeDuration(double seconds) async {
     _fadeSeconds = seconds.clamp(0, 12).toDouble();
+    if (_fadeSeconds > 0 && !_crossfadeEnabled) {
+      _crossfadeEnabled = true;
+      await _settings.setCrossfadeEnabled(true);
+    }
     if (_fadeSeconds == 0) await _resetFade();
   }
 
