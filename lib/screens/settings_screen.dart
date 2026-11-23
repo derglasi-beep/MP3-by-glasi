@@ -236,10 +236,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'Beim manuellen Songwechsel laufen beide Titel kurz gleichzeitig: '
-        'der alte blendet aus und der neue ein. 0 s = Aus. '
-        'Automatische Übergänge und Spinning-Intervalle bleiben '
-        'vorerst ohne Crossfade.',
+        'Der alte Titel blendet aus, während der nächste einblendet – '
+        'bei manuellen und automatischen Übergängen. '
+        '0 s = Aus. Im Spinning-Modus bleibt Crossfade ausgeschaltet.',
       ),
       const Divider(height: 32),
       Center(
